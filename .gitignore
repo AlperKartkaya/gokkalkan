@@ -1,0 +1,72 @@
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# IDE & OS Specific Files
+# ==========================================
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# ROS 2 & C++ Build Artifacts
+# ==========================================
+# If you use ROS2 Colcon workspaces or standard CMake
+build/
+install/
+log/
+CMakeCache.txt
+CMakeFiles/
+*.o
+*.so
+*.out
+
+# ==========================================
+# AI Models & Heavy Assets (Hailo/YOLO)
+# ==========================================
+# Git cannot handle large binaries well. Use Git LFS if you MUST track these, 
+# otherwise, ignore them and download them directly to the Pi.
+*.hef          
+*.pt           
+*.onnx         
+*.weights
+
+# ==========================================
+# Camera Streams & Test Videos
+# ==========================================
+# Ignore all test footage from the Picamera2
+*.mp4
+*.avi
+*.mkv
+*.jpg
+*.png
+# Except UI assets (using ! to un-ignore a specific directory)
+!frontend/assets/*.png
+!frontend/assets/*.jpg
+
+# ==========================================
+# Telemetry & Logs (WP-05)
+# ==========================================
+# The operator UI and backend will generate lots of data. Do not push this.
+*.csv
+*.log
+telemetry_data/
+recordings/
+
+# ==========================================
+# PySide6 / Qt Build Files
+# ==========================================
+# If you compile UI files dynamically
+ui_*.py
+rc_*.py
