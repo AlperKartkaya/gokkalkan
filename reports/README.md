@@ -1,2 +1,2 @@
-Ön Tasarım Raporu 
-Kritik tasarım Raporu
+Ön Tasarım Raporu
+Kritik Tasarım Raporu
