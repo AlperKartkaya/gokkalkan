@@ -43,19 +43,6 @@ CMakeFiles/
 *.weights
 
 # ==========================================
-# Camera Streams & Test Videos
-# ==========================================
-# Ignore all test footage from the Picamera2
-*.mp4
-*.avi
-*.mkv
-*.jpg
-*.png
-# Except UI assets (using ! to un-ignore a specific directory)
-!frontend/assets/*.png
-!frontend/assets/*.jpg
-
-# ==========================================
 # Telemetry & Logs (WP-05)
 # ==========================================
 # The operator UI and backend will generate lots of data. Do not push this.
@@ -70,3 +57,18 @@ recordings/
 # If you compile UI files dynamically
 ui_*.py
 rc_*.py
+
+# ==========================================
+# Node.js & Frontend Build Artifacts
+# ==========================================
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
