@@ -1,4 +1,4 @@
-import type { BlockReason, Mode, SafetyState, Stage, Track } from './types';
+import type { BlockReason, CommandIntent, Mode, SafetyState, Stage, Track } from './types';
 
 export function rangeGateFor(type: Track['type'], range: number): Track['rangeGate'] {
   if (type === 'F16') {
@@ -10,25 +10,49 @@ export function rangeGateFor(type: Track['type'], range: number): Track['rangeGa
   return range >= 5 && range <= 15 ? 'Uygun' : 'Geçersiz';
 }
 
+export function evaluateSystemHealth(base: Omit<SafetyState, 'blockReason'>): SafetyState {
+  if (base.estop) return { ...base, blockReason: 'BLOCKED_ESTOP' };
+  if (!base.connectionOk) return { ...base, blockReason: 'BLOCKED_CONNECTION' };
+  return { ...base, blockReason: 'ALLOWED' };
+}
+
+function isMoveIntent(command: CommandIntent) {
+  return command === 'move' || command === 'autonomous_move';
+}
+
+function isEngageIntent(command: CommandIntent) {
+  return command === 'fire' || command === 'autonomous_engage';
+}
+
+function isModeAllowed(stage: Stage, mode: Mode, command: CommandIntent) {
+  if (mode === 'safe' || mode === 'maintenance' || mode === 'blocked') return false;
+  if (stage === 1) return mode === 'manual' && command === 'fire';
+  if (command === 'autonomous_engage') return mode === 'autonomous' || mode === 'engagement';
+  if (command === 'fire') return mode === 'manual' || mode === 'engagement';
+  return mode === 'manual' || mode === 'autonomous' || mode === 'engagement';
+}
+
 export function evaluateSafety(params: {
   stage: Stage;
   mode: Mode;
   base: Omit<SafetyState, 'blockReason'>;
   selectedTrack?: Track;
-  command: 'move' | 'fire' | 'autonomous';
+  command: CommandIntent;
 }): SafetyState {
   const { stage, mode, base, selectedTrack, command } = params;
   let blockReason: BlockReason = 'ALLOWED';
 
-  if (base.estop) blockReason = 'BLOCKED_ESTOP';
-  else if (!base.connectionOk) blockReason = 'BLOCKED_CONNECTION';
-  else if (command === 'move' && !base.motionZoneOk) blockReason = 'BLOCKED_MOTION_ZONE';
-  else if (command === 'fire' && !base.fireZoneOk) blockReason = 'BLOCKED_FIRE_ZONE';
-  else if (!base.modeOk || (stage === 1 && mode !== 'manual' && command === 'fire')) blockReason = 'BLOCKED_MODE';
-  else if (command === 'fire' && stage === 3) {
+  const health = evaluateSystemHealth(base);
+  if (health.blockReason !== 'ALLOWED') blockReason = health.blockReason;
+  else if (isMoveIntent(command) && !base.motionZoneOk) blockReason = 'BLOCKED_MOTION_ZONE';
+  else if (isEngageIntent(command) && !base.fireZoneOk) blockReason = 'BLOCKED_FIRE_ZONE';
+  else if (!base.modeOk || !isModeAllowed(stage, mode, command)) blockReason = 'BLOCKED_MODE';
+  else if (isEngageIntent(command) && stage === 3) {
     if (!selectedTrack || selectedTrack.friendFoe !== 'Düşman' || selectedTrack.rangeGate !== 'Uygun' || !base.targetGateOk) {
       blockReason = 'BLOCKED_TARGET_GATE';
     }
+  } else if (isEngageIntent(command) && !base.targetGateOk) {
+    blockReason = 'BLOCKED_TARGET_GATE';
   }
 
   return { ...base, blockReason };

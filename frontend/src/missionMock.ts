@@ -70,7 +70,7 @@ export function generateTracks(stage: Stage, elapsed: number): Track[] {
     const x = 12 + progress * 74;
     const y = [30, 52, 72][index] + Math.sin(elapsed * 0.55 + index) * 2;
     return {
-      id: `S3-${friendFoe[0]}${index + 1}`,
+      id: `S3-${friendFoe === 'Düşman' ? 'X' : 'F'}${index + 1}`,
       x,
       y,
       w: type === 'F16' ? 13 : 9,

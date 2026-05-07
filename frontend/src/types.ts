@@ -21,6 +21,8 @@ export type BlockReason =
   | 'BLOCKED_MODE'
   | 'BLOCKED_CONNECTION';
 
+export type CommandIntent = 'move' | 'fire' | 'autonomous_move' | 'autonomous_engage';
+
 export type EventType = 'command' | 'target' | 'safety' | 'fire' | 'mode' | 'telemetry';
 
 export interface Track {

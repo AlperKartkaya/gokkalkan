@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { generateTracks, targetOrder } from './missionMock';
-import { blockCopy, evaluateSafety } from './safetyGate';
+import { blockCopy, evaluateSafety, evaluateSystemHealth } from './safetyGate';
 import { exportJsonl, makeEvent } from './telemetry';
-import type { BlockReason, EventType, Mode, SafetyState, Stage, TelemetryEvent, Track } from './types';
+import type { BlockReason, CommandIntent, EventType, Mode, SafetyState, Stage, TelemetryEvent, Track } from './types';
 
 const filters: EventType[] = ['command', 'target', 'safety', 'fire', 'mode', 'telemetry'];
 const blockReasons: Exclude<BlockReason, 'ALLOWED'>[] = [
@@ -124,7 +124,7 @@ function Landing({ onEnter }: { onEnter: () => void }) {
   );
 }
 
-function CameraViewport({ tracks, stage, selectedId, onSelect }: { tracks: Track[]; stage: Stage; selectedId?: string; onSelect: (id: string) => void }) {
+function CameraViewport({ tracks, stage, selectedId, onSelect, panAngle = 0, tiltAngle = 0 }: { tracks: Track[]; stage: Stage; selectedId?: string; onSelect: (id: string) => void; panAngle?: number; tiltAngle?: number }) {
   return (
     <section className="viewport">
       <div className="sensor-lines" />
@@ -132,8 +132,8 @@ function CameraViewport({ tracks, stage, selectedId, onSelect }: { tracks: Track
         <span>KOL 1</span><span>KOL 2</span><span>KOL 3</span>
       </div>
       <div className="reticle"><i /><b /></div>
-      <div className="angle-readout left">PAN −12.4°</div>
-      <div className="angle-readout right">TILT +06.8°</div>
+      <div className="angle-readout left">PAN {panAngle >= 0 ? '+' : ''}{panAngle.toFixed(1)}°</div>
+      <div className="angle-readout right">TILT {tiltAngle >= 0 ? '+' : ''}{tiltAngle.toFixed(1)}°</div>
       <div className="stage-watermark">AŞAMA {stage}</div>
       {tracks.map((track) => (
         <button
@@ -154,7 +154,17 @@ function CameraViewport({ tracks, stage, selectedId, onSelect }: { tracks: Track
   );
 }
 
-function SafetyStrip({ safety, onToggleEstop, onScenario }: { safety: SafetyState; onToggleEstop: () => void; onScenario: (reason: BlockReason) => void }) {
+function SafetyStrip({
+  safety,
+  scenario,
+  onToggleEstop,
+  onScenario,
+}: {
+  safety: SafetyState;
+  scenario: BlockReason;
+  onToggleEstop: () => void;
+  onScenario: (reason: BlockReason) => void;
+}) {
   const chips = [
     ['Acil Durdur', !safety.estop],
     ['Harekete Yasak Alan', safety.motionZoneOk],
@@ -171,7 +181,7 @@ function SafetyStrip({ safety, onToggleEstop, onScenario }: { safety: SafetyStat
         {chips.map(([label, ok]) => <span key={label} className={statusClass(ok)}><i />{label}</span>)}
       </div>
       <div className={`block-reason ${safety.blockReason === 'ALLOWED' ? 'clear' : 'locked'}`}>{safety.blockReason} · {blockCopy[safety.blockReason]}</div>
-      <select onChange={(event) => onScenario(event.target.value as BlockReason)} value="ALLOWED" aria-label="Blok senaryosu">
+      <select onChange={(event) => onScenario(event.target.value as BlockReason)} value={scenario} aria-label="Blok senaryosu">
         <option value="ALLOWED">Blok senaryosu</option>
         {blockReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
       </select>
@@ -206,7 +216,7 @@ function ManualPanel({ currentTarget, score, timeLeft, fireAllowed, onMove, onFi
           {['−0.5°', '+0.5°', 'Merkez', 'Yavaş'].map((label) => <button key={label} onClick={() => onMove(label)}>{label}</button>)}
         </div>
       </div>
-      <div className="mission-metrics"><span>Süre <b>{timeLeft}s</b></span><span>Puan <b>{score}</b></span><span>Hedef <b>{currentTarget + 1}/4</b></span></div>
+      <div className="mission-metrics"><span>Süre <b>{timeLeft}s</b></span><span>Puan <b>{score}</b></span><span>Hedef <b>{Math.min(currentTarget + 1, 4)}/4</b></span></div>
       <div className="fire-row">
         <button className="arm" disabled={!fireAllowed} onMouseDown={() => onMove('arm-hold')} title="Basılı tutarak simülasyon atış hattını kur">Basılı Kur</button>
         <button className="fire" disabled={!fireAllowed} onClick={onFire}>ATEŞ</button>
@@ -216,14 +226,34 @@ function ManualPanel({ currentTarget, score, timeLeft, fireAllowed, onMove, onFi
   );
 }
 
-function AutonomousPanel({ stage, tracks, round, hits, noHitStreak, running, onToggle }: {
+function AutonomousPanel({
+  stage,
+  tracks,
+  round,
+  hits,
+  roundHits,
+  noHitStreak,
+  score,
+  missionStatus,
+  running,
+  engageAllowed,
+  onToggle,
+  onEngage,
+  onNextRound,
+}: {
   stage: 2 | 3;
   tracks: Track[];
   round: number;
   hits: number;
+  roundHits: number;
   noHitStreak: number;
+  score: number;
+  missionStatus: string;
   running: boolean;
+  engageAllowed: boolean;
   onToggle: () => void;
+  onEngage: () => void;
+  onNextRound: () => void;
 }) {
   const trace = stage === 2
     ? ['detect', 'track', 'prioritize', 'safety gate', 'engage/block']
@@ -231,7 +261,16 @@ function AutonomousPanel({ stage, tracks, round, hits, noHitStreak, running, onT
   return (
     <section className="work-panel auto-panel">
       <div className="panel-title"><b>Aşama {stage}</b><span>{stage === 2 ? '4 tur · ≥20 puan · tip yok' : '8 tur · dost/düşman · ≥10 puan'}</span></div>
-      <div className="rounds"><span>Tur <b>{round}/{stage === 2 ? 4 : 8}</b></span><span>İsabet <b>{hits}</b></span><span className={noHitStreak >= 2 ? 'danger-text' : ''}>Boş seri <b>{noHitStreak}</b></span></div>
+      <div className="rounds">
+        <span>Tur <b>{round}/{stage === 2 ? 4 : 8}</b></span>
+        <span>İsabet <b>{hits}</b></span>
+        <span className={noHitStreak >= 2 ? 'danger-text' : ''}>Boş seri <b>{noHitStreak}</b></span>
+      </div>
+      <div className="rounds">
+        <span>Puan <b>{score}</b></span>
+        <span>Tur içi <b>{roundHits}/3</b></span>
+        <span>Durum <b>{missionStatus}</b></span>
+      </div>
       <button className={`auto-toggle ${running ? 'running' : ''}`} onClick={onToggle}>{running ? 'Otonom Durdur' : 'Otonom Başlat'}</button>
       <div className="lane-bars">
         {[1, 2, 3].map((lane) => {
@@ -241,6 +280,10 @@ function AutonomousPanel({ stage, tracks, round, hits, noHitStreak, running, onT
       </div>
       <div className="track-list">
         {tracks.map((track) => <button key={track.id} className={track.candidate ? 'hot' : ''}>{track.id}<b>{track.friendFoe}</b><small>{track.velocity.toFixed(1)} m/s · {track.direction}</small></button>)}
+      </div>
+      <div className="auto-actions">
+        <button className="fire" disabled={!running || !engageAllowed} onClick={onEngage}>ANGAJMAN</button>
+        <button className="warn" onClick={onNextRound}>Turu Bitir</button>
       </div>
       <div className="decision-trace">{trace.map((step, index) => <span key={step} className={index < 4 || running ? 'lit' : ''}>{step}</span>)}</div>
     </section>
@@ -263,19 +306,22 @@ function Stage3Intel({ selectedTrack }: { selectedTrack?: Track }) {
   );
 }
 
-function VideoEvidencePanel() {
+function VideoEvidencePanel({ events }: { events: TelemetryEvent[] }) {
   const items = [
-    'UI/joystick/klavye',
-    '15 m balon atışı',
-    'Hareket + Acil Durdur',
-    'Atış + Acil Durdur',
-    'Yaw/elev takip',
-    '5/10/15 m sınıflandırma',
+    { label: 'UI/joystick/klavye', match: (event: TelemetryEvent) => event.decision.startsWith('MOVE_') },
+    { label: '15 m balon atışı', match: (event: TelemetryEvent) => event.decision === 'FIRE_MOCK' && event.reason.includes('15.0 m') },
+    { label: 'Hareket + Acil Durdur', match: (event: TelemetryEvent) => event.decision === 'MOVE_BLOCK' && event.reason.includes('Acil') },
+    { label: 'Atış + Acil Durdur', match: (event: TelemetryEvent) => event.decision === 'FIRE_BLOCK' && event.reason.includes('Acil') },
+    { label: 'Yaw/elev takip', match: (event: TelemetryEvent) => event.decision === 'OTONOM_START' || event.decision === 'AUTO_ENGAGE' },
+    { label: '5/10/15 m sınıflandırma', match: (event: TelemetryEvent) => event.stage === 3 && event.type === 'target' },
   ];
   return (
     <section className="thin-panel video-panel">
       <div className="panel-title"><b>Video Kanıtı</b><span>720p+ · 2-5 dk · tek YouTube</span></div>
-      {items.map((item, index) => <label key={item}><input type="checkbox" />Y{index + 1}<span>{item}</span><time>{`0${index}:00`}</time></label>)}
+      {items.map((item, index) => {
+        const marker = events.find(item.match);
+        return <label key={item.label}><input type="checkbox" readOnly checked={Boolean(marker)} />Y{index + 1}<span>{item.label}</span><time>{marker?.timestamp ?? '--:--'}</time></label>;
+      })}
     </section>
   );
 }
@@ -331,16 +377,37 @@ function TelemetryPanel({ events, filter, onFilter, onExport }: { events: Teleme
   );
 }
 
-function CommandQueue({ safety }: { safety: SafetyState }) {
-  const blocked = safety.blockReason !== 'ALLOWED';
+function CommandQueue({ moveSafety, fireSafety }: { moveSafety: SafetyState; fireSafety: SafetyState }) {
+  const moveBlocked = moveSafety.blockReason !== 'ALLOWED';
+  const fireBlocked = fireSafety.blockReason !== 'ALLOWED';
   return (
     <section className="queue-panel">
       <div className="panel-title"><b>Komut Kuyruğu</b><span>hardware_mock</span></div>
-      <div className={`queue-item ${blocked ? 'blocked' : 'ready'}`}><span>pan/tilt</span><b>{blocked ? 'blocked' : 'queued'}</b></div>
-      <div className={`queue-item ${blocked ? 'blocked' : 'ready'}`}><span>fire_enable</span><b>{blocked ? 'blocked' : 'armed gate'}</b></div>
+      <div className={`queue-item ${moveBlocked ? 'blocked' : 'ready'}`}><span>pan/tilt</span><b>{moveBlocked ? 'blocked' : 'queued'}</b></div>
+      <div className={`queue-item ${fireBlocked ? 'blocked' : 'ready'}`}><span>fire_enable</span><b>{fireBlocked ? 'blocked' : 'armed gate'}</b></div>
+      <small>{fireBlocked ? fireSafety.blockReason : 'ALLOWED'} · {fireBlocked ? blockCopy[fireSafety.blockReason] : 'angajman kapısı açık'}</small>
       <small>Gerçek motor/ateş komutu gönderilmez.</small>
     </section>
   );
+}
+
+function scoreForTrack(track: Track) {
+  if (track.range <= 7.5) return 5;
+  if (track.range <= 12.5) return 10;
+  return 20;
+}
+
+function stage2RoundScore(roundHits: number) {
+  if (roundHits >= 3) return 30;
+  if (roundHits === 2) return 15;
+  if (roundHits === 1) return 5;
+  return -5;
+}
+
+function stage3TargetScore(track: Track) {
+  if (track.type === 'F16') return 30;
+  if (track.type === 'Mini/Micro İHA') return 10;
+  return 20;
 }
 
 function Console() {
@@ -352,11 +419,17 @@ function Console() {
   const [score, setScore] = useState(0);
   const [round, setRound] = useState(1);
   const [hits, setHits] = useState(0);
+  const [roundHits, setRoundHits] = useState(0);
+  const [enemyHitThisRound, setEnemyHitThisRound] = useState(false);
   const [noHitStreak, setNoHitStreak] = useState(0);
+  const [missionStatus, setMissionStatus] = useState('Hazır');
   const [autoRunning, setAutoRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [maintenanceBudget, setMaintenanceBudget] = useState(600);
+  const [panAngle, setPanAngle] = useState(0);
+  const [tiltAngle, setTiltAngle] = useState(0);
   const [filter, setFilter] = useState<EventType | 'all'>('all');
+  const [scenario, setScenarioState] = useState<BlockReason>('ALLOWED');
   const [baseSafety, setBaseSafety] = useState<Omit<SafetyState, 'blockReason'>>({
     estop: false,
     motionZoneOk: true,
@@ -372,10 +445,15 @@ function Console() {
 
   const tracks = useMemo(() => generateTracks(stage, elapsed), [stage, elapsed]);
   const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
-  const commandKind = mode === 'autonomous' ? 'autonomous' : 'fire';
-  const safety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: commandKind });
-  const fireAllowed = safety.blockReason === 'ALLOWED' && (mode === 'manual' || mode === 'autonomous' || mode === 'engagement');
-  const effectiveMode = safety.blockReason === 'ALLOWED' ? mode : 'blocked';
+  const moveIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_move' : 'move';
+  const fireIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_engage' : 'fire';
+  const systemHealth = evaluateSystemHealth(baseSafety);
+  const moveSafety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: moveIntent });
+  const fireSafety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: fireIntent });
+  const displaySafety = systemHealth.blockReason !== 'ALLOWED' || (mode !== 'safe' && mode !== 'maintenance') ? fireSafety : systemHealth;
+  const fireAllowed = fireSafety.blockReason === 'ALLOWED' && (mode === 'manual' || ((mode === 'autonomous' || mode === 'engagement') && autoRunning));
+  const fireQueueSafety: SafetyState = fireAllowed || fireSafety.blockReason !== 'ALLOWED' ? fireSafety : { ...fireSafety, blockReason: 'BLOCKED_MODE' };
+  const effectiveMode = systemHealth.blockReason === 'ALLOWED' && fireSafety.blockReason === 'ALLOWED' ? mode : systemHealth.blockReason === 'ALLOWED' && mode === 'safe' ? mode : 'blocked';
 
   const addEvent = (type: EventType, decision: string, reason: string) => {
     const next = makeEvent(eventId.current++, stage, effectiveMode, type, decision, reason);
@@ -394,27 +472,41 @@ function Console() {
   }, [selectedId, tracks]);
 
   useEffect(() => {
-    if (safety.blockReason !== 'ALLOWED') addEvent('safety', safety.blockReason, blockCopy[safety.blockReason]);
+    if (displaySafety.blockReason !== 'ALLOWED') addEvent('safety', displaySafety.blockReason, blockCopy[displaySafety.blockReason]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safety.blockReason]);
+  }, [displaySafety.blockReason]);
 
   const switchStage = (nextStage: Stage) => {
+    if (nextStage > stage && ((stage === 1 && score < 30) || (stage === 2 && score < 20))) {
+      addEvent('safety', 'EŞİK_BİLGİ', 'Mock prototipte aşama geçişine izin verildi; eşik durumu panelde izlenir');
+    }
     setStage(nextStage);
-    setMode(nextStage === 1 ? 'manual' : 'safe');
+    setMode('safe');
     setSelectedId(undefined);
+    setCurrentTarget(0);
+    setScore(0);
     setRound(1);
     setHits(0);
+    setRoundHits(0);
+    setEnemyHitThisRound(false);
     setNoHitStreak(0);
+    setMissionStatus('Hazır');
+    setAutoRunning(false);
+    setPanAngle(0);
+    setTiltAngle(0);
+    setScenario('ALLOWED');
     addEvent('mode', `AŞAMA_${nextStage}`, 'Görev senaryosu değişti');
   };
 
   const switchMode = (nextMode: Mode) => {
     setMode(nextMode);
     setAutoRunning(nextMode === 'autonomous' ? autoRunning : false);
+    if (nextMode === 'safe' || nextMode === 'maintenance') setMissionStatus(nextMode === 'safe' ? 'Beklemede' : 'Bakım');
     addEvent('mode', modeLabel(nextMode), 'Operatör mod geçişi');
   };
 
   const setScenario = (reason: BlockReason) => {
+    setScenarioState(reason);
     const clear = { estop: false, motionZoneOk: true, fireZoneOk: true, targetGateOk: true, modeOk: true, connectionOk: true };
     const next = { ...clear };
     if (reason === 'BLOCKED_ESTOP') next.estop = true;
@@ -428,21 +520,54 @@ function Console() {
   };
 
   const handleMove = (cmd: string) => {
-    const moveGate = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: 'move' });
+    const moveGate = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: moveIntent });
+    if (moveGate.blockReason === 'ALLOWED') {
+      if (cmd === 'tilt+') setTiltAngle((v) => Math.min(45, v + 2));
+      else if (cmd === 'pan-') setPanAngle((v) => Math.max(-75, v - 2));
+      else if (cmd === 'pan+') setPanAngle((v) => Math.min(75, v + 2));
+      else if (cmd === 'tilt-') setTiltAngle((v) => Math.max(-10, v - 2));
+      else if (cmd === '+0.5°') setPanAngle((v) => Math.min(75, v + 0.5));
+      else if (cmd === '−0.5°') setPanAngle((v) => Math.max(-75, v - 0.5));
+      else if (cmd === 'Merkez') { setPanAngle(0); setTiltAngle(0); }
+    }
     addEvent('command', moveGate.blockReason === 'ALLOWED' ? `MOVE_${cmd}` : 'MOVE_BLOCK', blockCopy[moveGate.blockReason]);
   };
 
   const handleFire = () => {
     if (!fireAllowed) {
-      addEvent('fire', 'FIRE_BLOCK', blockCopy[safety.blockReason]);
+      addEvent('fire', 'FIRE_BLOCK', blockCopy[fireSafety.blockReason]);
       return;
     }
     if (stage === 1) {
-      setScore((value) => value + [5, 10, 20, 20][currentTarget]);
-      setCurrentTarget((value) => Math.min(3, value + 1));
-    } else {
+      const expected = targetOrder[currentTarget];
+      if (!selectedTrack || selectedTrack.type !== expected) {
+        setScore((value) => value - 5);
+        addEvent('fire', 'WRONG_ORDER', `${selectedTrack?.type ?? 'İz yok'} seçildi · beklenen ${expected} · -5`);
+        return;
+      }
+      const hitScore = scoreForTrack(selectedTrack);
+      const nextTarget = currentTarget + 1;
+      setScore((value) => {
+        const base = Math.min(80, value + hitScore);
+        const eligibleBonus = nextTarget >= targetOrder.length && base >= 80;
+        return eligibleBonus ? Math.min(100, base + Math.round(20 * (timeLeft / 300))) : base;
+      });
+      setCurrentTarget((value) => Math.min(targetOrder.length, value + 1));
+      setMissionStatus(nextTarget >= targetOrder.length ? 'Tamam' : 'Sıradaki');
+    } else if (stage === 2) {
+      setRoundHits((value) => Math.min(3, value + 1));
       setHits((value) => value + 1);
       setNoHitStreak(0);
+      addEvent('fire', 'AUTO_ENGAGE', selectedTrack ? `${selectedTrack.id} · kol ${selectedTrack.lane}` : 'seçili iz yok');
+      return;
+    } else {
+      setHits((value) => value + 1);
+      setRoundHits(1);
+      setEnemyHitThisRound(true);
+      setNoHitStreak(0);
+      setScore((value) => value + (selectedTrack ? stage3TargetScore(selectedTrack) : 0));
+      addEvent('fire', 'AUTO_ENGAGE', selectedTrack ? `${selectedTrack.id} · ${selectedTrack.type} · ${selectedTrack.range.toFixed(1)} m` : 'seçili iz yok');
+      return;
     }
     addEvent('fire', 'FIRE_MOCK', selectedTrack ? `${selectedTrack.id} · ${selectedTrack.range.toFixed(1)} m` : 'seçili iz yok');
   };
@@ -451,8 +576,48 @@ function Console() {
     const next = !autoRunning;
     setAutoRunning(next);
     setMode(next ? 'autonomous' : 'safe');
+    setMissionStatus(next ? 'Aktif' : 'Beklemede');
     if (next) addEvent('mode', 'OTONOM_START', 'detect→track→safety gate');
     else addEvent('mode', 'OTONOM_STOP', 'Operatör durdurdu');
+  };
+
+  const finishRound = () => {
+    if (stage === 1) return;
+    const maxRound = stage === 2 ? 4 : 8;
+    let nextNoHitStreak = noHitStreak;
+    if (stage === 2) {
+      const roundScore = stage2RoundScore(roundHits);
+      nextNoHitStreak = roundHits === 0 ? noHitStreak + 1 : 0;
+      setScore((value) => (nextNoHitStreak >= 3 ? 0 : value + roundScore));
+      addEvent('telemetry', 'ROUND_SCORE', `A2 tur ${round}: ${roundHits} isabet · ${roundScore} puan`);
+    } else {
+      nextNoHitStreak = enemyHitThisRound ? 0 : noHitStreak + 1;
+      const penalty = enemyHitThisRound ? 0 : -10;
+      setScore((value) => (nextNoHitStreak >= 3 ? 0 : value + penalty));
+      addEvent('telemetry', enemyHitThisRound ? 'ENEMY_HIT_ROUND' : 'ENEMY_MISSED_PENALTY', `A3 tur ${round}: ${penalty} puan`);
+    }
+    setNoHitStreak(nextNoHitStreak);
+    setRoundHits(0);
+    setEnemyHitThisRound(false);
+    if (nextNoHitStreak >= 3) {
+      setMissionStatus('Başarısız');
+      setAutoRunning(false);
+      setMode('safe');
+      addEvent('mode', 'MISSION_FAIL', '3 ardışık tur isabetsiz');
+      return;
+    }
+    if (round >= maxRound) {
+      const threshold = stage === 2 ? 20 : 10;
+      const projectedScore = stage === 2 ? score + stage2RoundScore(roundHits) : score + (enemyHitThisRound ? 0 : -10);
+      setMissionStatus(projectedScore >= threshold ? 'Geçti' : 'Yetersiz');
+      setAutoRunning(false);
+      setMode('safe');
+      addEvent('mode', 'MISSION_COMPLETE', `Puan ${projectedScore} / eşik ${threshold}`);
+      return;
+    }
+    setRound((value) => value + 1);
+    setSelectedId(undefined);
+    setMissionStatus('Sonraki tur');
   };
 
   const handleMaintenance = () => {
@@ -464,7 +629,7 @@ function Console() {
   };
 
   const resetSimulation = () => {
-    setStage(1); setMode('safe'); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setNoHitStreak(0); setAutoRunning(false); setPaused(false); setMaintenanceBudget(600); setScenario('ALLOWED');
+    setStage(1); setMode('safe'); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setRoundHits(0); setEnemyHitThisRound(false); setNoHitStreak(0); setMissionStatus('Hazır'); setAutoRunning(false); setPaused(false); setMaintenanceBudget(600); setPanAngle(0); setTiltAngle(0); setScenario('ALLOWED');
     addEvent('telemetry', 'RESET', 'Mock görev durumu sıfırlandı');
   };
 
@@ -488,21 +653,21 @@ function Console() {
         <div className={`mode-badge ${effectiveMode}`}>{modeLabel(effectiveMode)}</div>
       </header>
 
-      <SafetyStrip safety={safety} onToggleEstop={() => setBaseSafety((prev) => ({ ...prev, estop: !prev.estop }))} onScenario={setScenario} />
+      <SafetyStrip safety={displaySafety} scenario={scenario} onToggleEstop={() => setBaseSafety((prev) => ({ ...prev, estop: !prev.estop }))} onScenario={setScenario} />
 
       <section className="cockpit-grid">
         <div className="left-stack">
-          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} />
+          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} />
           <div className="bottom-band">
             {stage === 1
               ? <ManualPanel currentTarget={currentTarget} score={score} timeLeft={timeLeft} fireAllowed={fireAllowed} onMove={handleMove} onFire={handleFire} onWrong={() => { setScore((value) => value - 5); addEvent('fire', 'WRONG_ORDER', 'Yanlış hedef sırası · -5'); }} />
-              : <AutonomousPanel stage={stage} tracks={tracks} round={round} hits={hits} noHitStreak={noHitStreak} running={autoRunning} onToggle={handleAutoToggle} />}
+              : <AutonomousPanel stage={stage} tracks={tracks} round={round} hits={hits} roundHits={roundHits} noHitStreak={noHitStreak} score={score} missionStatus={missionStatus} running={autoRunning} engageAllowed={fireAllowed} onToggle={handleAutoToggle} onEngage={handleFire} onNextRound={finishRound} />}
             {stage === 3 && <Stage3Intel selectedTrack={selectedTrack} />}
-            <CommandQueue safety={safety} />
+            <CommandQueue moveSafety={moveSafety} fireSafety={fireQueueSafety} />
           </div>
         </div>
         <aside className="right-stack">
-          <VideoEvidencePanel />
+          <VideoEvidencePanel events={events} />
           <MaintenancePanel paused={paused} prepLeft={prepLeft} budgetLeft={maintenanceBudget} onToggle={handleMaintenance} />
           <SettingsPanel onReset={resetSimulation} />
           <TelemetryPanel events={events} filter={filter} onFilter={setFilter} onExport={() => exportJsonl(events)} />
