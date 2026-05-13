@@ -224,10 +224,17 @@ button:disabled { cursor: not-allowed; filter: grayscale(0.55); opacity: 0.42; }
 .pause { width: 100%; background: rgba(255,185,58,.12); color: var(--amber); border: 1px solid rgba(255,185,58,.3); }
 .resume { width: 100%; background: rgba(52,245,143,.12); color: var(--green); border: 1px solid rgba(52,245,143,.3); }
 .maintenance-panel small { display: block; color: var(--muted); margin-top: 8px; }
-.setting-grid { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 7px 10px; font-size: 12px; }
-.setting-grid span { color: var(--muted); }
-.setting-grid b { color: #dffaff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-panel { overflow: auto; }
+.setting-grid, .world-grid { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 7px 10px; font-size: 12px; }
+.setting-grid span, .world-grid span { color: var(--muted); }
+.setting-grid b, .world-grid b { color: #dffaff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .setting-grid .amber { color: var(--amber); }
+.rehearsal-card { margin-top: 10px; border-radius: 16px; padding: 10px; background: rgba(0,217,255,.06); border: 1px solid rgba(0,217,255,.18); }
+.rehearsal-card.active { background: rgba(52,245,143,.08); border-color: rgba(52,245,143,.26); }
+.rehearsal-card button { width: 100%; min-height: 38px; border-radius: 14px; background: rgba(0,217,255,.14); border: 1px solid rgba(0,217,255,.36); color: var(--cyan); font-weight: 1000; }
+.rehearsal-card.active button { background: rgba(52,245,143,.14); border-color: rgba(52,245,143,.36); color: var(--green); }
+.rehearsal-card small { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.3; }
+.world-grid { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.07); }
 .reset { width: 100%; margin-top: 10px; background: #111a24; color: #dffaff; border: 1px solid rgba(255,255,255,.08); }
 .log-panel { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
 .log-filters { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }

@@ -10,7 +10,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:competition": "playwright test --grep \"real-world competition simulation\""
   },
   "dependencies": {
     "react": "19.2.6",

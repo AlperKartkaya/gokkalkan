@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { generateTracks } from './missionMock';
 import { clampPan, clampTilt, mechanicsConfig, signedDegrees } from './mechanicsConfig';
 import { EVENT_FILTERS, TARGET_ORDER, VIDEO_EVIDENCE_STEPS, maxRoundFor, rangeRuleFor, stageConfigFor, thresholdFor } from './missionConfig';
+import { generateRealWorldTelemetry, generateRealWorldTracks, realWorldSimulationConfig, type RealWorldTelemetry } from './realWorldSimulation';
 import { blockCopy, evaluateSafety, evaluateSystemHealth } from './safetyGate';
 import { exportJsonl, makeEvent } from './telemetry';
 import type { BlockReason, CommandIntent, EventType, Mode, SafetyState, Stage, TelemetryEvent, Track } from './types';
@@ -125,7 +126,23 @@ function Landing({ onEnter }: { onEnter: () => void }) {
   );
 }
 
-function CameraViewport({ tracks, stage, selectedId, onSelect, panAngle = 0, tiltAngle = 0 }: { tracks: Track[]; stage: Stage; selectedId?: string; onSelect: (id: string) => void; panAngle?: number; tiltAngle?: number }) {
+function CameraViewport({
+  tracks,
+  stage,
+  selectedId,
+  onSelect,
+  panAngle = 0,
+  tiltAngle = 0,
+  feedLabel,
+}: {
+  tracks: Track[];
+  stage: Stage;
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  panAngle?: number;
+  tiltAngle?: number;
+  feedLabel: string;
+}) {
   return (
     <section className="viewport">
       <div className="sensor-lines" />
@@ -150,7 +167,7 @@ function CameraViewport({ tracks, stage, selectedId, onSelect, panAngle = 0, til
           <span className="track-meta">{track.range.toFixed(1)} m</span>
         </button>
       ))}
-      <div className="mock-feed">MOCK KAMERA · gerçek donanım bağlı değil</div>
+      <div className="mock-feed">{feedLabel}</div>
     </section>
   );
 }
@@ -408,10 +425,20 @@ function MaintenancePanel({ paused, prepLeft, budgetLeft, onToggle }: { paused: 
   );
 }
 
-function SettingsPanel({ onReset }: { onReset: () => void }) {
+function SettingsPanel({
+  onReset,
+  realWorldSim,
+  onToggleRealWorldSim,
+  worldTelemetry,
+}: {
+  onReset: () => void;
+  realWorldSim: boolean;
+  onToggleRealWorldSim: () => void;
+  worldTelemetry: RealWorldTelemetry;
+}) {
   return (
     <section className="thin-panel settings-panel">
-      <div className="panel-title"><b>Ayar/Kalibrasyon</b><span>mock</span></div>
+      <div className="panel-title"><b>Ayar/Kalibrasyon</b><span>{realWorldSim ? 'saha sim' : 'mock'}</span></div>
       <div className="setting-grid">
         <span>Kamera</span><b>MockCam-01</b>
         <span>Serial/CAN</span><b className="amber">{mechanicsConfig.mockConnectionOk ? 'Sim bağlı' : 'Sim kopuk'}</b>
@@ -420,6 +447,17 @@ function SettingsPanel({ onReset }: { onReset: () => void }) {
         <span>Atış yasak</span><b>{mechanicsConfig.fireForbiddenLabel}</b>
         <span>Menzil</span><b>F16 10-15 · diğer 5-15</b>
         <span>Eşikler</span><b>env + şartname</b>
+      </div>
+      <div className={`rehearsal-card ${realWorldSim ? 'active' : ''}`}>
+        <button onClick={onToggleRealWorldSim}>{realWorldSim ? 'Gerçek Yarışma Simülasyonu Açık' : 'Tam Yarışma Simülasyonu'}</button>
+        <small>Canlı kamera gibi jitter, gecikme, rüzgâr ve batarya düşümü üretir.</small>
+      </div>
+      <div className="world-grid">
+        <span>Kaynak</span><b>{worldTelemetry.source}</b>
+        <span>Frame</span><b>#{worldTelemetry.frameId}</b>
+        <span>FPS/gecikme</span><b>{worldTelemetry.fps} / {worldTelemetry.latencyMs} ms</b>
+        <span>Gürültü</span><b>{worldTelemetry.sensorNoisePx} px</b>
+        <span>Rüzgâr/batarya</span><b>{worldTelemetry.windMps} m/s · {worldTelemetry.batteryV} V</b>
       </div>
       <button className="reset" onClick={onReset}>Simülasyonu Sıfırla</button>
     </section>
@@ -511,6 +549,7 @@ function Console() {
   const [panAngle, setPanAngle] = useState(0);
   const [tiltAngle, setTiltAngle] = useState(0);
   const [manualArmState, setManualArmState] = useState<ArmState>('idle');
+  const [realWorldSim, setRealWorldSim] = useState(realWorldSimulationConfig.enabledByDefault);
   const [filter, setFilter] = useState<EventType | 'all'>('all');
   const [scenario, setScenarioState] = useState<BlockReason>('ALLOWED');
   const [baseSafety, setBaseSafety] = useState<Omit<SafetyState, 'blockReason'>>({
@@ -529,7 +568,8 @@ function Console() {
   ]);
 
   const stageConfig = stageConfigFor(stage);
-  const tracks = useMemo(() => generateTracks(stage, elapsed), [stage, elapsed]);
+  const tracks = useMemo(() => realWorldSim ? generateRealWorldTracks(stage, elapsed) : generateTracks(stage, elapsed), [stage, elapsed, realWorldSim]);
+  const worldTelemetry = useMemo(() => generateRealWorldTelemetry(stage, elapsed, realWorldSim), [stage, elapsed, realWorldSim]);
   const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
   const moveIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_move' : 'move';
   const fireIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_engage' : 'fire';
@@ -843,6 +883,31 @@ function Console() {
     addEvent('telemetry', 'RESET', 'Mock görev durumu sıfırlandı');
   };
 
+  const toggleRealWorldSimulation = () => {
+    const next = !realWorldSim;
+    disarmManualFire('Gerçek yarışma simülasyonu geçişi');
+    setRealWorldSim(next);
+    setStage(1);
+    setMode('safe');
+    setElapsed(0);
+    setSelectedId(undefined);
+    setCurrentTarget(0);
+    setScore(0);
+    setRound(1);
+    setHits(0);
+    setRoundHits(0);
+    setEnemyHitThisRound(false);
+    setNoHitStreak(0);
+    setMissionStatus(next ? 'Yarışma provası' : 'Hazır');
+    setAutoRunning(false);
+    setPaused(false);
+    setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds);
+    setPanAngle(0);
+    setTiltAngle(0);
+    setScenario('ALLOWED');
+    addEvent('telemetry', next ? 'REALWORLD_SIM_ON' : 'REALWORLD_SIM_OFF', next ? 'Saha benzeri kamera/hardware akışı açıldı' : 'Mock akışa dönüldü');
+  };
+
   const timeLeft = Math.max(0, (stageConfig.durationSeconds ?? 300) - Math.floor(elapsed));
   const prepLeft = Math.max(0, mechanicsConfig.prepSeconds - Math.floor(elapsed * 6));
 
@@ -867,7 +932,7 @@ function Console() {
 
       <section className="cockpit-grid">
         <div className="left-stack">
-          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} />
+          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} feedLabel={realWorldSim ? 'GERÇEK YARIŞMA SİM · kamera + mekanik telemetri' : 'MOCK KAMERA · gerçek donanım bağlı değil'} />
           <div className="bottom-band">
             {stage === 1
               ? <ManualPanel currentTarget={currentTarget} selectedTrack={selectedTrack} score={score} timeLeft={timeLeft} fireGateAllowed={manualFireGateAllowed} fireAllowed={fireAllowed} armState={manualArmState} onArmStart={startManualArm} onArmRelease={releaseManualArm} onMove={handleMove} onFire={handleFire} onWrong={() => { setScore((value) => value - 5); disarmManualFire('Yanlış sıra simülasyonu'); addEvent('fire', 'WRONG_ORDER', 'Yanlış hedef sırası · -5'); }} />
@@ -879,7 +944,7 @@ function Console() {
         <aside className="right-stack">
           <VideoEvidencePanel events={events} />
           <MaintenancePanel paused={paused} prepLeft={prepLeft} budgetLeft={maintenanceBudget} onToggle={handleMaintenance} />
-          <SettingsPanel onReset={resetSimulation} />
+          <SettingsPanel onReset={resetSimulation} realWorldSim={realWorldSim} onToggleRealWorldSim={toggleRealWorldSimulation} worldTelemetry={worldTelemetry} />
           <TelemetryPanel events={events} filter={filter} onFilter={setFilter} onExport={() => exportJsonl(events)} />
         </aside>
       </section>

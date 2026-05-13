@@ -87,3 +87,35 @@ test('1366 viewport keeps telemetry and command queue reachable', async ({ page 
   await expect(page.getByText(/telemetri/i)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
+
+test('real-world competition simulation runs through Aşama 1-3', async ({ page }) => {
+  await page.goto('/?console=1');
+  await page.getByRole('button', { name: 'Tam Yarışma Simülasyonu' }).click();
+  await expect(page.getByText(/GERÇEK YARIŞMA SİM/)).toBeVisible();
+  await expect(page.getByText('REALWORLD_SIM_ON').first()).toBeVisible();
+
+  await page.getByRole('button', { name: /Manuel/ }).click();
+  for (const target of [/M-1/, /M-2/, /M-3/, /M-4/]) {
+    await page.getByRole('button', { name: target }).click();
+    await page.getByRole('button', { name: '▶' }).click();
+    await holdManualArm(page);
+    await page.getByRole('button', { name: 'ATEŞ' }).click();
+  }
+  await expect(page.locator('.mission-metrics')).toContainText('Hedef 4/4');
+  await expect(page.locator('.mission-metrics')).toContainText(/Puan (5[0-9]|[6-9][0-9])/);
+
+  await page.getByRole('button', { name: 'Aşama 2' }).click();
+  await page.getByRole('button', { name: 'Otonom Başlat' }).click();
+  await page.getByRole('button', { name: 'ANGAJMAN' }).click();
+  await page.getByRole('button', { name: 'ANGAJMAN' }).click();
+  await page.getByRole('button', { name: 'ANGAJMAN' }).click();
+  await page.getByRole('button', { name: 'Turu Bitir' }).click();
+  await expect(page.getByText('ROUND_SCORE').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Aşama 3' }).click();
+  await page.getByRole('button', { name: 'Otonom Başlat' }).click();
+  await page.locator('.track-box.candidate').first().click();
+  await expect(page.getByText(/Düşman hedef.*menzil uygun/)).toBeVisible();
+  await page.getByRole('button', { name: 'ANGAJMAN' }).click();
+  await expect(page.getByText('AUTO_ENGAGE').first()).toBeVisible();
+});
