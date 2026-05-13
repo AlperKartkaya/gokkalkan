@@ -233,7 +233,7 @@ function ManualPanel({
   fireAllowed,
   armState,
   onArmStart,
-  onArmRelease,
+  onArmClick,
   onMove,
   onFire,
   onWrong,
@@ -246,7 +246,7 @@ function ManualPanel({
   fireAllowed: boolean;
   armState: ArmState;
   onArmStart: () => void;
-  onArmRelease: () => void;
+  onArmClick: () => void;
   onMove: (cmd: string) => void;
   onFire: () => void;
   onWrong: () => void;
@@ -287,22 +287,50 @@ function ManualPanel({
         </div>
       </div>
       <div className="mission-metrics"><span>Süre <b>{timeLeft}s</b></span><span>Puan <b>{score}</b></span><span>Hedef <b>{Math.min(currentTarget + 1, 4)}/4</b></span></div>
-      <div className={`arm-status ${armState}`}>Atış hattı: <b>{armCopy}</b><small>{fireGateAllowed ? `${mechanicsConfig.armHoldMs} ms basılı tut` : 'Güvenlik/mod kapısı kilitli'}</small></div>
+      <div className={`arm-status ${armState}`}>Atış hattı: <b>{armCopy}</b><small>{fireGateAllowed ? `${mechanicsConfig.armHoldMs} ms basılı tut veya tıkla` : 'Güvenlik/mod kapısı kilitli'}</small></div>
       <div className="fire-row">
         <button
           className={`arm ${armState}`}
           disabled={!fireGateAllowed}
           onPointerDown={onArmStart}
-          onPointerUp={onArmRelease}
-          onPointerCancel={onArmRelease}
-          onPointerLeave={onArmRelease}
-          title="Basılı tutarak simülasyon atış hattını kur"
+          onClick={onArmClick}
+          title="Tıklayarak veya basılı tutarak simülasyon atış hattını kur"
         >
           Basılı Kur
         </button>
         <button className="fire" disabled={!fireAllowed} onClick={onFire}>ATEŞ</button>
         <button className="warn" onClick={onWrong}>Yanlış sıra</button>
       </div>
+    </section>
+  );
+}
+
+function RehearsalStrip({
+  stage,
+  mode,
+  worldTelemetry,
+}: {
+  stage: Stage;
+  mode: Mode;
+  worldTelemetry: RealWorldTelemetry;
+}) {
+  const nextStep = stage === 1
+    ? mode === 'manual'
+      ? 'Hedef sırasını izle, pan/tilt ile hizala, atış hattını kur ve kullanıcı komutuyla ateşle.'
+      : 'Aşama 1 için Manuel Mod’a geç.'
+    : stage === 2
+      ? mode === 'autonomous'
+        ? 'Üç koldaki hedefleri parkurdan çıkmadan otonom takip/angajmanla imha et.'
+        : 'Aşama 2 için Otonom Mod’u başlat.'
+      : mode === 'autonomous'
+        ? 'Dost hedefleri kilitle, yalnızca uygun menzildeki düşman adaya angaje ol.'
+        : 'Aşama 3 için Otonom Mod’u başlat ve düşman adayı seç.';
+
+  return (
+    <section className="rehearsal-strip">
+      <b>Yarışma Provası</b>
+      <span>{nextStep}</span>
+      <small>{worldTelemetry.fps} FPS · {worldTelemetry.latencyMs} ms · {worldTelemetry.windMps} m/s rüzgâr · {worldTelemetry.batteryV} V</small>
     </section>
   );
 }
@@ -563,11 +591,14 @@ function Console() {
   const eventId = useRef(1);
   const armHoldTimer = useRef<number | undefined>(undefined);
   const armExpireTimer = useRef<number | undefined>(undefined);
+  const armPointerStarted = useRef(false);
   const [events, setEvents] = useState<TelemetryEvent[]>([
     makeEvent(0, 1, 'safe', 'telemetry', 'BOOT_OK', 'Mock arayüz başlatıldı'),
   ]);
 
   const stageConfig = stageConfigFor(stage);
+  const timeLeft = Math.max(0, (stageConfig.durationSeconds ?? 300) - Math.floor(elapsed));
+  const prepLeft = Math.max(0, mechanicsConfig.prepSeconds - Math.floor(elapsed * 6));
   const tracks = useMemo(() => realWorldSim ? generateRealWorldTracks(stage, elapsed) : generateTracks(stage, elapsed), [stage, elapsed, realWorldSim]);
   const worldTelemetry = useMemo(() => generateRealWorldTelemetry(stage, elapsed, realWorldSim), [stage, elapsed, realWorldSim]);
   const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
@@ -576,20 +607,24 @@ function Console() {
   const systemHealth = evaluateSystemHealth(baseSafety);
   const moveSafety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: moveIntent });
   const fireSafety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: fireIntent });
-  const manualFireGateAllowed = stage === 1 && mode === 'manual' && fireSafety.blockReason === 'ALLOWED';
+  const manualFireGateAllowed = stage === 1 && timeLeft > 0 && mode === 'manual' && fireSafety.blockReason === 'ALLOWED';
   const autonomousFireGateAllowed = stage !== 1 && (mode === 'autonomous' || mode === 'engagement') && autoRunning && fireSafety.blockReason === 'ALLOWED';
   const fireAllowed = stage === 1 ? manualFireGateAllowed && manualArmState === 'armed' : autonomousFireGateAllowed;
   const fireQueueSafety: SafetyState = fireAllowed || fireSafety.blockReason !== 'ALLOWED' ? fireSafety : { ...fireSafety, blockReason: 'BLOCKED_MODE' };
   const fireQueueLabel = fireSafety.blockReason !== 'ALLOWED'
     ? fireSafety.blockReason
-    : stage === 1 && manualArmState !== 'armed'
+    : stage === 1 && timeLeft <= 0
+      ? 'Aşama 1 süresi doldu'
+      : stage === 1 && manualArmState !== 'armed'
       ? 'Atış hattı kurulmadı'
       : stage !== 1 && !autoRunning
         ? 'Otonom çalışma bekleniyor'
         : '';
   const fireQueueDetail = fireSafety.blockReason !== 'ALLOWED'
     ? blockCopy[fireSafety.blockReason]
-    : stage === 1 && manualArmState !== 'armed'
+    : stage === 1 && timeLeft <= 0
+      ? 'zaman kapısı kapalı'
+      : stage === 1 && manualArmState !== 'armed'
       ? 'basılı kurma bekleniyor'
       : stage !== 1 && !autoRunning
         ? 'operatör başlatma bekleniyor'
@@ -628,6 +663,17 @@ function Console() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBlockReason]);
 
+  useEffect(() => {
+    if (stage === 1 && timeLeft === 0 && mode !== 'safe' && missionStatus !== 'Süre doldu') {
+      disarmManualFire('Aşama 1 süresi doldu');
+      setAutoRunning(false);
+      setMode('safe');
+      setMissionStatus('Süre doldu');
+      addEvent('mode', 'TIME_EXPIRED', 'Aşama 1 süresi doldu; hareket/atış operatör onayına kapatıldı');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, timeLeft, mode, missionStatus]);
+
   const clearArmTimers = () => {
     if (armHoldTimer.current !== undefined) window.clearTimeout(armHoldTimer.current);
     if (armExpireTimer.current !== undefined) window.clearTimeout(armExpireTimer.current);
@@ -643,7 +689,8 @@ function Console() {
     if (log) addEvent('command', 'ARM_RESET', reason);
   };
 
-  const startManualArm = () => {
+  const startManualArm = (forceRestart = false) => {
+    if (manualArmState === 'armed' || (manualArmState === 'holding' && !forceRestart)) return;
     if (!manualFireGateAllowed) {
       addEvent('fire', 'ARM_BLOCK', fireSafety.blockReason === 'ALLOWED' ? 'Manuel Mod/Aşama 1 bekleniyor' : blockCopy[fireSafety.blockReason]);
       return;
@@ -661,11 +708,17 @@ function Console() {
     }, mechanicsConfig.armHoldMs);
   };
 
-  const releaseManualArm = () => {
-    if (manualArmState !== 'holding') return;
-    clearArmTimers();
-    setManualArmState('idle');
-    addEvent('command', 'ARM_CANCEL', 'Basılı kurma tamamlanmadan bırakıldı');
+  const startManualArmFromPointer = () => {
+    armPointerStarted.current = true;
+    startManualArm();
+  };
+
+  const startManualArmFromClick = () => {
+    if (armPointerStarted.current) {
+      armPointerStarted.current = false;
+      return;
+    }
+    startManualArm(true);
   };
 
   const switchStage = (nextStage: Stage) => {
@@ -675,6 +728,7 @@ function Console() {
     disarmManualFire('Aşama değişimi');
     setStage(nextStage);
     setMode('safe');
+    setElapsed(0);
     setSelectedId(undefined);
     setCurrentTarget(0);
     setScore(0);
@@ -757,11 +811,19 @@ function Console() {
         ArrowDown: suffix ? 'tilt-fine' : 'tilt-',
         ArrowLeft: suffix ? 'pan-fine' : 'pan-',
         ArrowRight: suffix ? 'pan+fine' : 'pan+',
+        a: 'arm',
+        A: 'arm',
+        k: 'arm',
+        K: 'arm',
         ' ': 'hold',
       };
       const command = commandByKey[event.key];
       if (!command) return;
       event.preventDefault();
+      if (command === 'arm') {
+        startManualArm();
+        return;
+      }
       handleMove(command);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -908,14 +970,11 @@ function Console() {
     addEvent('telemetry', next ? 'REALWORLD_SIM_ON' : 'REALWORLD_SIM_OFF', next ? 'Saha benzeri kamera/hardware akışı açıldı' : 'Mock akışa dönüldü');
   };
 
-  const timeLeft = Math.max(0, (stageConfig.durationSeconds ?? 300) - Math.floor(elapsed));
-  const prepLeft = Math.max(0, mechanicsConfig.prepSeconds - Math.floor(elapsed * 6));
-
   return (
     <main className="console-shell">
       {baseSafety.estop && <div className="estop-overlay">ACİL DURDUR AKTİF · hareket ve atış kesildi · MOCK</div>}
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">⬢</span><div><b>GÖKKALKAN</b><small>Operatör Konsolu · hardware_mock</small></div></div>
+        <div className="brand"><span className="brand-mark">⬢</span><div><b>GÖKKALKAN</b><small>Operatör Konsolu · {realWorldSim ? 'real_camera_sim' : 'hardware_mock'}</small></div></div>
         <nav className="segmented">
           {[1, 2, 3].map((item) => <button key={item} className={stage === item ? 'active' : ''} onClick={() => switchStage(item as Stage)}>Aşama {item}</button>)}
         </nav>
@@ -929,13 +988,14 @@ function Console() {
       </header>
 
       <SafetyStrip systemHealth={systemHealth} commandSafety={fireSafety} scenario={scenario} mode={mode} onToggleEstop={toggleEstop} onScenario={setScenario} />
+      {realWorldSim && <RehearsalStrip stage={stage} mode={mode} worldTelemetry={worldTelemetry} />}
 
       <section className="cockpit-grid">
         <div className="left-stack">
           <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} feedLabel={realWorldSim ? 'GERÇEK YARIŞMA SİM · kamera + mekanik telemetri' : 'MOCK KAMERA · gerçek donanım bağlı değil'} />
           <div className="bottom-band">
             {stage === 1
-              ? <ManualPanel currentTarget={currentTarget} selectedTrack={selectedTrack} score={score} timeLeft={timeLeft} fireGateAllowed={manualFireGateAllowed} fireAllowed={fireAllowed} armState={manualArmState} onArmStart={startManualArm} onArmRelease={releaseManualArm} onMove={handleMove} onFire={handleFire} onWrong={() => { setScore((value) => value - 5); disarmManualFire('Yanlış sıra simülasyonu'); addEvent('fire', 'WRONG_ORDER', 'Yanlış hedef sırası · -5'); }} />
+              ? <ManualPanel currentTarget={currentTarget} selectedTrack={selectedTrack} score={score} timeLeft={timeLeft} fireGateAllowed={manualFireGateAllowed} fireAllowed={fireAllowed} armState={manualArmState} onArmStart={startManualArmFromPointer} onArmClick={startManualArmFromClick} onMove={handleMove} onFire={handleFire} onWrong={() => { setScore((value) => value - 5); disarmManualFire('Yanlış sıra simülasyonu'); addEvent('fire', 'WRONG_ORDER', 'Yanlış hedef sırası · -5'); }} />
               : <AutonomousPanel stage={stage} tracks={tracks} round={round} hits={hits} roundHits={roundHits} noHitStreak={noHitStreak} score={score} missionStatus={missionStatus} running={autoRunning} engageAllowed={fireAllowed} onToggle={handleAutoToggle} onEngage={handleFire} onNextRound={finishRound} />}
             {stage === 3 && <Stage3Intel selectedTrack={selectedTrack} />}
             <CommandQueue moveSafety={moveSafety} fireSafety={fireQueueSafety} fireReady={fireAllowed} fireLabel={fireQueueLabel} fireDetail={fireQueueDetail} />

@@ -55,6 +55,17 @@ test('Aşama 1 fire button requires held arming command', async ({ page }) => {
   await arm.dispatchEvent('pointerup');
 });
 
+test('Aşama 1 arming also works with deliberate click for accessibility', async ({ page }) => {
+  await page.goto('/?console=1');
+  await page.getByRole('button', { name: /Manuel/ }).click();
+  const fire = page.getByRole('button', { name: 'ATEŞ' });
+  await expect(fire).toBeDisabled();
+  await page.getByRole('button', { name: 'Basılı Kur' }).click();
+  await page.waitForTimeout(550);
+  await expect(page.getByText(/Atış hattı:/)).toContainText('Atış hattı kuruldu');
+  await expect(fire).toBeEnabled();
+});
+
 test('Aşama 2 fire-zone scenario blocks autonomous engagement', async ({ page }) => {
   await page.goto('/?console=1');
   await page.getByRole('button', { name: 'Aşama 2' }).click();
@@ -92,6 +103,7 @@ test('real-world competition simulation runs through Aşama 1-3', async ({ page 
   await page.goto('/?console=1');
   await page.getByRole('button', { name: 'Tam Yarışma Simülasyonu' }).click();
   await expect(page.getByText(/GERÇEK YARIŞMA SİM/)).toBeVisible();
+  await expect(page.getByText('Yarışma Provası')).toBeVisible();
   await expect(page.getByText('REALWORLD_SIM_ON').first()).toBeVisible();
 
   await page.getByRole('button', { name: /Manuel/ }).click();
