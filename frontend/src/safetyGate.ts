@@ -1,13 +1,10 @@
+import { rangeRuleFor } from './missionConfig';
 import type { BlockReason, CommandIntent, Mode, SafetyState, Stage, Track } from './types';
 
 export function rangeGateFor(type: Track['type'], range: number): Track['rangeGate'] {
-  if (type === 'F16') {
-    if (range > 15) return 'Erken';
-    return range >= 10 && range <= 15 ? 'Uygun' : 'Geçersiz';
-  }
-  if (type === 'Mini/Micro İHA') return range <= 15 ? 'Uygun' : 'Erken';
-  if (range > 15) return 'Erken';
-  return range >= 5 && range <= 15 ? 'Uygun' : 'Geçersiz';
+  const rule = rangeRuleFor(type);
+  if (range > rule.max) return 'Erken';
+  return range >= rule.min && range <= rule.max ? 'Uygun' : 'Geçersiz';
 }
 
 export function evaluateSystemHealth(base: Omit<SafetyState, 'blockReason'>): SafetyState {
@@ -26,8 +23,8 @@ function isEngageIntent(command: CommandIntent) {
 
 function isModeAllowed(stage: Stage, mode: Mode, command: CommandIntent) {
   if (mode === 'safe' || mode === 'maintenance' || mode === 'blocked') return false;
-  if (stage === 1) return mode === 'manual' && command === 'fire';
-  if (command === 'autonomous_engage') return mode === 'autonomous' || mode === 'engagement';
+  if (stage === 1) return mode === 'manual' && (command === 'move' || command === 'fire');
+  if (command === 'autonomous_move' || command === 'autonomous_engage') return mode === 'autonomous' || mode === 'engagement';
   if (command === 'fire') return mode === 'manual' || mode === 'engagement';
   return mode === 'manual' || mode === 'autonomous' || mode === 'engagement';
 }

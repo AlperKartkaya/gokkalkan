@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateSafety } from './safetyGate';
+import { evaluateSafety, rangeGateFor } from './safetyGate';
 import type { Mode, SafetyState, Stage, Track } from './types';
 
 const base: Omit<SafetyState, 'blockReason'> = {
@@ -55,6 +55,11 @@ describe('evaluateSafety', () => {
     expect(result.blockReason).toBe('BLOCKED_MOTION_ZONE');
   });
 
+  it('allows Aşama 1 manual movement commands when safety is clear', () => {
+    const result = evaluateSafety({ stage: 1, mode: 'manual', base, selectedTrack: enemyTrack, command: 'move' });
+    expect(result.blockReason).toBe('ALLOWED');
+  });
+
   it('blocks fire zone for autonomous engagement', () => {
     expect(check({ fireZoneOk: false })).toBe('BLOCKED_FIRE_ZONE');
   });
@@ -73,5 +78,27 @@ describe('evaluateSafety', () => {
 
   it('allows stage 3 valid enemy in range', () => {
     expect(check({})).toBe('ALLOWED');
+  });
+});
+
+describe('rangeGateFor', () => {
+  it('applies F16 10-15 m gate', () => {
+    expect(rangeGateFor('F16', 9.9)).toBe('Geçersiz');
+    expect(rangeGateFor('F16', 10)).toBe('Uygun');
+    expect(rangeGateFor('F16', 15)).toBe('Uygun');
+    expect(rangeGateFor('F16', 15.1)).toBe('Erken');
+  });
+
+  it('applies Helikopter and Balistik Füze 5-15 m gate', () => {
+    expect(rangeGateFor('Helikopter', 4.9)).toBe('Geçersiz');
+    expect(rangeGateFor('Helikopter', 5)).toBe('Uygun');
+    expect(rangeGateFor('Balistik Füze', 15)).toBe('Uygun');
+    expect(rangeGateFor('Balistik Füze', 15.1)).toBe('Erken');
+  });
+
+  it('applies Mini/Micro İHA 0-15 m gate', () => {
+    expect(rangeGateFor('Mini/Micro İHA', 0)).toBe('Uygun');
+    expect(rangeGateFor('Mini/Micro İHA', 15)).toBe('Uygun');
+    expect(rangeGateFor('Mini/Micro İHA', 15.1)).toBe('Erken');
   });
 });

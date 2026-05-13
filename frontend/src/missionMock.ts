@@ -1,9 +1,8 @@
 import { rangeGateFor } from './safetyGate';
+import { TARGET_ORDER } from './missionConfig';
 import type { Stage, TargetType, Track } from './types';
 
 const types: TargetType[] = ['F16', 'Helikopter', 'Balistik Füze', 'Mini/Micro İHA'];
-
-export const targetOrder: TargetType[] = ['Balistik Füze', 'Helikopter', 'F16', 'Mini/Micro İHA'];
 
 function oscillate(t: number, speed: number, offset: number) {
   return (Math.sin(t * speed + offset) + 1) / 2;
@@ -11,7 +10,7 @@ function oscillate(t: number, speed: number, offset: number) {
 
 export function generateTracks(stage: Stage, elapsed: number): Track[] {
   if (stage === 1) {
-    return targetOrder.map((type, index) => {
+    return TARGET_ORDER.map((type, index) => {
       const ranges = [5, 10, 15, 15];
       const x = [18, 44, 70, 60][index];
       const y = [60, 42, 55, 25][index] + Math.sin(elapsed * 0.6 + index) * 1.2;

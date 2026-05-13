@@ -1,4 +1,14 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
+async function holdManualArm(page: Page) {
+  const arm = page.getByRole('button', { name: 'Basılı Kur' });
+  await arm.dispatchEvent('pointerdown');
+  await expect(page.getByText(/Atış hattı:/)).toContainText('Kuruluyor');
+  await page.waitForTimeout(550);
+  await expect(page.getByText(/Atış hattı:/)).toContainText('Atış hattı kuruldu');
+  await arm.dispatchEvent('pointerup');
+}
 
 test('landing enters console', async ({ page }) => {
   await page.goto('/');
@@ -12,10 +22,37 @@ test('Aşama 1 wrong-order fire logs penalty and does not advance', async ({ pag
   await page.goto('/?console=1');
   await page.getByRole('button', { name: /Manuel/ }).click();
   await page.getByRole('button', { name: /M-3/ }).click();
+  await expect(page.getByText(/ceza riski/)).toBeVisible();
+  await holdManualArm(page);
   await page.getByRole('button', { name: 'ATEŞ' }).click();
   await expect(page.locator('.mission-metrics')).toContainText('Hedef 1/4');
   await expect(page.locator('.mission-metrics')).toContainText('Puan -5');
   await expect(page.getByText('WRONG_ORDER').first()).toBeVisible();
+});
+
+test('Aşama 1 manual pan tilt buttons update mechanical readouts', async ({ page }) => {
+  await page.goto('/?console=1');
+  await page.getByRole('button', { name: /Manuel/ }).click();
+  await page.getByRole('button', { name: '▶' }).click();
+  await page.getByRole('button', { name: '▲' }).click();
+  await expect(page.getByText(/PAN \+2\.0°/)).toBeVisible();
+  await expect(page.getByText(/TILT \+2\.0°/)).toBeVisible();
+});
+
+test('Aşama 1 fire button requires held arming command', async ({ page }) => {
+  await page.goto('/?console=1');
+  await page.getByRole('button', { name: /Manuel/ }).click();
+  const fire = page.getByRole('button', { name: 'ATEŞ' });
+  await expect(fire).toBeDisabled();
+
+  const arm = page.getByRole('button', { name: 'Basılı Kur' });
+  await arm.dispatchEvent('pointerdown');
+  await expect(page.getByText(/Atış hattı:/)).toContainText('Kuruluyor');
+  await expect(fire).toBeDisabled();
+  await page.waitForTimeout(550);
+  await expect(page.getByText(/Atış hattı:/)).toContainText('Atış hattı kuruldu');
+  await expect(fire).toBeEnabled();
+  await arm.dispatchEvent('pointerup');
 });
 
 test('Aşama 2 fire-zone scenario blocks autonomous engagement', async ({ page }) => {
