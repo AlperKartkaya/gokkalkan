@@ -73,6 +73,7 @@ test('Aşama 2 fire-zone scenario blocks autonomous engagement', async ({ page }
   await page.getByLabel('Blok senaryosu').selectOption('BLOCKED_FIRE_ZONE');
   await expect(page.getByText(/BLOCKED_FIRE_ZONE/).first()).toBeVisible();
   await expect(page.getByText('fire_enable').locator('..')).toContainText('blocked');
+  await expect(page.getByTestId('mock-strike')).toHaveCount(0);
 });
 
 test('Aşama 3 friend target keeps fire gate blocked', async ({ page }) => {
@@ -83,6 +84,7 @@ test('Aşama 3 friend target keeps fire gate blocked', async ({ page }) => {
   await expect(page.getByText('Dost ateş kilidi').locator('..')).toContainText('Kilitli');
   await expect(page.getByText(/BLOCKED_TARGET_GATE/).first()).toBeVisible();
   await expect(page.getByText('fire_enable').locator('..')).toContainText('blocked');
+  await expect(page.getByTestId('mock-strike')).toHaveCount(0);
 });
 
 test('E-stop overlay is impossible to miss', async ({ page }) => {
@@ -105,13 +107,26 @@ test('real-world competition simulation runs through Aşama 1-3', async ({ page 
   await expect(page.getByText(/GERÇEK YARIŞMA SİM/)).toBeVisible();
   await expect(page.getByText('Yarışma Provası')).toBeVisible();
   await expect(page.getByText('REALWORLD_SIM_ON').first()).toBeVisible();
+  await expect(page.getByTestId('sensor-fusion-panel')).toContainText('LiDAR MOCK');
+  await expect(page.getByTestId('sensor-fusion-panel')).toContainText('Radar MOCK');
+  await expect(page.getByTestId('competition-course')).toBeVisible();
+  await expect(page.getByTestId('course-point-a')).toBeVisible();
+  await expect(page.getByTestId('course-point-b')).toBeVisible();
+  await expect(page.getByTestId('range-5m')).toBeVisible();
+  await expect(page.getByTestId('range-10m')).toBeVisible();
+  await expect(page.getByTestId('range-15m')).toBeVisible();
 
   await page.getByRole('button', { name: /Manuel/ }).click();
+  let checkedStrike = false;
   for (const target of [/M-1/, /M-2/, /M-3/, /M-4/]) {
     await page.getByRole('button', { name: target }).click();
     await page.getByRole('button', { name: '▶' }).click();
     await holdManualArm(page);
     await page.getByRole('button', { name: 'ATEŞ' }).click();
+    if (!checkedStrike) {
+      await expect(page.getByTestId('mock-strike').first()).toBeVisible();
+      checkedStrike = true;
+    }
   }
   await expect(page.locator('.mission-metrics')).toContainText('Hedef 4/4');
   await expect(page.locator('.mission-metrics')).toContainText(/Puan (5[0-9]|[6-9][0-9])/);
@@ -128,6 +143,10 @@ test('real-world competition simulation runs through Aşama 1-3', async ({ page 
   await page.getByRole('button', { name: 'Otonom Başlat' }).click();
   await page.locator('.track-box.candidate').first().click();
   await expect(page.getByText(/Düşman hedef.*menzil uygun/)).toBeVisible();
-  await page.getByRole('button', { name: 'ANGAJMAN' }).click();
+  const stage3Engage = page.getByRole('button', { name: 'ANGAJMAN' });
+  await stage3Engage.click();
   await expect(page.getByText('AUTO_ENGAGE').first()).toBeVisible();
+  await expect(page.getByTestId('mock-strike').first()).toBeVisible();
+  await expect(stage3Engage).toBeDisabled();
+  await expect(page.getByText('fire_enable').locator('..')).toContainText('blocked');
 });

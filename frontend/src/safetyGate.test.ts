@@ -76,6 +76,21 @@ describe('evaluateSafety', () => {
     expect(check({}, 3, 'autonomous', invalidRangeTrack)).toBe('BLOCKED_TARGET_GATE');
   });
 
+
+  it('blocks stage 2 autonomous engagement when target gate is disabled', () => {
+    expect(check({ targetGateOk: false }, 2, 'autonomous', enemyTrack)).toBe('BLOCKED_TARGET_GATE');
+  });
+
+  it('blocks stage 3 engagement when no target is selected', () => {
+    const result = evaluateSafety({ stage: 3, mode: 'autonomous', base, selectedTrack: undefined, command: 'autonomous_engage' });
+    expect(result.blockReason).toBe('BLOCKED_TARGET_GATE');
+  });
+
+  it('allows autonomous movement even if only the fire zone is blocked', () => {
+    const result = evaluateSafety({ stage: 2, mode: 'autonomous', base: { ...base, fireZoneOk: false }, selectedTrack: enemyTrack, command: 'autonomous_move' });
+    expect(result.blockReason).toBe('ALLOWED');
+  });
+
   it('allows stage 3 valid enemy in range', () => {
     expect(check({})).toBe('ALLOWED');
   });

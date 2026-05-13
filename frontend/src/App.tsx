@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { COMPETITION_COURSE } from './competitionCourse';
 import { generateTracks } from './missionMock';
 import { clampPan, clampTilt, mechanicsConfig, signedDegrees } from './mechanicsConfig';
 import { EVENT_FILTERS, TARGET_ORDER, VIDEO_EVIDENCE_STEPS, maxRoundFor, rangeRuleFor, stageConfigFor, thresholdFor } from './missionConfig';
-import { generateRealWorldTelemetry, generateRealWorldTracks, realWorldSimulationConfig, type RealWorldTelemetry } from './realWorldSimulation';
+import { generateRealWorldTelemetry, generateRealWorldTracks, generateSensorFusionFrame, realWorldSimulationConfig, type RealWorldTelemetry, type SensorFusionFrame } from './realWorldSimulation';
 import { blockCopy, evaluateSafety, evaluateSystemHealth } from './safetyGate';
 import { exportJsonl, makeEvent } from './telemetry';
 import type { BlockReason, CommandIntent, EventType, Mode, SafetyState, Stage, TelemetryEvent, Track } from './types';
@@ -126,6 +127,60 @@ function Landing({ onEnter }: { onEnter: () => void }) {
   );
 }
 
+function CourseOverlay({ stage }: { stage: Stage }) {
+  const points = (items: Array<{ x: number; y: number }>) => items.map((point) => `${point.x},${point.y}`).join(' ');
+  return (
+    <svg className="course-svg" data-testid="competition-course" viewBox="0 0 100 100" aria-hidden="true">
+      <defs>
+        <filter id="courseGlow"><feGaussianBlur stdDeviation="0.6" /></filter>
+      </defs>
+      <rect className="course-frame" x="6" y="16" width="78" height="76" rx="1.5" />
+      <line className="range-ruler" x1="8" y1="20" x2="80" y2="20" />
+      {COMPETITION_COURSE.rangeMarkers.map((marker) => (
+        <g key={marker.range} className="range-marker" data-testid={`range-${marker.range}m`}>
+          <line x1={marker.x} y1="16" x2={marker.x} y2="24" />
+          <text x={marker.x - 4} y="15">{marker.range} metre</text>
+        </g>
+      ))}
+      <text className="course-point" data-testid="course-point-a" x={COMPETITION_COURSE.aPoint.x - 1} y={COMPETITION_COURSE.aPoint.y - 2}>A</text>
+      <text className="course-point" data-testid="course-point-b" x={COMPETITION_COURSE.bPoint.x - 1} y={COMPETITION_COURSE.bPoint.y - 2}>B</text>
+      {[44, 58, 72].map((radius, index) => (
+        <g key={radius} className={`range-ring ring-${index + 1}`}>
+          <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r={radius / 2.4} />
+          <text x={COMPETITION_COURSE.systemPosition.x - radius / 2.4 + 1} y={COMPETITION_COURSE.systemPosition.y - 1}>{[5, 10, 15][index]} m</text>
+        </g>
+      ))}
+      {COMPETITION_COURSE.lanes.map((lane) => (
+        <g key={lane.lane} className={`course-lane course-lane-${lane.lane}`}>
+          <polyline points={points(lane.points)} />
+          <text x="9" y={lane.points[0].y - 2}>{lane.label.toUpperCase()}</text>
+        </g>
+      ))}
+      <g className="system-node">
+        <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="2.5" />
+        <text x={COMPETITION_COURSE.systemPosition.x - 7} y={COMPETITION_COURSE.systemPosition.y + 7}>Gökkalkan</text>
+      </g>
+      {stage === 3 && <text className="foe-legend" x="9" y="96">Kırmızı ok: Düşman · Mavi ok: Dost</text>}
+    </svg>
+  );
+}
+
+function SensorReadout({ sensorFrame, realWorldSim }: { sensorFrame: SensorFusionFrame; realWorldSim: boolean }) {
+  const lidar = sensorFrame.lidarReturns[0];
+  const radar = sensorFrame.radarReturns[0];
+  const cameraCount = sensorFrame.cameraDetections.length;
+  return (
+    <div className="sensor-readout" data-testid="sensor-fusion-panel">
+      <b>Sensör Füzyonu</b>
+      <span>Kamera <strong>{cameraCount} bbox</strong></span>
+      <span>LiDAR MOCK <strong>{lidar ? `${lidar.rangeM.toFixed(1)} m` : 'bekle'}</strong></span>
+      <span>Radar MOCK <strong>{radar ? `${radar.radialVelocityMps.toFixed(1)} m/s` : 'A1 yok'}</strong></span>
+      <span>Füzyon <strong>{sensorFrame.fusedTargetId ?? '—'}</strong></span>
+      <small>{realWorldSim ? 'Şartname-temsili saha akışı' : 'hardware_mock'} · radar/LiDAR modeli şartnamede tanımlı değil</small>
+    </div>
+  );
+}
+
 function CameraViewport({
   tracks,
   stage,
@@ -134,6 +189,9 @@ function CameraViewport({
   panAngle = 0,
   tiltAngle = 0,
   feedLabel,
+  sensorFrame,
+  strikes,
+  realWorldSim,
 }: {
   tracks: Track[];
   stage: Stage;
@@ -142,20 +200,36 @@ function CameraViewport({
   panAngle?: number;
   tiltAngle?: number;
   feedLabel: string;
+  sensorFrame: SensorFusionFrame;
+  strikes: StrikeEffect[];
+  realWorldSim: boolean;
 }) {
   return (
     <section className="viewport">
       <div className="sensor-lines" />
+      <CourseOverlay stage={stage} />
       <div className="lane-grid">
         <span>KOL 1</span><span>KOL 2</span><span>KOL 3</span>
       </div>
       <div className="reticle"><i /><b /></div>
+      <svg className="strike-layer" viewBox="0 0 100 100" aria-live="polite">
+        {strikes.map((strike) => (
+          <g key={strike.id} className={`strike-effect ${strike.result === 'yanlış sıra' ? 'miss' : 'hit'}`} data-testid="mock-strike">
+            <line x1={COMPETITION_COURSE.systemPosition.x} y1={COMPETITION_COURSE.systemPosition.y} x2={strike.x} y2={strike.y} />
+            <circle cx={strike.x} cy={strike.y} r="3.2" />
+            <text x={Math.min(88, strike.x + 2)} y={Math.max(8, strike.y - 2)}>{strike.label}</text>
+          </g>
+        ))}
+      </svg>
+      <SensorReadout sensorFrame={sensorFrame} realWorldSim={realWorldSim} />
       <div className="angle-readout left">PAN {panAngle >= 0 ? '+' : ''}{panAngle.toFixed(1)}°</div>
       <div className="angle-readout right">TILT {tiltAngle >= 0 ? '+' : ''}{tiltAngle.toFixed(1)}°</div>
       <div className="stage-watermark">AŞAMA {stage}</div>
       {tracks.map((track) => (
         <button
           key={track.id}
+          data-testid={`track-${track.id}`}
+          aria-label={`${track.id} ${track.type} ${track.friendFoe} ${track.range.toFixed(1)} metre`}
           className={`track-box ${track.friendFoe === 'Dost' ? 'friend' : ''} ${track.friendFoe === 'Düşman' ? 'enemy' : ''} ${track.candidate ? 'candidate' : ''} ${selectedId === track.id ? 'selected' : ''}`}
           style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
           onClick={() => onSelect(track.id)}
@@ -164,10 +238,11 @@ function CameraViewport({
           <span className="track-id">{track.id}</span>
           <span className="track-meta">{track.type}</span>
           <span className="track-meta">{track.friendFoe} · {(track.confidence * 100).toFixed(0)}%</span>
-          <span className="track-meta">{track.range.toFixed(1)} m</span>
+          <span className="track-meta">{track.range.toFixed(1)} m · {track.rangeGate}</span>
         </button>
       ))}
       <div className="mock-feed">{feedLabel}</div>
+      <div className="assumption-pill" title={sensorFrame.assumptionNotice}>Şartname-temsili parkur</div>
     </section>
   );
 }
@@ -223,6 +298,17 @@ function SafetyStrip({
 }
 
 type ArmState = 'idle' | 'holding' | 'armed';
+
+interface StrikeEffect {
+  id: number;
+  trackId: string;
+  x: number;
+  y: number;
+  stage: Stage;
+  result: 'isabet' | 'yanlış sıra';
+  label: string;
+  createdAt: number;
+}
 
 function ManualPanel({
   currentTarget,
@@ -473,7 +559,8 @@ function SettingsPanel({
         <span>Pan/Tilt</span><b>{signedDegrees(mechanicsConfig.panMinDeg)}..{signedDegrees(mechanicsConfig.panMaxDeg)} / {signedDegrees(mechanicsConfig.tiltMinDeg)}..{signedDegrees(mechanicsConfig.tiltMaxDeg)}</b>
         <span>Hareket yasak</span><b>{mechanicsConfig.motionForbiddenLabel}</b>
         <span>Atış yasak</span><b>{mechanicsConfig.fireForbiddenLabel}</b>
-        <span>Menzil</span><b>F16 10-15 · diğer 5-15</b>
+        <span>Menzil</span><b>F16 10-15 · Hel/Bal 5-15 · Mini 0-15</b>
+        <span>Sensör mock</span><b>Kamera {realWorldSimulationConfig.cameraFovDeg}° · LiDAR σ{realWorldSimulationConfig.lidarRangeStdM}m · Radar σ{realWorldSimulationConfig.radarRangeStdM}m</b>
         <span>Eşikler</span><b>env + şartname</b>
       </div>
       <div className={`rehearsal-card ${realWorldSim ? 'active' : ''}`}>
@@ -485,6 +572,8 @@ function SettingsPanel({
         <span>Frame</span><b>#{worldTelemetry.frameId}</b>
         <span>FPS/gecikme</span><b>{worldTelemetry.fps} / {worldTelemetry.latencyMs} ms</b>
         <span>Gürültü</span><b>{worldTelemetry.sensorNoisePx} px</b>
+        <span>LiDAR/Radar</span><b>{worldTelemetry.lidarReturns} dönüş · {worldTelemetry.radarTracks} iz</b>
+        <span>Füzyon</span><b>{worldTelemetry.fusionLocks} kilit</b>
         <span>Rüzgâr/batarya</span><b>{worldTelemetry.windMps} m/s · {worldTelemetry.batteryV} V</b>
       </div>
       <button className="reset" onClick={onReset}>Simülasyonu Sıfırla</button>
@@ -578,6 +667,7 @@ function Console() {
   const [tiltAngle, setTiltAngle] = useState(0);
   const [manualArmState, setManualArmState] = useState<ArmState>('idle');
   const [realWorldSim, setRealWorldSim] = useState(realWorldSimulationConfig.enabledByDefault);
+  const [strikes, setStrikes] = useState<StrikeEffect[]>([]);
   const [filter, setFilter] = useState<EventType | 'all'>('all');
   const [scenario, setScenarioState] = useState<BlockReason>('ALLOWED');
   const [baseSafety, setBaseSafety] = useState<Omit<SafetyState, 'blockReason'>>({
@@ -589,6 +679,7 @@ function Console() {
     connectionOk: mechanicsConfig.mockConnectionOk,
   });
   const eventId = useRef(1);
+  const strikeId = useRef(1);
   const armHoldTimer = useRef<number | undefined>(undefined);
   const armExpireTimer = useRef<number | undefined>(undefined);
   const armPointerStarted = useRef(false);
@@ -600,7 +691,8 @@ function Console() {
   const timeLeft = Math.max(0, (stageConfig.durationSeconds ?? 300) - Math.floor(elapsed));
   const prepLeft = Math.max(0, mechanicsConfig.prepSeconds - Math.floor(elapsed * 6));
   const tracks = useMemo(() => realWorldSim ? generateRealWorldTracks(stage, elapsed) : generateTracks(stage, elapsed), [stage, elapsed, realWorldSim]);
-  const worldTelemetry = useMemo(() => generateRealWorldTelemetry(stage, elapsed, realWorldSim), [stage, elapsed, realWorldSim]);
+  const worldTelemetry = useMemo(() => generateRealWorldTelemetry(stage, elapsed, realWorldSim, tracks.length), [stage, elapsed, realWorldSim, tracks.length]);
+  const sensorFrame = useMemo(() => generateSensorFusionFrame(stage, elapsed, tracks), [stage, elapsed, tracks]);
   const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
   const moveIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_move' : 'move';
   const fireIntent: CommandIntent = mode === 'autonomous' ? 'autonomous_engage' : 'fire';
@@ -609,7 +701,8 @@ function Console() {
   const fireSafety = evaluateSafety({ stage, mode, base: baseSafety, selectedTrack, command: fireIntent });
   const manualFireGateAllowed = stage === 1 && timeLeft > 0 && mode === 'manual' && fireSafety.blockReason === 'ALLOWED';
   const autonomousFireGateAllowed = stage !== 1 && (mode === 'autonomous' || mode === 'engagement') && autoRunning && fireSafety.blockReason === 'ALLOWED';
-  const fireAllowed = stage === 1 ? manualFireGateAllowed && manualArmState === 'armed' : autonomousFireGateAllowed;
+  const autonomousRoundReady = stage === 2 ? roundHits < 3 : !enemyHitThisRound;
+  const fireAllowed = stage === 1 ? manualFireGateAllowed && manualArmState === 'armed' : autonomousFireGateAllowed && autonomousRoundReady;
   const fireQueueSafety: SafetyState = fireAllowed || fireSafety.blockReason !== 'ALLOWED' ? fireSafety : { ...fireSafety, blockReason: 'BLOCKED_MODE' };
   const fireQueueLabel = fireSafety.blockReason !== 'ALLOWED'
     ? fireSafety.blockReason
@@ -619,7 +712,11 @@ function Console() {
       ? 'Atış hattı kurulmadı'
       : stage !== 1 && !autoRunning
         ? 'Otonom çalışma bekleniyor'
-        : '';
+        : stage === 2 && roundHits >= 3
+          ? 'Tur hedefleri vuruldu'
+          : stage === 3 && enemyHitThisRound
+            ? 'Tur düşmanı vuruldu'
+            : '';
   const fireQueueDetail = fireSafety.blockReason !== 'ALLOWED'
     ? blockCopy[fireSafety.blockReason]
     : stage === 1 && timeLeft <= 0
@@ -628,7 +725,11 @@ function Console() {
       ? 'basılı kurma bekleniyor'
       : stage !== 1 && !autoRunning
         ? 'operatör başlatma bekleniyor'
-        : 'hazır';
+        : stage === 2 && roundHits >= 3
+          ? 'Turu Bitir bekleniyor'
+          : stage === 3 && enemyHitThisRound
+            ? 'Turu Bitir bekleniyor'
+            : 'hazır';
   const effectiveMode: Mode = systemHealth.blockReason !== 'ALLOWED'
     ? 'blocked'
     : mode === 'safe'
@@ -645,6 +746,23 @@ function Console() {
   const addEvent = (type: EventType, decision: string, reason: string) => {
     const next = makeEvent(eventId.current++, stage, effectiveMode, type, decision, reason);
     setEvents((prev) => [next, ...prev].slice(0, 80));
+  };
+
+  const recordStrike = (track: Track | undefined, result: StrikeEffect['result']) => {
+    if (!track) return;
+    const id = strikeId.current++;
+    const effect: StrikeEffect = {
+      id,
+      trackId: track.id,
+      x: track.x,
+      y: track.y,
+      stage,
+      result,
+      label: result === 'isabet' ? `STRIKE ${track.id}` : `RİSK ${track.id}`,
+      createdAt: Date.now(),
+    };
+    setStrikes((prev) => [effect, ...prev].slice(0, 5));
+    window.setTimeout(() => setStrikes((prev) => prev.filter((item) => item.id !== id)), 2_800);
   };
 
   useEffect(() => {
@@ -739,6 +857,7 @@ function Console() {
     setNoHitStreak(0);
     setMissionStatus('Hazır');
     setAutoRunning(false);
+    setStrikes([]);
     setPanAngle(0);
     setTiltAngle(0);
     setScenario('ALLOWED');
@@ -839,6 +958,7 @@ function Console() {
       const expected = TARGET_ORDER[currentTarget];
       if (!selectedTrack || selectedTrack.type !== expected) {
         setScore((value) => value - 5);
+        recordStrike(selectedTrack, 'yanlış sıra');
         addEvent('fire', 'WRONG_ORDER', `${selectedTrack?.type ?? 'İz yok'} seçildi · beklenen ${expected} · -5`);
         disarmManualFire('Yanlış hedef sonrası atış hattı düştü');
         return;
@@ -852,11 +972,14 @@ function Console() {
       });
       setCurrentTarget((value) => Math.min(TARGET_ORDER.length, value + 1));
       setMissionStatus(nextTarget >= TARGET_ORDER.length ? 'Tamam' : 'Sıradaki');
+      recordStrike(selectedTrack, 'isabet');
       disarmManualFire('Atış sonrası atış hattı düştü');
     } else if (stage === 2) {
       setRoundHits((value) => Math.min(3, value + 1));
       setHits((value) => value + 1);
       setNoHitStreak(0);
+      setMissionStatus(roundHits + 1 >= 3 ? 'Tur hedefleri vuruldu' : 'Angajman');
+      recordStrike(selectedTrack, 'isabet');
       addEvent('fire', 'AUTO_ENGAGE', selectedTrack ? `${selectedTrack.id} · kol ${selectedTrack.lane}` : 'seçili iz yok');
       return;
     } else {
@@ -864,7 +987,9 @@ function Console() {
       setRoundHits(1);
       setEnemyHitThisRound(true);
       setNoHitStreak(0);
+      setMissionStatus('Düşman vuruldu · turu bitir');
       setScore((value) => value + (selectedTrack ? stage3TargetScore(selectedTrack) : 0));
+      recordStrike(selectedTrack, 'isabet');
       addEvent('fire', 'AUTO_ENGAGE', selectedTrack ? `${selectedTrack.id} · ${selectedTrack.type} · ${selectedTrack.range.toFixed(1)} m` : 'seçili iz yok');
       return;
     }
@@ -941,7 +1066,7 @@ function Console() {
 
   const resetSimulation = () => {
     disarmManualFire('Simülasyon sıfırlandı');
-    setStage(1); setMode('safe'); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setRoundHits(0); setEnemyHitThisRound(false); setNoHitStreak(0); setMissionStatus('Hazır'); setAutoRunning(false); setPaused(false); setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds); setPanAngle(0); setTiltAngle(0); setScenario('ALLOWED');
+    setStage(1); setMode('safe'); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setRoundHits(0); setEnemyHitThisRound(false); setNoHitStreak(0); setMissionStatus('Hazır'); setAutoRunning(false); setStrikes([]); setPaused(false); setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds); setPanAngle(0); setTiltAngle(0); setScenario('ALLOWED');
     addEvent('telemetry', 'RESET', 'Mock görev durumu sıfırlandı');
   };
 
@@ -962,6 +1087,7 @@ function Console() {
     setNoHitStreak(0);
     setMissionStatus(next ? 'Yarışma provası' : 'Hazır');
     setAutoRunning(false);
+    setStrikes([]);
     setPaused(false);
     setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds);
     setPanAngle(0);
@@ -992,7 +1118,7 @@ function Console() {
 
       <section className="cockpit-grid">
         <div className="left-stack">
-          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} feedLabel={realWorldSim ? 'GERÇEK YARIŞMA SİM · kamera + mekanik telemetri' : 'MOCK KAMERA · gerçek donanım bağlı değil'} />
+          <CameraViewport tracks={tracks} stage={stage} selectedId={selectedTrack?.id} onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }} panAngle={panAngle} tiltAngle={tiltAngle} feedLabel={realWorldSim ? 'GERÇEK YARIŞMA SİM · kamera + LiDAR/Radar mock + mekanik telemetri' : 'MOCK KAMERA · gerçek donanım bağlı değil'} sensorFrame={sensorFrame} strikes={strikes} realWorldSim={realWorldSim} />
           <div className="bottom-band">
             {stage === 1
               ? <ManualPanel currentTarget={currentTarget} selectedTrack={selectedTrack} score={score} timeLeft={timeLeft} fireGateAllowed={manualFireGateAllowed} fireAllowed={fireAllowed} armState={manualArmState} onArmStart={startManualArmFromPointer} onArmClick={startManualArmFromClick} onMove={handleMove} onFire={handleFire} onWrong={() => { setScore((value) => value - 5); disarmManualFire('Yanlış sıra simülasyonu'); addEvent('fire', 'WRONG_ORDER', 'Yanlış hedef sırası · -5'); }} />
