@@ -150,3 +150,49 @@ test('real-world competition simulation runs through Aşama 1-3', async ({ page 
   await expect(stage3Engage).toBeDisabled();
   await expect(page.getByText('fire_enable').locator('..')).toContainText('blocked');
 });
+
+test('landing Gökkalkan title fits inside boot card', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/');
+  const fits = await page.evaluate(() => {
+    const title = document.querySelector('.signal');
+    const card = document.querySelector('.boot-card');
+    if (!title || !card) return false;
+    const titleRect = title.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    return titleRect.left >= cardRect.left && titleRect.right <= cardRect.right;
+  });
+  expect(fits).toBe(true);
+});
+
+test('stage selection auto-configures Şartname mode expectations', async ({ page }) => {
+  await page.goto('/?console=1');
+  await page.getByRole('button', { name: 'Aşama 1' }).click();
+  await expect(page.locator('.modebar').getByRole('button', { name: /Manuel/ })).toHaveClass(/active/);
+  await page.getByRole('button', { name: 'Aşama 2' }).click();
+  await expect(page.locator('.modebar').getByRole('button', { name: /Otonom/ })).toHaveClass(/active/);
+  await expect(page.getByText('Otonom Takip').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Aşama 3' }).click();
+  await expect(page.locator('.modebar').getByRole('button', { name: /Otonom/ })).toHaveClass(/active/);
+});
+
+test('hands-off replay loads scenario files and advances visible outcome state', async ({ page }) => {
+  await page.goto('/?console=1&handsOff=1&speed=4');
+  await expect(page.getByTestId('hands-off-replay')).toContainText('Hands-off Yarışma Replay');
+  await expect(page.getByText('REPLAY_START').first()).toBeVisible();
+  await expect(page.getByTestId('replay-current')).toContainText(/Aşama 1|M-1|Manuel|isabet/i);
+  await page.getByRole('button', { name: '4x' }).click();
+  await expect(page.getByText('SCENARIO_HIT').first()).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByTestId('mock-strike').first()).toBeVisible();
+  await expect(page.locator('.mission-metrics')).toContainText(/Puan (5|15|35|55)/);
+});
+
+test('hands-off Aşama 3 friend/range gate blocks strike in replay state', async ({ page }) => {
+  await page.goto('/?console=1&handsOff=1&stage=3&t=55&speed=1');
+  await expect(page.getByTestId('hands-off-replay')).toContainText('Aşama 3');
+  await expect(page.getByTestId('replay-current')).toContainText('Dost hedef ateş kilidi');
+  await expect(page.getByText('DOST HEDEF — ATEŞ KİLİTLİ')).toBeVisible();
+  await expect(page.getByText('fire_enable').locator('..')).toContainText('blocked');
+  await expect(page.getByTestId('mock-strike')).toHaveCount(0);
+});
+

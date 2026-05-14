@@ -4,6 +4,7 @@ import { generateTracks } from './missionMock';
 import { clampPan, clampTilt, mechanicsConfig, signedDegrees } from './mechanicsConfig';
 import { EVENT_FILTERS, TARGET_ORDER, VIDEO_EVIDENCE_STEPS, maxRoundFor, rangeRuleFor, stageConfigFor, thresholdFor } from './missionConfig';
 import { generateRealWorldTelemetry, generateRealWorldTracks, generateSensorFusionFrame, realWorldSimulationConfig, type RealWorldTelemetry, type SensorFusionFrame } from './realWorldSimulation';
+import { STAGE_SCENARIOS, eventDecision, generateScenarioTracks, scenarioFrameFor, type ScenarioEvent, type StageScenario, type ScenarioFrame } from './scenarios';
 import { blockCopy, evaluateSafety, evaluateSystemHealth } from './safetyGate';
 import { exportJsonl, makeEvent } from './telemetry';
 import type { BlockReason, CommandIntent, EventType, Mode, SafetyState, Stage, TelemetryEvent, Track } from './types';
@@ -111,7 +112,7 @@ function Landing({ onEnter }: { onEnter: () => void }) {
         </g>
       </svg>
       <section className="boot-card">
-        <div className="signal">GÖKKALKAN</div>
+        <h1 className="signal">GÖKKALKAN</h1>
         <div className="boot-sub">Çelikkubbe operatör konsolu · MOCK</div>
         <div className="boot-checks">
           {bootChecks.map((check, index) => {
@@ -305,7 +306,7 @@ interface StrikeEffect {
   x: number;
   y: number;
   stage: Stage;
-  result: 'isabet' | 'yanlış sıra';
+  result: 'isabet' | 'yanlış sıra' | 'kaçtı';
   label: string;
   createdAt: number;
 }
@@ -417,6 +418,71 @@ function RehearsalStrip({
       <b>Yarışma Provası</b>
       <span>{nextStep}</span>
       <small>{worldTelemetry.fps} FPS · {worldTelemetry.latencyMs} ms · {worldTelemetry.windMps} m/s rüzgâr · {worldTelemetry.batteryV} V</small>
+    </section>
+  );
+}
+
+
+function ReplayPanel({
+  active,
+  replayPaused,
+  replayComplete,
+  speed,
+  scenario,
+  frame,
+  onStart,
+  onTogglePause,
+  onReset,
+  onSpeed,
+}: {
+  active: boolean;
+  replayPaused: boolean;
+  replayComplete: boolean;
+  speed: number;
+  scenario: StageScenario;
+  frame: ScenarioFrame;
+  onStart: () => void;
+  onTogglePause: () => void;
+  onReset: () => void;
+  onSpeed: (speed: number) => void;
+}) {
+  const progress = Math.min(100, (frame.second / Math.max(1, scenario.durationSeconds)) * 100);
+  const current = frame.currentEvents[frame.currentEvents.length - 1];
+  const next = frame.nextEvents[0];
+  return (
+    <section className={`replay-panel ${active ? 'active' : ''}`} data-testid="hands-off-replay">
+      <div className="replay-head">
+        <div>
+          <b>Hands-off Yarışma Replay</b>
+          <span>{scenario.title}</span>
+        </div>
+        <strong>{String(frame.second).padStart(3, '0')}s / {scenario.durationSeconds}s</strong>
+      </div>
+      <div className="timeline-track" aria-label="Senaryo zaman çizgisi">
+        <span className="timeline-fill" style={{ width: `${progress}%` }} />
+        <i className="timeline-cursor" style={{ left: `${progress}%` }} />
+        {scenario.events.map((event) => (
+          <em
+            key={`${event.second}-${event.title}`}
+            className={`timeline-marker ${event.kind}`}
+            style={{ left: `${Math.min(100, (event.second / Math.max(1, scenario.durationSeconds)) * 100)}%` }}
+            title={`${event.second}s · ${event.title}`}
+          />
+        ))}
+      </div>
+      <div className="replay-grid">
+        <span>Şimdi</span><b data-testid="replay-current">{current ? `${current.second}s · ${current.title}` : frame.status}</b>
+        <span>Sıradaki</span><b data-testid="replay-next">{next ? `${next.second}s · ${next.title}` : replayComplete ? 'Tüm aşamalar tamamlandı' : 'Bekleniyor'}</b>
+        <span>Mod</span><b>{modeLabel(frame.mode)} · {frame.autoRunning ? 'Otonom aktif' : frame.paused ? 'Bakım' : 'Bekle'}</b>
+        <span>Sonuç</span><b>{frame.hits} isabet · {frame.misses} kaçan · {frame.score} puan</b>
+      </div>
+      <div className="replay-actions">
+        <button onClick={onStart}>{active ? 'Replay Aktif' : 'Hands-off Başlat'}</button>
+        <button disabled={!active || replayComplete} onClick={onTogglePause}>{replayPaused ? 'Devam' : 'Duraklat'}</button>
+        {[1, 2, 4].map((item) => <button key={item} className={speed === item ? 'active' : ''} onClick={() => onSpeed(item)}>{item}x</button>)}
+        <button onClick={onReset}>Başa Sar</button>
+      </div>
+      <small>{scenario.routeAdjustableNote}</small>
     </section>
   );
 }
@@ -667,6 +733,10 @@ function Console() {
   const [tiltAngle, setTiltAngle] = useState(0);
   const [manualArmState, setManualArmState] = useState<ArmState>('idle');
   const [realWorldSim, setRealWorldSim] = useState(realWorldSimulationConfig.enabledByDefault);
+  const [handsOffReplay, setHandsOffReplay] = useState(false);
+  const [replayPaused, setReplayPaused] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(2);
+  const [replayComplete, setReplayComplete] = useState(false);
   const [strikes, setStrikes] = useState<StrikeEffect[]>([]);
   const [filter, setFilter] = useState<EventType | 'all'>('all');
   const [scenario, setScenarioState] = useState<BlockReason>('ALLOWED');
@@ -680,6 +750,8 @@ function Console() {
   });
   const eventId = useRef(1);
   const strikeId = useRef(1);
+  const replayEventKeys = useRef(new Set<string>());
+  const replayBootstrapped = useRef(false);
   const armHoldTimer = useRef<number | undefined>(undefined);
   const armExpireTimer = useRef<number | undefined>(undefined);
   const armPointerStarted = useRef(false);
@@ -690,7 +762,9 @@ function Console() {
   const stageConfig = stageConfigFor(stage);
   const timeLeft = Math.max(0, (stageConfig.durationSeconds ?? 300) - Math.floor(elapsed));
   const prepLeft = Math.max(0, mechanicsConfig.prepSeconds - Math.floor(elapsed * 6));
-  const tracks = useMemo(() => realWorldSim ? generateRealWorldTracks(stage, elapsed) : generateTracks(stage, elapsed), [stage, elapsed, realWorldSim]);
+  const activeScenario = STAGE_SCENARIOS[stage];
+  const scenarioFrame = useMemo(() => scenarioFrameFor(activeScenario, elapsed), [activeScenario, elapsed]);
+  const tracks = useMemo(() => handsOffReplay ? generateScenarioTracks(activeScenario, elapsed) : realWorldSim ? generateRealWorldTracks(stage, elapsed) : generateTracks(stage, elapsed), [activeScenario, elapsed, handsOffReplay, stage, realWorldSim]);
   const worldTelemetry = useMemo(() => generateRealWorldTelemetry(stage, elapsed, realWorldSim, tracks.length), [stage, elapsed, realWorldSim, tracks.length]);
   const sensorFrame = useMemo(() => generateSensorFusionFrame(stage, elapsed, tracks), [stage, elapsed, tracks]);
   const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
@@ -748,6 +822,23 @@ function Console() {
     setEvents((prev) => [next, ...prev].slice(0, 80));
   };
 
+  const scenarioEventType = (event: ScenarioEvent): EventType => {
+    if (event.kind === 'hit' || event.kind === 'miss' || event.kind === 'fire') return 'fire';
+    if (event.kind === 'target_launch' || event.kind === 'track') return 'target';
+    if (event.kind === 'safety') return 'safety';
+    if (event.kind === 'manual_move' || event.kind === 'autonomous_move' || event.kind === 'arm') return 'command';
+    return 'mode';
+  };
+
+  const baseSafetyForBlock = (reason: BlockReason): Omit<SafetyState, 'blockReason'> => ({
+    estop: reason === 'BLOCKED_ESTOP',
+    motionZoneOk: reason !== 'BLOCKED_MOTION_ZONE',
+    fireZoneOk: reason !== 'BLOCKED_FIRE_ZONE',
+    targetGateOk: reason !== 'BLOCKED_TARGET_GATE',
+    modeOk: reason !== 'BLOCKED_MODE',
+    connectionOk: reason !== 'BLOCKED_CONNECTION' && mechanicsConfig.mockConnectionOk,
+  });
+
   const recordStrike = (track: Track | undefined, result: StrikeEffect['result']) => {
     if (!track) return;
     const id = strikeId.current++;
@@ -758,7 +849,7 @@ function Console() {
       y: track.y,
       stage,
       result,
-      label: result === 'isabet' ? `STRIKE ${track.id}` : `RİSK ${track.id}`,
+      label: result === 'isabet' ? `STRIKE ${track.id}` : result === 'kaçtı' ? `MISS ${track.id}` : `RİSK ${track.id}`,
       createdAt: Date.now(),
     };
     setStrikes((prev) => [effect, ...prev].slice(0, 5));
@@ -767,14 +858,71 @@ function Console() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (!paused) setElapsed((value) => value + 0.5);
+      if (!replayPaused && (!paused || handsOffReplay)) {
+        setElapsed((value) => value + (handsOffReplay ? 0.5 * replaySpeed : 0.5));
+      }
     }, 500);
     return () => window.clearInterval(id);
-  }, [paused]);
+  }, [handsOffReplay, paused, replayPaused, replaySpeed]);
 
   useEffect(() => {
     if (!selectedId && tracks[0]) setSelectedId(tracks[0].id);
   }, [selectedId, tracks]);
+
+  useEffect(() => {
+    if (!handsOffReplay) return;
+    setMode(scenarioFrame.mode);
+    setAutoRunning(scenarioFrame.autoRunning);
+    setPaused(scenarioFrame.paused);
+    setSelectedId(scenarioFrame.selectedTargetId);
+    setPanAngle(scenarioFrame.panAngle);
+    setTiltAngle(scenarioFrame.tiltAngle);
+    setScore(scenarioFrame.score);
+    setHits(scenarioFrame.hits);
+    setRound(scenarioFrame.round);
+    setRoundHits(scenarioFrame.roundHits);
+    setEnemyHitThisRound(scenarioFrame.enemyHitThisRound);
+    setCurrentTarget(scenarioFrame.currentTarget);
+    setMissionStatus(scenarioFrame.status);
+    setBaseSafety(baseSafetyForBlock(scenarioFrame.blockReason));
+  }, [handsOffReplay, scenarioFrame.autoRunning, scenarioFrame.blockReason, scenarioFrame.currentTarget, scenarioFrame.enemyHitThisRound, scenarioFrame.hits, scenarioFrame.mode, scenarioFrame.paused, scenarioFrame.panAngle, scenarioFrame.round, scenarioFrame.roundHits, scenarioFrame.score, scenarioFrame.selectedTargetId, scenarioFrame.status, scenarioFrame.tiltAngle]);
+
+  useEffect(() => {
+    if (!handsOffReplay) return;
+    scenarioFrame.currentEvents.forEach((event) => {
+      const key = `${stage}:${event.second}:${event.kind}:${event.targetId ?? event.title}`;
+      if (replayEventKeys.current.has(key)) return;
+      replayEventKeys.current.add(key);
+      addEvent(scenarioEventType(event), eventDecision(event), event.detail);
+      if (event.result === 'hit' || event.result === 'miss') {
+        const strikeTrack = tracks.find((track) => track.id === event.targetId);
+        recordStrike(strikeTrack, event.result === 'hit' ? 'isabet' : 'kaçtı');
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handsOffReplay, scenarioFrame.second, stage]);
+
+  useEffect(() => {
+    if (!handsOffReplay || replayPaused || elapsed < activeScenario.durationSeconds) return;
+    const id = window.setTimeout(() => {
+      if (stage < 3) {
+        const nextStage = (stage + 1) as Stage;
+        setStage(nextStage);
+        setElapsed(0);
+        setSelectedId(undefined);
+        setStrikes([]);
+        addEvent('mode', `REPLAY_STAGE_${nextStage}`, `${STAGE_SCENARIOS[nextStage].title} otomatik başlatıldı`);
+        return;
+      }
+      setReplayComplete(true);
+      setReplayPaused(true);
+      setMode('safe');
+      setAutoRunning(false);
+      addEvent('mode', 'REPLAY_COMPLETE', 'Üç aşamalı hands-off yarışma provası tamamlandı');
+    }, 250);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScenario.durationSeconds, elapsed, handsOffReplay, replayPaused, stage]);
 
   useEffect(() => {
     if (activeBlockReason !== 'ALLOWED') addEvent('safety', activeBlockReason, blockCopy[activeBlockReason]);
@@ -800,6 +948,30 @@ function Console() {
   };
 
   useEffect(() => () => clearArmTimers(), []);
+
+  useEffect(() => {
+    if (replayBootstrapped.current) return;
+    replayBootstrapped.current = true;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('handsOff')) return;
+    const requestedStage = Number(params.get('stage')) as Stage;
+    const nextStage: Stage = requestedStage === 2 || requestedStage === 3 ? requestedStage : 1;
+    const startSecond = Math.max(0, Number(params.get('t') ?? 0) || 0);
+    const requestedSpeed = Number(params.get('speed') ?? 2);
+    replayEventKeys.current.clear();
+    setRealWorldSim(true);
+    setHandsOffReplay(true);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    setReplaySpeed([1, 2, 4].includes(requestedSpeed) ? requestedSpeed : 2);
+    setStage(nextStage);
+    setMode(STAGE_SCENARIOS[nextStage].defaultMode);
+    setElapsed(startSecond);
+    setSelectedId(undefined);
+    setMissionStatus('Hands-off URL senaryosu');
+    addEvent('telemetry', 'REPLAY_START', `${STAGE_SCENARIOS[nextStage].title} URL üzerinden başlatıldı`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const disarmManualFire = (reason: string, log = false) => {
     clearArmTimers();
@@ -844,8 +1016,13 @@ function Console() {
       addEvent('safety', 'EŞİK_BİLGİ', 'Mock prototipte aşama geçişine izin verildi; eşik durumu panelde izlenir');
     }
     disarmManualFire('Aşama değişimi');
+    const defaultMode = STAGE_SCENARIOS[nextStage].defaultMode;
+    setHandsOffReplay(false);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    replayEventKeys.current.clear();
     setStage(nextStage);
-    setMode('safe');
+    setMode(defaultMode);
     setElapsed(0);
     setSelectedId(undefined);
     setCurrentTarget(0);
@@ -1066,16 +1243,68 @@ function Console() {
 
   const resetSimulation = () => {
     disarmManualFire('Simülasyon sıfırlandı');
-    setStage(1); setMode('safe'); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setRoundHits(0); setEnemyHitThisRound(false); setNoHitStreak(0); setMissionStatus('Hazır'); setAutoRunning(false); setStrikes([]); setPaused(false); setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds); setPanAngle(0); setTiltAngle(0); setScenario('ALLOWED');
+    setHandsOffReplay(false);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    replayEventKeys.current.clear();
+    setStage(1); setMode(STAGE_SCENARIOS[1].defaultMode); setElapsed(0); setSelectedId(undefined); setCurrentTarget(0); setScore(0); setRound(1); setHits(0); setRoundHits(0); setEnemyHitThisRound(false); setNoHitStreak(0); setMissionStatus('Hazır'); setAutoRunning(false); setStrikes([]); setPaused(false); setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds); setPanAngle(0); setTiltAngle(0); setScenario('ALLOWED');
     addEvent('telemetry', 'RESET', 'Mock görev durumu sıfırlandı');
+  };
+
+  const startHandsOffReplay = () => {
+    disarmManualFire('Hands-off replay');
+    replayEventKeys.current.clear();
+    setRealWorldSim(true);
+    setHandsOffReplay(true);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    setStage(1);
+    setMode(STAGE_SCENARIOS[1].defaultMode);
+    setElapsed(0);
+    setSelectedId(undefined);
+    setCurrentTarget(0);
+    setScore(0);
+    setRound(1);
+    setHits(0);
+    setRoundHits(0);
+    setEnemyHitThisRound(false);
+    setNoHitStreak(0);
+    setMissionStatus('Hands-off başladı');
+    setAutoRunning(false);
+    setStrikes([]);
+    setPaused(false);
+    setMaintenanceBudget(mechanicsConfig.maintenanceBudgetSeconds);
+    setPanAngle(0);
+    setTiltAngle(0);
+    setScenario('ALLOWED');
+    addEvent('telemetry', 'REPLAY_START', 'Üç aşamalı hands-off yarışma senaryosu başlatıldı');
+  };
+
+  const resetHandsOffReplay = () => {
+    replayEventKeys.current.clear();
+    setHandsOffReplay(true);
+    setRealWorldSim(true);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    setStage(1);
+    setMode(STAGE_SCENARIOS[1].defaultMode);
+    setElapsed(0);
+    setSelectedId(undefined);
+    setStrikes([]);
+    setPaused(false);
+    addEvent('telemetry', 'REPLAY_REWIND', 'Hands-off yarışma senaryosu başa sarıldı');
   };
 
   const toggleRealWorldSimulation = () => {
     const next = !realWorldSim;
     disarmManualFire('Gerçek yarışma simülasyonu geçişi');
     setRealWorldSim(next);
+    setHandsOffReplay(false);
+    setReplayPaused(false);
+    setReplayComplete(false);
+    replayEventKeys.current.clear();
     setStage(1);
-    setMode('safe');
+    setMode(STAGE_SCENARIOS[1].defaultMode);
     setElapsed(0);
     setSelectedId(undefined);
     setCurrentTarget(0);
@@ -1097,7 +1326,7 @@ function Console() {
   };
 
   return (
-    <main className="console-shell">
+    <main className={`console-shell ${handsOffReplay ? 'replay-mode' : ''}`}>
       {baseSafety.estop && <div className="estop-overlay">ACİL DURDUR AKTİF · hareket ve atış kesildi · MOCK</div>}
       <header className="topbar">
         <div className="brand"><span className="brand-mark">⬢</span><div><b>GÖKKALKAN</b><small>Operatör Konsolu · {realWorldSim ? 'real_camera_sim' : 'hardware_mock'}</small></div></div>
@@ -1115,6 +1344,7 @@ function Console() {
 
       <SafetyStrip systemHealth={systemHealth} commandSafety={fireSafety} scenario={scenario} mode={mode} onToggleEstop={toggleEstop} onScenario={setScenario} />
       {realWorldSim && <RehearsalStrip stage={stage} mode={mode} worldTelemetry={worldTelemetry} />}
+      <ReplayPanel active={handsOffReplay} replayPaused={replayPaused} replayComplete={replayComplete} speed={replaySpeed} scenario={activeScenario} frame={scenarioFrame} onStart={startHandsOffReplay} onTogglePause={() => setReplayPaused((value) => !value)} onReset={resetHandsOffReplay} onSpeed={setReplaySpeed} />
 
       <section className="cockpit-grid">
         <div className="left-stack">

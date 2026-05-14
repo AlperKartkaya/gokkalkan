@@ -1,0 +1,80 @@
+import type { ScenarioTarget, StageScenario } from './types';
+
+function swarmTarget(id: string, lane: 1 | 2 | 3, round: number, start: number, type: ScenarioTarget['type'], hitSecond?: number): ScenarioTarget {
+  const yBase = lane === 1 ? 31 : lane === 2 ? 55 : 78;
+  const yMid = lane === 1 ? 42 : lane === 2 ? 52 : 70;
+  return {
+    id,
+    type,
+    friendFoe: 'Bilinmeyen',
+    lane,
+    round,
+    spawnSecond: start,
+    despawnSecond: start + 22,
+    width: type === 'Balistik Füze' ? 10 : 8,
+    height: type === 'Balistik Füze' ? 12 : 7,
+    candidateFrom: start + 4,
+    candidateUntil: hitSecond ?? start + 22,
+    notes: `Tur ${round}, kol ${lane}; A noktasından B noktasına yaklaşan hedef. Route noktaları ayarlanabilir.`,
+    route: [
+      { second: start, x: 8, y: yBase, range: 17.4, velocity: 2.2, confidence: 0.78 },
+      { second: start + 8, x: 35, y: yMid, range: 12.2, velocity: 2.5, confidence: 0.84 },
+      { second: start + 16, x: 62, y: yMid + (lane === 3 ? 4 : -3), range: 8.1, velocity: 2.7, confidence: 0.9 },
+      { second: start + 22, x: 82, y: lane === 1 ? 18 : lane === 2 ? 65 : 90, range: 4.8, velocity: 2.8, confidence: 0.86 },
+    ],
+  };
+}
+
+export const stage2Scenario: StageScenario = {
+  id: 'asama-2-otonom-suru-4-tur',
+  stage: 2,
+  title: 'Aşama 2 · Otonom sürü saldırısı provası',
+  durationSeconds: 110,
+  defaultMode: 'autonomous',
+  autoRunning: true,
+  sourceRefs: ['docs/sartname_v5.txt:436-439', 'docs/sartname_v5.txt:513-540'],
+  assumptions: [
+    'Şartname süre sınırı koymaz; bu hands-off prova 4 turun izlenebilmesi için 110 saniyede tamamlanır.',
+    'Hedef tipi sınıflandırması beklenmediği için tüm izler Bilinmeyen olarak kalır; güvenlik kapısı sadece parkur/iz uygunluğunu izler.',
+  ],
+  routeAdjustableNote: 'Her hedefin route dizisi A→B hareketini belirler; saniye/x/y/range değerleri değiştirilerek mekanik parkura göre ayarlanabilir.',
+  targets: [
+    swarmTarget('S2-R1-L1', 1, 1, 0, 'Mini/Micro İHA', 8),
+    swarmTarget('S2-R1-L2', 2, 1, 0, 'Balistik Füze', 11),
+    swarmTarget('S2-R1-L3', 3, 1, 0, 'Mini/Micro İHA', 14),
+    swarmTarget('S2-R2-L1', 1, 2, 24, 'Mini/Micro İHA', 32),
+    swarmTarget('S2-R2-L2', 2, 2, 24, 'Balistik Füze', 36),
+    swarmTarget('S2-R2-L3', 3, 2, 24, 'Mini/Micro İHA'),
+    swarmTarget('S2-R3-L1', 1, 3, 60, 'Mini/Micro İHA', 67),
+    swarmTarget('S2-R3-L2', 2, 3, 60, 'Balistik Füze', 70),
+    swarmTarget('S2-R3-L3', 3, 3, 60, 'Mini/Micro İHA', 74),
+    swarmTarget('S2-R4-L1', 1, 4, 84, 'Mini/Micro İHA', 93),
+    swarmTarget('S2-R4-L2', 2, 4, 84, 'Balistik Füze', 97),
+    swarmTarget('S2-R4-L3', 3, 4, 84, 'Mini/Micro İHA', 101),
+  ],
+  events: [
+    { second: 0, kind: 'setup', actor: 'hakem', mode: 'autonomous', autoRunning: true, round: 1, title: 'Aşama 2 başlar', detail: 'Otonom Mod otomatik seçilir; üç kolda birer hedef A noktasından çıkar.' },
+    { second: 1, kind: 'target_launch', actor: 'hedef', round: 1, title: 'Tur 1 hedefleri kalkar', detail: 'Kol 1/2/3 hedefleri aynı anda A→B rotasına girer.' },
+    { second: 5, kind: 'autonomous_move', actor: 'Gökkalkan', targetId: 'S2-R1-L2', panAngle: -3, tiltAngle: 2, round: 1, title: 'Otonom takip kilidi', detail: 'Radar/LiDAR/Kamera füzyonu kol 2 hedefini önceliklendirir.' },
+    { second: 8, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L1', result: 'hit', points: 0, round: 1, title: 'Tur 1 Kol 1 isabet', detail: 'Kol 1 hedefi parkur dışına çıkmadan vurulur.' },
+    { second: 11, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L2', result: 'hit', points: 0, round: 1, title: 'Tur 1 Kol 2 isabet', detail: 'Balistik Füze maketi vurulur.' },
+    { second: 14, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L3', result: 'hit', points: 30, round: 1, title: 'Tur 1 tamam · 3 isabet', detail: 'Tur puanı 30.' },
+    { second: 22, kind: 'round_end', actor: 'hakem', round: 1, title: 'Tur 1 biter', detail: 'İmha edilen hedefler yerine yenileri hazırlanır.' },
+    { second: 24, kind: 'target_launch', actor: 'hedef', round: 2, title: 'Tur 2 hedefleri kalkar', detail: 'Üç kol yeniden dolu başlar.' },
+    { second: 32, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R2-L1', result: 'hit', round: 2, title: 'Tur 2 Kol 1 isabet', detail: 'Mini/Micro İHA vurulur.' },
+    { second: 36, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R2-L2', result: 'hit', points: 15, round: 2, title: 'Tur 2 Kol 2 isabet', detail: 'İki hedef imhası için tur puanı 15.' },
+    { second: 44, kind: 'miss', actor: 'Gökkalkan', targetId: 'S2-R2-L3', result: 'miss', points: 0, round: 2, title: 'Tur 2 Kol 3 kaçtı', detail: 'Kol 3 hedefi B çizgisine ulaştı; bu turda üçüncü isabet alınamadı.' },
+    { second: 48, kind: 'maintenance_request', actor: 'operatör', title: 'Bakım izni talebi', detail: 'Takım lideri pan/tilt kayış gerginliği kontrolü için mola ister.' },
+    { second: 50, kind: 'maintenance_pause', actor: 'hakem', mode: 'maintenance', maintenanceDurationSeconds: 10, title: 'Kısa bakım', detail: 'Süre sınırı olmadığı için prova akışı güvenli bakım durumuna alınır.' },
+    { second: 60, kind: 'maintenance_resume', actor: 'hakem', mode: 'autonomous', autoRunning: true, round: 3, title: 'Bakım biter · Tur 3', detail: 'Otonom takip tekrar başlatılır.' },
+    { second: 61, kind: 'target_launch', actor: 'hedef', round: 3, title: 'Tur 3 hedefleri kalkar', detail: 'Üç hedef A→B rotasına girer.' },
+    { second: 67, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R3-L1', result: 'hit', round: 3, title: 'Tur 3 Kol 1 isabet', detail: 'Yakınlaşan Mini/Micro İHA vurulur.' },
+    { second: 70, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R3-L2', result: 'hit', round: 3, title: 'Tur 3 Kol 2 isabet', detail: 'Balistik Füze vurulur.' },
+    { second: 74, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R3-L3', result: 'hit', points: 30, round: 3, title: 'Tur 3 tamam · 3 isabet', detail: 'Tur puanı 30.' },
+    { second: 84, kind: 'target_launch', actor: 'hedef', round: 4, title: 'Tur 4 hedefleri kalkar', detail: 'Son turda üç kol tekrar doludur.' },
+    { second: 93, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R4-L1', result: 'hit', round: 4, title: 'Tur 4 Kol 1 isabet', detail: 'Kol 1 hedefi vurulur.' },
+    { second: 97, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R4-L2', result: 'hit', round: 4, title: 'Tur 4 Kol 2 isabet', detail: 'Kol 2 hedefi vurulur.' },
+    { second: 101, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R4-L3', result: 'hit', points: 30, round: 4, title: 'Tur 4 tamam · 3 isabet', detail: 'Tur puanı 30; aşama toplamı 105.' },
+    { second: 110, kind: 'stage_complete', actor: 'hakem', mode: 'safe', title: 'Aşama 2 tamam', detail: '105 puan ile 20 puan barajı geçildi.' },
+  ],
+};
