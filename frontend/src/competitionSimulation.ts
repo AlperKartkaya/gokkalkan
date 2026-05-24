@@ -45,6 +45,7 @@ export const competitionSimulationConfig = {
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE2_ROUND_SECONDS', 18, 6, 120),
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 2.4, 0.1, 20),
+    engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE2_ENGAGEMENT_PROGRESS_MIN', 0.42, 0.05, 0.9),
     pointsByDestroyedCount: { 0: -5, 1: 5, 2: 15, 3: 30 } as Record<0 | 1 | 2 | 3, number>,
     failIfNoHitRoundsAtLeast: 3,
   },
@@ -53,9 +54,11 @@ export const competitionSimulationConfig = {
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE3_ROUND_SECONDS', 20, 6, 120),
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE3_TARGET_SPEED_MPS', 2.0, 0.1, 20),
+    engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE3_ENGAGEMENT_PROGRESS_MIN', 0.32, 0.05, 0.9),
     maxRoundPenalty: -10,
     failIfConsecutiveHostileMisses: 3,
   },
+  uavPreferredAutoEngagementMaxRangeMeters: numberFromEnv('VITE_GOKKALKAN_UAV_AUTO_ENGAGE_MAX_RANGE_M', 5, 0, 15),
   targetVisualScale: {
     F16: numberFromEnv('VITE_GOKKALKAN_F16_VISUAL_SCALE', 1.15, 0.4, 2.5),
     Helikopter: numberFromEnv('VITE_GOKKALKAN_HELICOPTER_VISUAL_SCALE', 1, 0.4, 2.5),
@@ -116,13 +119,18 @@ function movingTrack(params: {
   const progress = Math.min(1, Math.max(0, elapsedInRound / duration));
   const lanePhase = lane === 1 ? 0 : lane === 2 ? 0.035 : 0.07;
   const point = pointAtProgress(lane, Math.min(1, progress + lanePhase));
-  const range = progressRange(progress);
-  const gate = rangeGateFor(type, range);
+  const officialRange = progressRange(progress);
+  const trackRange = stage === 2 ? Number(Math.min(16.2, Math.max(3.2, courseRangeFromPoint(point))).toFixed(1)) : officialRange;
+  const gate = rangeGateFor(type, trackRange);
   const size = scaledSize(type);
   const velocity = stage === 2 ? competitionSimulationConfig.stage2.targetSpeedMps : competitionSimulationConfig.stage3.targetSpeedMps;
+  const uavCloseEnough = type !== 'Mini/Micro İHA' || trackRange <= competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters;
   const candidate = stage === 2
-    ? progress > 0.12 && progress < 0.92
-    : friendFoe === 'Düşman' && gate === 'Uygun' && progress < 0.96;
+    ? progress >= competitionSimulationConfig.stage2.engagementProgressMin && progress < 0.92 && uavCloseEnough
+    : friendFoe === 'Düşman' && gate === 'Uygun' && progress >= competitionSimulationConfig.stage3.engagementProgressMin && progress < 0.96 && uavCloseEnough;
+  const uavTrainingNote = type === 'Mini/Micro İHA'
+    ? ` · İHA eğitim tercihi ≤${competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters} m`
+    : '';
 
   return {
     id: stage === 2 ? `S2-R${round}-L${lane}` : `S3-R${round}-${friendFoe === 'Düşman' ? 'X' : `F${lane}`}`,
@@ -134,11 +142,11 @@ function movingTrack(params: {
     type,
     friendFoe,
     confidence: stage === 3 && friendFoe === 'Düşman' ? 0.96 : 0.9,
-    range: stage === 2 ? Number(Math.min(16.2, Math.max(3.2, courseRangeFromPoint(point))).toFixed(1)) : range,
+    range: trackRange,
     velocity,
     direction: stage === 2
-      ? `A→B · Kol ${lane} · ${velocity.toFixed(1)} m/s varsayım`
-      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Mavi/dost'} · Kol ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}`,
+      ? `A→B · Kol ${lane} · ${velocity.toFixed(1)} m/s varsayım${uavTrainingNote}`
+      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Mavi/dost'} · Kol ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}${uavTrainingNote}`,
     rangeGate: gate,
     candidate,
   };
@@ -147,10 +155,10 @@ function movingTrack(params: {
 export function generateCompetitionTracks(stage: Stage, elapsedInRound: number, round: number): Track[] {
   if (stage === 1) {
     const targets: Array<{ id: string; type: TargetType; range: number; x: number; y: number; lane: 1 | 2 | 3 }> = [
-      { id: 'S1-1', type: 'Balistik Füze', range: 5, x: 67, y: 72, lane: 3 },
-      { id: 'S1-2', type: 'Helikopter', range: 10, x: 58, y: 40, lane: 2 },
-      { id: 'S1-3', type: 'F16', range: 15, x: 38, y: 22, lane: 1 },
-      { id: 'S1-4', type: 'Mini/Micro İHA', range: 15, x: 43, y: 24, lane: 1 },
+      { id: 'S1-1', type: 'Balistik Füze', range: 5, x: 76, y: 56, lane: 3 },
+      { id: 'S1-2', type: 'Helikopter', range: 10, x: 49, y: 42, lane: 2 },
+      { id: 'S1-3', type: 'F16', range: 15, x: 22, y: 36, lane: 1 },
+      { id: 'S1-4', type: 'Mini/Micro İHA', range: 15, x: 22, y: 63, lane: 1 },
     ];
     return targets.map((target, index) => {
       const size = scaledSize(target.type);
