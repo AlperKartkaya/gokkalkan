@@ -40,14 +40,14 @@ test('console prioritizes parkour, guidance, and central fire action', async ({ 
 
   await expect(page.getByTestId('parkour-hero')).toBeVisible();
   await expect(page.locator('.parkour-hero > img')).toHaveCount(0);
-  await expect(page.getByTestId('competition-guidance')).toContainText('Yarışma Rehberi');
+  await expect(page.getByTestId('competition-guidance')).toContainText('Görev Paneli');
   await expect(page.getByText('Competition Guidance')).toHaveCount(0);
-  await expect(page.getByTestId('fire-cluster')).toContainText('FIRE BLOCKED');
+  await expect(page.getByTestId('fire-cluster')).toContainText('ATEŞ KİLİTLİ');
   await expect(page.getByTestId('competition-guidance')).toContainText('Seçili hedef yok');
-  await expect(page.getByText('Gelişmiş / Debug')).toBeVisible();
+  await expect(page.getByText('Telemetri / Debug')).toBeVisible();
   await expect(page.getByText('Güvenlik kapısı')).toBeHidden();
 
-  await page.getByText('Gelişmiş / Debug').click();
+  await page.getByText('Telemetri / Debug').click();
   await expect(page.getByText('Güvenlik kapısı')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
@@ -72,6 +72,31 @@ test('contextual onboarding pauses timer and is skippable', async ({ page }) => 
   await expect(page.getByTestId('tutorial-overlay')).toContainText('Aşama 2 otonom akıştır');
 });
 
+test('compact dashboard avoids horizontal overflow on desktop and narrow viewports', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await openConsole(page);
+  await expect(page.getByTestId('bottom-action-bar')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await page.getByRole('button', { name: 'Bu aşamada rehberi atla' }).click();
+  await expect(page.getByTestId('competition-guidance')).toContainText('Görev Paneli');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('tutorial restart preserves the active stage context', async ({ page }) => {
+  await openConsole(page);
+  await page.getByRole('button', { name: 'Aşama 3' }).click();
+  await page.getByRole('button', { name: 'Bu aşamada rehberi atla' }).click();
+
+  await page.getByRole('button', { name: 'Rehber' }).click();
+  await expect(page.getByTestId('tutorial-overlay')).toContainText('simülasyon duraklatıldı');
+  await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
+  await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
+  await expect(page.getByTestId('tutorial-overlay')).toContainText('Dost hedefler korunur');
+});
+
 test('Aşama 1 applies manual target order and wrong-target penalty', async ({ page }) => {
   await openConsole(page);
 
@@ -79,10 +104,10 @@ test('Aşama 1 applies manual target order and wrong-target penalty', async ({ p
   await expect(page.getByTestId('competition-guidance')).toContainText('yanlış hedef seçildi');
   await page.getByRole('button', { name: 'CEZA RİSKİ' }).click();
   await expect(headerMetrics(page)).toContainText('Puan -5');
-  await expect(page.getByTestId('stage-1-order')).toContainText('Balistik Füze');
+  await expect(page.getByTestId('stage-1-order')).toContainText('Balistik');
 
   await page.getByRole('button', { name: /S1-1.*Balistik Füze/ }).click();
-  await page.getByRole('button', { name: 'FIRE READY' }).click();
+  await page.getByRole('button', { name: 'ATEŞ HAZIR' }).click();
   await expect(headerMetrics(page)).toContainText('Puan 0');
 });
 
@@ -100,7 +125,7 @@ test('selection defaults are stage-specific and toggle off on second click', asy
   await expect(page.getByTestId('competition-guidance')).toContainText('Düşman');
 });
 
-test('Aşama 2 shows practice rounds past Tur 4 and scores by destroyed count', async ({ page }) => {
+test('Aşama 2 exposes practice rounds through Tur 8 and scores by destroyed count', async ({ page }) => {
   test.setTimeout(40_000);
   await openConsole(page);
 
@@ -108,6 +133,7 @@ test('Aşama 2 shows practice rounds past Tur 4 and scores by destroyed count', 
   await page.getByRole('button', { name: 'Bu aşamada rehberi atla' }).click();
   await expect(headerMetrics(page)).toContainText('Mod Otonom');
   await expect(headerMetrics(page)).toContainText('Tur 1/8');
+  await expect(page.locator('.stage-checklist.compact')).toContainText('Tur 8');
   await expect(page.getByRole('button', { name: /S2-R1-L/ })).toHaveCount(3);
   const initialRotation = Number(await page.getByTestId('steel-dome').getAttribute('data-rotation'));
   expect(initialRotation).toBeGreaterThan(35);
@@ -121,15 +147,22 @@ test('Aşama 2 shows practice rounds past Tur 4 and scores by destroyed count', 
   expect(Math.abs((movedBox?.x ?? 0) - (startBox?.x ?? 0)) + Math.abs((movedBox?.y ?? 0) - (startBox?.y ?? 0))).toBeGreaterThan(10);
   await expect(page.getByTestId('competition-guidance')).toContainText('Seçili hedef yok');
   await expect(page.getByText(/sınıflandırma beklenmez/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'AUTONOMOUS FIRE LOGIC ACTIVE' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'OTONOM AKTİF' })).toBeDisabled();
 
   await page.waitForTimeout(200);
   await expect(headerMetrics(page)).toContainText('Puan 0');
-  await expect.poll(() => headerText(page), { timeout: 8_000 }).not.toContain('Puan 0');
-  await expect.poll(async () => {
-    const match = (await headerText(page)).match(/Tur (\d+)\/8/);
-    return match ? Number(match[1]) : 0;
-  }, { timeout: 30_000 }).toBeGreaterThanOrEqual(5);
+  await expect.poll(() => headerText(page), { timeout: 15_000 }).not.toContain('Puan 0');
+});
+
+test('strict competition mode keeps Aşama 2 at the official 4 rounds', async ({ page }) => {
+  await openConsole(page);
+
+  await page.getByRole('button', { name: 'Aşama 2' }).click();
+  await page.getByRole('button', { name: 'Bu aşamada rehberi atla' }).click();
+  await page.getByRole('button', { name: 'Pratik' }).click();
+  await expect(headerMetrics(page)).toContainText('Tur 1/4');
+  await expect(page.locator('.stage-checklist.compact')).toContainText('Tur 4');
+  await expect(page.locator('.stage-checklist.compact')).not.toContainText('Tur 5');
 });
 
 test('Aşama 3 protects friendly targets and exposes range-gate reasons', async ({ page }) => {
