@@ -1,43 +1,28 @@
+@import "tailwindcss";
+
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #020304;
+  background: #05070a;
   color: #ecf7ff;
-  --bg: #020304;
-  --panel: rgba(10, 15, 20, 0.92);
-  --panel-2: rgba(15, 23, 31, 0.94);
-  --line: rgba(174, 225, 255, 0.15);
   --cyan: #25d8ff;
   --green: #33e68c;
   --amber: #ffbb42;
   --red: #ff4757;
   --blue: #48a8ff;
-  --muted: #91a6b7;
-  --text: #edf8ff;
 }
 
-* { box-sizing: border-box; }
-html, body, #root { min-height: 100%; margin: 0; background: var(--bg); }
+html, body, #root { min-height: 100%; margin: 0; background: #05070a; }
 button, select { font: inherit; }
-button { border: 0; color: inherit; cursor: pointer; }
+button { border: 0; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 
-.landing {
-  position: relative;
-  min-height: 100vh;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 50% 65%, rgba(0, 217, 255, .10), transparent 45%), #020304;
-}
 .landing-grid {
-  position: absolute;
-  inset: 0;
   background-image: linear-gradient(rgba(0,217,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,217,255,.04) 1px, transparent 1px);
   background-size: 42px 42px;
   mask-image: radial-gradient(circle at 50% 58%, black, transparent 72%);
-  pointer-events: none;
 }
+
 .dome-scene { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .92; }
 .dome-arc { fill: none; stroke: var(--cyan); stroke-width: 2.4; stroke-dasharray: 12 12; filter: drop-shadow(0 0 12px rgba(37,216,255,.45)); animation: dash 18s linear infinite; }
 .arc-mid { opacity: .5; animation-duration: 14s; }
@@ -48,86 +33,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .incoming-1 { transform: translate(990px, 250px) rotate(158deg); animation-delay: -2s; }
 .incoming-2 { transform: translate(160px, 210px) rotate(24deg); animation-delay: -3s; }
 .incoming-3 { transform: translate(210px, 330px) rotate(15deg); animation-delay: -4s; }
-.boot-card {
-  position: relative;
-  z-index: 2;
-  width: min(720px, calc(100vw - 36px));
-  padding: clamp(24px, 4vw, 44px);
-  border: 1px solid rgba(37,216,255,.24);
-  border-radius: 30px;
-  background: linear-gradient(180deg, rgba(10,15,20,.74), rgba(2,3,4,.9));
-  box-shadow: 0 0 80px rgba(37,216,255,.12), inset 0 0 60px rgba(37,216,255,.035);
-  text-align: center;
-  backdrop-filter: blur(12px);
-}
-.signal {
-  margin: 0;
-  line-height: .95;
-  font-size: clamp(42px, 6.4vw, 72px);
-  letter-spacing: clamp(.06em, .9vw, .16em);
-  font-weight: 1000;
-  white-space: nowrap;
-  overflow-wrap: normal;
-  text-shadow: 0 0 28px rgba(37,216,255,.58);
-}
-.boot-sub { color: #c5d8e4; margin: 12px 0 28px; text-transform: uppercase; letter-spacing: .16em; font-size: 12px; }
-.boot-checks { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; }
-.boot-checks span { min-width: 0; border-radius: 999px; padding: 10px 8px; background: rgba(12,18,24,.88); color: var(--muted); border: 1px solid rgba(255,255,255,.07); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.boot-checks i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #354553; }
-.boot-checks .done { color: var(--text); border-color: rgba(51,230,140,.34); }
-.boot-checks .done i { background: var(--green); box-shadow: 0 0 12px var(--green); }
-.boot-progress { height: 4px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.09); margin: 24px 0; }
-.boot-progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--green)); transition: width .2s; }
-.enter-console { padding: 15px 28px; border-radius: 18px; background: #e5fbff; color: #001319; font-weight: 1000; box-shadow: 0 14px 36px rgba(37,216,255,.22); }
 
-.sim-shell {
-  min-height: 100vh;
-  padding: 14px;
-  background: radial-gradient(circle at 50% -10%, rgba(37,216,255,.09), transparent 36%), #020304;
-}
-.competition-header {
-  display: grid;
-  grid-template-columns: minmax(220px, .8fr) auto minmax(420px, 1.35fr) 132px;
-  gap: 10px;
-  align-items: stretch;
-  min-height: 70px;
-  margin-bottom: 12px;
-}
-.app-title, .stage-switch, .header-metrics, .sim-mode {
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: rgba(5, 8, 12, .9);
-}
-.app-title { display: flex; align-items: center; gap: 12px; padding: 0 16px; min-width: 0; }
-.app-title > span { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 14px; color: var(--cyan); background: rgba(37,216,255,.08); }
-.app-title b { display: block; letter-spacing: .16em; font-size: 20px; }
-.app-title small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stage-switch { display: flex; gap: 7px; padding: 8px; }
-.stage-switch button { min-width: 88px; border-radius: 14px; padding: 0 13px; background: rgba(255,255,255,.04); color: var(--muted); font-weight: 900; }
-.stage-switch button.active { color: var(--cyan); background: rgba(37,216,255,.13); border: 1px solid rgba(37,216,255,.38); }
-.header-metrics { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 6px; padding: 8px; }
-.header-metrics span { display: grid; place-items: center; text-align: center; border-radius: 14px; background: rgba(255,255,255,.035); color: var(--muted); font-size: 12px; }
-.header-metrics b { display: block; color: var(--text); font-size: 15px; margin-top: 2px; }
-.header-metrics .safe b { color: var(--green); }
-.header-metrics .unsafe b { color: var(--red); }
-.sim-mode { font-weight: 1000; color: var(--green); background: rgba(51,230,140,.11); }
-.sim-mode.practice { color: var(--amber); background: rgba(255,187,66,.11); }
-
-.sim-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
-  gap: 12px;
-  min-height: calc(100vh - 260px);
-}
-.parkour-hero {
-  position: relative;
-  min-height: 520px;
-  overflow: hidden;
-  border-radius: 26px;
-  border: 1px solid rgba(174,225,255,.18);
-  background: linear-gradient(180deg, rgba(17,25,33,.98), rgba(5,8,12,.98));
-  box-shadow: inset 0 0 80px rgba(0,0,0,.72);
-}
 .parkour-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .schematic-grid path { stroke: rgba(174,225,255,.10); stroke-width: .25; }
 .stage1-practice-field { filter: drop-shadow(0 0 10px rgba(0,0,0,.35)); }
@@ -138,6 +44,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .stage1-zone.zone-10 rect { fill: rgba(255,187,66,.07); }
 .stage1-zone.zone-5 rect { fill: rgba(51,230,140,.08); }
 .stage1-title { fill: #fff4ca; font-size: 3.9px; font-weight: 1000; letter-spacing: .08em; paint-order: stroke; stroke: rgba(2,3,4,.9); stroke-width: .9; }
+
 .valid-window { fill: rgba(51,230,140,.18); stroke: rgba(51,230,140,.70); stroke-width: .75; stroke-dasharray: 2 1; filter: drop-shadow(0 0 8px rgba(51,230,140,.28)); }
 .valid-window.active { fill: rgba(255,71,87,.20); stroke: rgba(255,71,87,.95); stroke-width: 1.05; stroke-dasharray: 0; filter: drop-shadow(0 0 14px rgba(255,71,87,.55)); animation: windowPulse 1.1s ease-in-out infinite; }
 .window-label { fill: #ffe3a0; font-size: 3.15px; font-weight: 1000; paint-order: stroke; stroke: rgba(2,3,4,.9); stroke-width: .75; letter-spacing: .05em; }
@@ -156,36 +63,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .target-link line { stroke: rgba(255,187,66,.95); stroke-width: .75; stroke-dasharray: 2 1; filter: drop-shadow(0 0 7px rgba(255,187,66,.55)); }
 .target-link text { fill: #fff4ca; font-size: 3.2px; font-weight: 1000; paint-order: stroke; stroke: rgba(2,3,4,.9); stroke-width: .75; }
 .system-anchor circle { fill: var(--green); stroke: rgba(2,3,4,.9); stroke-width: .6; filter: drop-shadow(0 0 6px rgba(51,230,140,.8)); }
-.aircraft {
-  position: absolute;
-  z-index: 6;
-  min-width: 92px;
-  min-height: 112px;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 999px;
-  background: transparent;
-  border: 0;
-  color: var(--amber);
-  box-shadow: none;
-  text-align: center;
-  transition: transform .16s ease, color .16s ease, filter .16s ease;
-  will-change: left, top;
-}
-.target-visual {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-}
+.parkour-hero.stage-1 .system-anchor text { display: none; }
+
 .target-silhouette {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   overflow: visible;
   fill: currentColor;
   stroke: rgba(255,255,255,.88);
@@ -195,9 +77,15 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: drop-shadow(0 0 8px rgba(255,255,255,.18)) drop-shadow(0 10px 14px rgba(0,0,0,.45));
 }
 .target-silhouette circle { fill: rgba(2,3,4,.86); }
+.detail-icon { width: 30px; height: 30px; color: var(--amber); stroke-width: 2.7; }
+.check-icon { width: 24px; height: 24px; stroke-width: 2.7; }
+
 .aircraft.enemy { color: #ff6876; }
 .aircraft.friend { color: #69b8ff; }
 .aircraft.neutral { color: #ffd17a; }
+.aircraft.selected { transform: translate(-50%, -50%) scale(1.12); filter: saturate(1.12); }
+.aircraft.candidate { animation: aircraftReady 1.25s ease-in-out infinite; }
+.aircraft.destroyed { opacity: .16; filter: grayscale(1); }
 .aircraft.selected .target-visual::before,
 .aircraft.candidate .target-visual::before {
   content: "";
@@ -208,11 +96,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   box-shadow: 0 0 20px rgba(255,187,66,.42);
   pointer-events: none;
 }
-.aircraft.selected { transform: translate(-50%, -50%) scale(1.12); filter: saturate(1.12); }
-.aircraft.candidate { animation: aircraftReady 1.25s ease-in-out infinite; }
-.aircraft.destroyed { opacity: .16; filter: grayscale(1); }
 .aircraft.destroyed::after {
-  content: "✕";
+  content: "X";
   position: absolute;
   top: 2px;
   right: 14px;
@@ -220,44 +105,18 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   color: #fff;
   text-shadow: 0 0 8px rgba(255,71,87,.85);
 }
-.target-label-stack {
-  display: grid;
-  place-items: center;
-  gap: 2px;
-  width: max-content;
-  max-width: 132px;
-}
-.aircraft .target-name {
-  padding: 2px 7px;
-  border-radius: 999px;
+.target-visual { position: relative; display: grid; place-items: center; width: 50px; height: 50px; }
+.target-label-stack { display: grid; place-items: center; gap: 2px; width: max-content; max-width: 112px; }
+.aircraft .target-name, .aircraft small, .range-chip {
+  border-radius: 6px;
   background: rgba(2,4,7,.72);
   color: #fff;
-  font-size: 10px;
-  font-weight: 1000;
   line-height: 1;
-}
-.aircraft small {
-  max-width: 122px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(2,4,7,.64);
-  font-size: 10px;
-  color: #eef8ff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.range-chip {
-  margin-top: 1px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(2,4,7,.78);
-  color: var(--amber);
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 1000;
   white-space: nowrap;
 }
+.aircraft .target-name { padding: 2px 6px; font-size: 9px; font-weight: 1000; }
+.aircraft small { max-width: 102px; padding: 2px 6px; overflow: hidden; color: #eef8ff; text-overflow: ellipsis; font-size: 9px; }
+.range-chip { margin-top: 1px; padding: 2px 6px; color: var(--amber); font-size: 8px; font-style: normal; font-weight: 1000; }
 .range-chip.uygun { color: #fff; background: rgba(255,71,87,.72); box-shadow: 0 0 12px rgba(255,71,87,.32); }
 .range-chip.erken { color: #ffd17a; }
 .range-chip.geçersiz { color: #ff9aa3; }
@@ -273,59 +132,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: blur(2px);
 }
 .aircraft.moving .motion-trail { opacity: .27; animation: trailFade 1.2s ease-in-out infinite; }
-.steel-dome {
-  position: absolute;
-  z-index: 5;
-  width: 88px;
-  height: 88px;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  display: grid;
-  place-items: center;
-  filter: drop-shadow(0 0 20px rgba(51,230,140,.26)) drop-shadow(0 12px 24px rgba(0,0,0,.5));
-}
-.steel-dome img {
-  width: 78px;
-  height: 78px;
-  object-fit: contain;
-  border-radius: 50%;
-  transform: rotate(var(--dome-rotation));
-  will-change: transform;
-  opacity: .9;
-}
-.map-legend {
-  position: absolute;
-  left: 22px;
-  bottom: 18px;
-  z-index: 8;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 16px;
-  background: rgba(2,4,7,.76);
-  border: 1px solid rgba(255,255,255,.08);
-  backdrop-filter: blur(8px);
-}
-.map-legend span { display: flex; align-items: center; gap: 6px; color: #cde1ec; font-size: 12px; font-weight: 800; }
-.map-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.map-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .enemy-dot { background: var(--red); }
 .friend-dot { background: var(--blue); }
 .window-dot { background: var(--green); }
-.map-assumption {
-  position: absolute;
-  right: 22px;
-  bottom: 18px;
-  z-index: 8;
-  max-width: min(520px, 52%);
-  padding: 8px 10px;
-  border-radius: 16px;
-  color: var(--amber);
-  background: rgba(255,187,66,.10);
-  border: 1px solid rgba(255,187,66,.24);
-  font-size: 11px;
-  line-height: 1.25;
-}
+
 .strike .shot-trail { stroke: rgba(255,241,190,.62); stroke-width: .45; stroke-dasharray: 2 2; animation: strikeFade 2.4s ease-out forwards; }
 .strike .shot-bullet { fill: #fff2a8; stroke: #fff; stroke-width: .35; filter: drop-shadow(0 0 5px rgba(255,242,168,.95)); }
 .strike .impact-ring { fill: none; stroke: var(--green); stroke-width: .7; animation: strikePop 2.4s ease-out forwards; }
@@ -333,85 +145,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .strike.penalty .shot-bullet, .strike.miss .shot-bullet { fill: #ffb0b7; }
 .strike text { fill: #fff; font-size: 3.4px; font-weight: 1000; paint-order: stroke; stroke: rgba(2,3,4,.9); stroke-width: .8; animation: strikeFade 2.4s ease-out forwards; }
 
-.guidance-panel {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  border-radius: 26px;
-  border: 1px solid rgba(174,225,255,.18);
-  background: linear-gradient(180deg, rgba(15,23,31,.96), rgba(7,10,14,.96));
-  padding: 18px;
-}
-.panel-kicker { color: var(--green); text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 1000; }
-.guidance-panel h2 { margin: 0 0 2px; font-size: 24px; line-height: 1.1; }
-.guidance-panel section { border-radius: 18px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); padding: 11px 12px; }
-.guidance-panel span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 900; margin-bottom: 4px; }
-.guidance-panel p { margin: 0; color: #e8f6ff; line-height: 1.38; }
-.fire-card { background: rgba(255,71,87,.10) !important; border-color: rgba(255,71,87,.25) !important; }
-.fire-card b { display: block; margin-bottom: 5px; color: #fff; font-size: 20px; }
-.target-detail-row { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 10px; align-items: center; }
-.target-detail-row .target-silhouette { width: 38px; height: 38px; color: var(--amber); stroke-width: 2.7; }
-.restart-tutorial { min-height: 42px; border-radius: 16px; background: rgba(37,216,255,.12); color: var(--cyan); border: 1px solid rgba(37,216,255,.32); font-weight: 1000; }
-
-.bottom-action-bar {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, .82fr) minmax(300px, 420px);
-  gap: 12px;
-  align-items: stretch;
-}
-.stage-checklist, .main-controls, .fire-cluster, .debug-drawer {
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(5, 8, 12, .92);
-}
-.stage-checklist { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; padding: 10px; }
-.stage-checklist.compact { grid-template-columns: repeat(8, minmax(0,1fr)); }
-.stage-checklist span { display: grid; place-items: center; min-height: 66px; border-radius: 16px; background: rgba(255,255,255,.04); color: var(--muted); text-align: center; padding: 7px; font-size: 12px; font-weight: 1000; }
-.stage-checklist b { display: block; font-size: 11px; line-height: 1.1; }
-.stage-checklist .target-silhouette { width: 31px; height: 31px; stroke-width: 2.6; }
-.stage-checklist .current { color: var(--amber); border: 1px solid rgba(255,187,66,.42); background: rgba(255,187,66,.09); }
-.stage-checklist .done { color: var(--green); border: 1px solid rgba(51,230,140,.30); background: rgba(51,230,140,.08); }
-.main-controls { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; padding: 10px; }
-.main-controls button { border-radius: 16px; background: rgba(255,255,255,.055); color: #dcecf5; border: 1px solid rgba(255,255,255,.08); font-weight: 900; }
-.main-controls button.active { color: var(--cyan); background: rgba(37,216,255,.13); border-color: rgba(37,216,255,.34); }
-.main-controls .danger { color: #ffb3ba; background: rgba(255,71,87,.12); border-color: rgba(255,71,87,.3); }
-.main-controls .danger.active { color: #fff; background: rgba(255,71,87,.82); }
-.fire-cluster { display: grid; gap: 6px; padding: 10px; align-content: center; }
-.fire-cluster.ready { border-color: rgba(255,71,87,.58); background: rgba(255,71,87,.10); box-shadow: 0 0 34px rgba(255,71,87,.12); }
-.fire-cluster.blocked { border-color: rgba(255,255,255,.10); background: rgba(4,6,9,.95); }
-.fire-cluster.penalty { border-color: rgba(255,187,66,.48); background: rgba(255,187,66,.10); }
-.fire-cluster.autonomous { border-color: rgba(72,168,255,.34); background: rgba(72,168,255,.08); }
-.primary-fire { min-height: 70px; border-radius: 18px; color: #fff; border: 1px solid rgba(255,255,255,.22); font-size: clamp(18px, 1.85vw, 30px); font-weight: 1000; letter-spacing: .06em; box-shadow: 0 20px 44px rgba(255,71,87,.22), inset 0 0 22px rgba(255,255,255,.08); }
-.primary-fire.ready { background: linear-gradient(180deg, #ff3146, #b90819); animation: fireReadyPulse 1.2s ease-in-out infinite; }
-.primary-fire.blocked { background: linear-gradient(180deg, #1a2028, #090c11); color: #8fa0ad; box-shadow: inset 0 0 18px rgba(255,255,255,.04); }
-.primary-fire.penalty { background: linear-gradient(180deg, #ffc04f, #8f5500); color: #150c00; }
-.primary-fire.autonomous { background: linear-gradient(180deg, #2269ae, #123452); color: #d9f0ff; font-size: clamp(13px, 1.15vw, 18px); letter-spacing: .03em; box-shadow: inset 0 0 22px rgba(255,255,255,.08); }
-.primary-fire:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 24px 54px rgba(255,71,87,.34), inset 0 0 22px rgba(255,255,255,.1); }
-.fire-cluster small { color: #ffe0a4; line-height: 1.28; text-align: center; font-weight: 800; }
-.fire-cluster strong { display: block; color: #fff; text-align: center; font-size: 13px; line-height: 1.25; }
-.fire-cluster.blocked small { color: #ffbdc4; }
-.fire-cluster.autonomous small { color: #cdeaff; }
-.debug-drawer { margin-top: 12px; padding: 0; overflow: hidden; }
-.debug-drawer summary { padding: 14px 18px; color: var(--muted); font-weight: 1000; cursor: pointer; }
-.debug-grid { display: grid; grid-template-columns: 1fr 1fr 1.1fr; gap: 12px; padding: 0 14px 14px; }
-.debug-grid section { min-width: 0; border-radius: 18px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.07); padding: 12px; }
-.debug-grid b { display: block; color: var(--cyan); margin-bottom: 8px; }
-.debug-grid code { display: block; max-height: 230px; overflow: auto; white-space: pre-wrap; color: #d2e8f4; font-size: 11px; }
-.event-debug p { margin: 0 0 7px; color: #dcecf5; font-size: 12px; }
 .event-debug p .target-silhouette { display: inline-block; width: 17px; height: 17px; margin: 0 6px -4px 0; color: var(--amber); stroke-width: 3; filter: none; }
-.event-debug span { color: var(--muted); }
-.event-debug button { min-height: 34px; padding: 0 12px; border-radius: 13px; background: rgba(37,216,255,.12); color: var(--cyan); border: 1px solid rgba(37,216,255,.28); font-weight: 900; }
-
-.tutorial-overlay { position: fixed; z-index: 40; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 72%, transparent 0 36%, rgba(0,0,0,.32) 78%); }
-.tutorial-card { pointer-events: auto; position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); width: min(620px, calc(100vw - 28px)); border-radius: 26px; border: 1px solid rgba(255,187,66,.42); background: rgba(9, 13, 18, .96); padding: 20px; box-shadow: 0 24px 80px rgba(0,0,0,.52), 0 0 34px rgba(255,187,66,.13); }
-.tutorial-card span { color: var(--amber); text-transform: uppercase; letter-spacing: .11em; font-size: 11px; font-weight: 1000; }
-.tutorial-card h2 { margin: 7px 0; }
-.tutorial-card p { color: #dfeef7; line-height: 1.45; }
-.tutorial-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.tutorial-actions button { min-height: 42px; padding: 0 16px; border-radius: 15px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); font-weight: 900; }
-.tutorial-actions .continue { color: #071016; background: #fff3c8; }
 .tutorial-pulse { position: relative; animation: heartbeat 1.1s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(255,187,66,.38), 0 0 34px rgba(255,187,66,.38) !important; }
+.fire-ready-pulse { animation: fireReadyPulse 1.2s ease-in-out infinite; }
 
 @keyframes dash { to { stroke-dashoffset: -240; } }
 @keyframes incoming { 0% { opacity: .2; } 35% { opacity: 1; } 100% { opacity: .35; } }
@@ -428,44 +164,41 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .001ms !important; }
 }
 
-@media (max-width: 1320px) {
-  .competition-header { grid-template-columns: 1fr auto; }
-  .header-metrics { grid-column: 1 / -1; }
-  .sim-grid { grid-template-columns: 1fr; }
-  .guidance-panel { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .guidance-panel h2, .panel-kicker, .restart-tutorial { grid-column: 1 / -1; }
-  .bottom-action-bar { grid-template-columns: 1fr; }
-  .debug-grid { grid-template-columns: 1fr; }
-}
-
 @media (max-width: 760px) {
-  .sim-shell { padding: 10px; }
-  .competition-header, .header-metrics, .guidance-panel, .stage-checklist, .stage-checklist.compact, .main-controls, .boot-checks { grid-template-columns: 1fr; }
-  .stage-switch { overflow-x: auto; }
-  .parkour-hero { min-height: 430px; }
-  .map-assumption { left: 12px; right: 12px; max-width: none; bottom: 62px; }
-  .map-legend { left: 12px; right: 12px; bottom: 12px; }
-  .primary-fire { font-size: 22px; }
-  .signal { font-size: clamp(38px, 13vw, 58px); letter-spacing: .08em; }
-}
+  .aircraft {
+    min-width: 54px;
+    min-height: 66px;
+    gap: 1px;
+  }
 
-@media (min-width: 1051px) and (max-width: 1320px) {
-  .competition-header { grid-template-columns: minmax(260px, 1fr) auto 132px; }
-  .header-metrics { grid-column: 1 / -1; }
-  .sim-mode { grid-column: 3; grid-row: 1; }
-  .sim-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
-  .guidance-panel { grid-template-columns: 1fr; }
-  .guidance-panel h2, .panel-kicker, .restart-tutorial { grid-column: auto; }
-}
+  .target-visual {
+    width: 34px;
+    height: 34px;
+  }
 
-@media (max-width: 1050px) {
-  .competition-header { grid-template-columns: 1fr auto; }
-  .header-metrics { grid-column: 1 / -1; }
-  .sim-mode { grid-column: 1 / -1; min-height: 42px; }
-  .sim-grid { grid-template-columns: 1fr; }
-  .guidance-panel { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .guidance-panel h2, .panel-kicker, .restart-tutorial { grid-column: 1 / -1; }
-  .bottom-action-bar { grid-template-columns: 1fr; }
-  .debug-grid { grid-template-columns: 1fr; }
+  .target-silhouette {
+    width: 29px;
+    height: 29px;
+    stroke-width: 2.4;
+  }
+
+  .aircraft .target-name,
+  .aircraft small,
+  .range-chip {
+    max-width: 70px;
+    padding: 1px 4px;
+    font-size: 7px;
+  }
+
+  .stage1-zone text {
+    font-size: 2.55px;
+  }
+
+  .stage1-zone text:nth-of-type(2) {
+    display: none;
+  }
+
+  .motion-trail {
+    display: none;
+  }
 }
-.parkour-hero.stage-1 .system-anchor text { display: none; }

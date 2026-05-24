@@ -33,6 +33,13 @@ const targetCopy: Record<TargetType, string> = {
   'Mini/Micro İHA': 'Mini/Micro İHA',
 };
 
+const targetShortCopy: Record<TargetType, string> = {
+  F16: 'F16',
+  Helikopter: 'Helikopter',
+  'Balistik Füze': 'Balistik',
+  'Mini/Micro İHA': 'İHA',
+};
+
 const tutorialSteps: Array<{
   id: string;
   stage: 'global' | Stage;
@@ -44,7 +51,7 @@ const tutorialSteps: Array<{
     id: 'global-map',
     stage: 'global',
     title: 'Parkur ana çalışma alanıdır',
-    message: 'Hedefler A noktasından başlayıp B bölgesine doğru ilerler. Rehber açıkken hedefler, süre ve puan tamamen duraklatılır.',
+    message: 'Aşama 1’de 5/10/15 m durağan bantlar izlenir; Aşama 2/3’te hedefler A noktasından B bölgesine ilerler. Rehber açıkken süre ve puan duraklatılır.',
     highlight: 'map',
   },
   {
@@ -64,15 +71,15 @@ const tutorialSteps: Array<{
   {
     id: 'stage1-fire',
     stage: 1,
-    title: 'FIRE düğmesi yarışma aksiyonudur',
-    message: 'Doğru hedef seçiliyken FIRE düğmesine bas. Basmazsan hedef imha edilmez; süre işlemeye devam eder.',
+    title: 'ATEŞ düğmesi yarışma aksiyonudur',
+    message: 'Doğru hedef seçiliyken ATEŞ HAZIR düğmesine bas. Basmazsan hedef imha edilmez; süre işlemeye devam eder.',
     highlight: 'fire',
   },
   {
     id: 'stage2-auto',
     stage: 2,
     title: 'Aşama 2 otonom akıştır',
-    message: 'Dört tur vardır. Her turda üç kolda birer hedef A→B hareket eder. Sistem hedefleri girişte değil, eğitim angajman penceresine ulaştıklarında imha eder.',
+    message: 'Resmi akış 4 turdur; pratik modunda ek turlar eğitim içindir. Her turda üç kolda birer hedef A→B hareket eder ve sistem angajmanı otonom kurar.',
     highlight: 'mode',
   },
   {
@@ -94,6 +101,10 @@ interface StrikeEffect {
 }
 
 type FireActionState = 'ready' | 'blocked' | 'penalty' | 'autonomous';
+
+function cx(...classes: Array<string | false | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
 
 function formatTime(seconds: number) {
   const bounded = Math.max(0, Math.floor(seconds));
@@ -140,12 +151,13 @@ function rangeLabel(track?: Track) {
 }
 
 function targetStatusLabel(track: Track, stage: Stage) {
-  if (track.candidate) return 'MENZİL UYGUN';
-  if (stage === 1) return 'SIRA BEKLENİYOR';
-  if (track.friendFoe === 'Dost') return 'DOST KORUNUYOR';
-  if (track.type === 'Mini/Micro İHA' && track.rangeGate === 'Uygun') return `≤${competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters} m BEKLENİYOR`;
-  if (track.rangeGate === 'Uygun') return 'ANGAJMAN BEKLENİYOR';
-  return rangeLabel(track);
+  if (track.candidate) return 'UYGUN';
+  if (stage === 1) return 'SIRA';
+  if (track.friendFoe === 'Dost') return 'DOST KİLİT';
+  if (track.type === 'Mini/Micro İHA' && track.rangeGate === 'Uygun') return `≤${competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters} m`;
+  if (track.rangeGate === 'Uygun') return 'BEKLE';
+  if (track.rangeGate === 'Erken') return 'ERKEN';
+  return 'DIŞI';
 }
 
 function targetTypeFromText(text: string): TargetType | undefined {
@@ -240,7 +252,15 @@ function CourseMap({
   } as CSSProperties;
 
   return (
-    <section className={`parkour-hero stage-${stage} ${tutorialHighlight === 'map' || tutorialHighlight === 'ranges' ? 'tutorial-pulse' : ''}`} data-testid="parkour-hero">
+    <section
+      className={cx(
+        `parkour-hero stage-${stage}`,
+        'relative min-h-[500px] overflow-hidden rounded-lg border border-[rgba(174,225,255,.18)] bg-[#0b1117] shadow-[inset_0_0_54px_rgba(0,0,0,.56)]',
+        'max-[760px]:min-h-[430px]',
+        (tutorialHighlight === 'map' || tutorialHighlight === 'ranges') && 'tutorial-pulse',
+      )}
+      data-testid="parkour-hero"
+    >
       <svg className="parkour-overlay" viewBox="0 0 100 100" aria-label={`Aşama ${stage} parkur şeması`}>
         <defs>
           <pattern id={`grid-${stage}`} width="5" height="5" patternUnits="userSpaceOnUse">
@@ -258,10 +278,10 @@ function CourseMap({
               <g key={range} className={`stage1-zone zone-${range} ${selectedBand === range ? 'active' : ''}`} data-testid={`range-${range}m`}>
                 <rect x={range === 15 ? 9 : range === 10 ? 36 : 63} y="15" width="25" height="66" rx="4" />
                 <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="22">{range} m</text>
-                <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="76">DURAĞAN HEDEF BANDI</text>
+                <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="76">DURAĞAN</text>
               </g>
             ))}
-            <text className="stage1-title" x="9" y="10">AŞAMA 1 · MANUEL DURAĞAN ATIŞ</text>
+            <text className="stage1-title" x="9" y="10">A1 · MANUEL ATIŞ</text>
           </g>
         ) : (
           <g className="moving-course-field">
@@ -281,7 +301,7 @@ function CourseMap({
             ))}
             <text className="point-label" x="7" y="12">A</text>
             <text className="point-label" x="78" y="12">B</text>
-            <text className="escape-label" x="70" y="91">B’ye ulaşırsa kaçar</text>
+            <text className="escape-label" x="70" y="91">B KAÇIŞ</text>
             {COMPETITION_COURSE.lanes.map((lane) => (
               <g key={lane.lane} className={`lane-path lane-${lane.lane}`}>
                 <polyline points={points(lane.points)} markerEnd={`url(#arrow-${stage})`} />
@@ -301,7 +321,7 @@ function CourseMap({
         {selectedTrack && stage === 1 && (
           <g className="target-link">
             <line x1={selectedTrack.x} y1={selectedTrack.y} x2={COMPETITION_COURSE.systemPosition.x} y2={COMPETITION_COURSE.systemPosition.y} />
-            <text x="56" y="61">Seçili hedef → FIRE</text>
+            <text x="56" y="61">Seçili → Ateş</text>
           </g>
         )}
         {strikes.map((strike) => (
@@ -317,8 +337,14 @@ function CourseMap({
         ))}
       </svg>
 
-      <div className="steel-dome" style={domeStyle} data-testid="steel-dome" data-rotation={domeAngle.toFixed(1)} aria-hidden="true">
-        <img src={gokkalkanIconUrl} alt="" />
+      <div
+        className="steel-dome pointer-events-none absolute z-[5] grid h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_20px_rgba(51,230,140,.26))_drop-shadow(0_12px_24px_rgba(0,0,0,.5))]"
+        style={domeStyle}
+        data-testid="steel-dome"
+        data-rotation={domeAngle.toFixed(1)}
+        aria-hidden="true"
+      >
+        <img className="h-[68px] w-[68px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
       </div>
 
       {tracks.map((track) => {
@@ -328,7 +354,14 @@ function CourseMap({
         return (
           <button
             key={track.id}
-            className={`aircraft ${affiliationClass} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''} ${destroyed ? 'destroyed' : ''}`}
+            className={cx(
+              'aircraft absolute z-[6] grid min-h-24 min-w-[78px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center gap-[3px] rounded-full border-0 bg-transparent p-0.5 text-center text-[#ffd17a] shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top]',
+              affiliationClass,
+              stage !== 1 ? 'moving' : 'stationary',
+              selected && 'selected',
+              track.candidate && 'candidate',
+              destroyed && 'destroyed',
+            )}
             style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
             data-testid={`track-${track.id}`}
             aria-label={`${track.id} ${targetCopy[track.type]} ${track.friendFoe} ${track.range.toFixed(1)} metre`}
@@ -338,19 +371,21 @@ function CourseMap({
             <span className="target-visual"><TargetSilhouette type={track.type} /></span>
             <span className="target-label-stack">
               <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
-              <small>{targetCopy[track.type]}</small>
-              <em className={`range-chip ${track.rangeGate.toLowerCase()}`}>{targetStatusLabel(track, stage)}</em>
+              <small>{targetShortCopy[track.type]}</small>
+              <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={rangeLabel(track)}>{targetStatusLabel(track, stage)}</em>
             </span>
           </button>
         );
       })}
 
-      <div className="map-legend">
-        <span><i className="enemy-dot" />Düşman</span>
-        <span><i className="friend-dot" />Dost</span>
-        <span><i className="window-dot" />Menzil uygun</span>
+      <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil uygun</span>
       </div>
-      <div className="map-assumption">{competitionSimulationConfig.assumptionNotice}</div>
+      <div className="map-assumption absolute right-3.5 bottom-3 z-[8] max-w-[min(460px,48%)] rounded-lg border border-[rgba(255,187,66,.24)] bg-[rgba(255,187,66,.10)] px-2 py-1.5 text-[10px] leading-tight text-[#ffbb42] max-[760px]:right-3 max-[760px]:bottom-[62px] max-[760px]:left-3 max-[760px]:max-w-none">
+        {competitionSimulationConfig.assumptionNotice}
+      </div>
     </section>
   );
 }
@@ -379,21 +414,51 @@ function CompetitionHeader({
   onSimulatorMode: (mode: SimulatorMode) => void;
 }) {
   const safetyOk = safetyState.blockReason === 'ALLOWED';
+  const metricClass = 'grid min-w-0 place-items-center overflow-hidden rounded-md bg-white/[.035] text-center text-[11px] leading-tight text-[#91a6b7]';
+  const metricValueClass = 'mt-0.5 block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-[#edf8ff]';
+  const chromeClass = 'rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)]';
   return (
-    <header className="competition-header">
-      <div className="app-title"><span>⬢</span><div><b>GÖKKALKAN</b><small>TEKNOFEST Çelikkubbe Final Simülatörü</small></div></div>
-      <nav className="stage-switch" aria-label="Aşama seçimi">
-        {([1, 2, 3] as const).map((item) => <button key={item} className={stage === item ? 'active' : ''} onClick={() => onStage(item)}>Aşama {item}</button>)}
-      </nav>
-      <div className="header-metrics">
-        <span>Mod <b>{modeCopy[mode]}</b></span>
-        <span>Süre <b>{timer}</b></span>
-        <span>Puan <b>{score}</b></span>
-        <span>Tur <b>{round}/{roundTotal}</b></span>
-        <span className={safetyOk ? 'safe' : 'unsafe'}>Güvenlik <b>{safetyOk ? 'Hazır' : blockCopy[safetyState.blockReason]}</b></span>
+    <header className="competition-header mb-2 grid min-h-14 items-stretch gap-2 [grid-template-columns:1fr_auto] min-[1051px]:max-[1320px]:[grid-template-columns:minmax(240px,1fr)_auto_112px] min-[1321px]:[grid-template-columns:minmax(190px,.72fr)_auto_minmax(390px,1.3fr)_112px]">
+      <div className={`app-title flex min-w-0 items-center gap-2.5 px-3 ${chromeClass}`}>
+        <span className="grid h-[30px] w-[30px] place-items-center rounded-md bg-[#25d8ff]/10 text-[#25d8ff]">⬢</span>
+        <div className="min-w-0">
+          <b className="block text-base font-black tracking-[.09em]">GÖKKALKAN</b>
+          <small className="block overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-[#91a6b7]">Çelikkubbe yarışma konsolu</small>
+        </div>
       </div>
-      <button className={`sim-mode ${simulatorMode}`} onClick={() => onSimulatorMode(simulatorMode === 'strict' ? 'practice' : 'strict')}>
-        {simulatorMode === 'strict' ? 'Sıkı yarışma' : 'Pratik modu'}
+      <nav className={`stage-switch flex gap-1.5 overflow-x-auto p-1.5 ${chromeClass}`} aria-label="Aşama seçimi">
+        {([1, 2, 3] as const).map((item) => (
+          <button
+            key={item}
+            className={cx(
+              'min-w-[82px] rounded-md px-2.5 text-[13px] font-black text-[#91a6b7]',
+              stage === item && 'border border-[#25d8ff]/40 bg-[#25d8ff]/15 text-[#25d8ff]',
+            )}
+            onClick={() => onStage(item)}
+          >
+            Aşama {item}
+          </button>
+        ))}
+      </nav>
+      <div className={`header-metrics col-span-full grid grid-cols-5 gap-1.5 p-1.5 max-[760px]:grid-cols-1 min-[1321px]:col-auto ${chromeClass}`}>
+        <span className={metricClass}>Mod <b className={metricValueClass}>{modeCopy[mode]}</b></span>
+        <span className={metricClass}>Süre <b className={metricValueClass}>{timer}</b></span>
+        <span className={metricClass}>Puan <b className={metricValueClass}>{score}</b></span>
+        <span className={metricClass}>Tur <b className={metricValueClass}>{round}/{roundTotal}</b></span>
+        <span className={metricClass}>Güvenlik <b className={cx(metricValueClass, safetyOk ? 'text-[#33e68c]' : 'text-[#ff4757]')}>{safetyOk ? 'Hazır' : blockCopy[safetyState.blockReason]}</b></span>
+      </div>
+      <button
+        className={cx(
+          `sim-mode ${simulatorMode}`,
+          chromeClass,
+          'col-span-full min-h-[42px] text-[13px] font-black',
+          'min-[1051px]:max-[1320px]:col-start-3 min-[1051px]:max-[1320px]:row-start-1 min-[1321px]:col-auto',
+          simulatorMode === 'strict' ? 'bg-[#33e68c]/10 text-[#33e68c]' : 'bg-[#ffbb42]/10 text-[#ffbb42]',
+        )}
+        title={simulatorMode === 'strict' ? 'Sıkı yarışma modu' : 'Pratik modu'}
+        onClick={() => onSimulatorMode(simulatorMode === 'strict' ? 'practice' : 'strict')}
+      >
+        {simulatorMode === 'strict' ? 'Sıkı' : 'Pratik'}
       </button>
     </header>
   );
@@ -426,79 +491,103 @@ function GuidancePanel({
 }) {
   const stageConfig = stageConfigFor(stage);
   const objective = stage === 1
-    ? 'Zarf sırasındaki durağan hedefleri manuel ateşle imha et.'
+    ? 'Zarf sırasıyla manuel imha.'
     : stage === 2
-      ? 'Üç koldaki hedefleri her turda B’ye ulaşmadan otonom imha et.'
-      : 'Dostları koru; sadece düşman hedefi doğru menzil kapısında imha et.';
+      ? 'Üç kolu B’ye varmadan temizle.'
+      : 'Dostları koru, düşmanı menzilde vur.';
   const nextAction = stage === 1
-    ? mode === 'manual' ? 'Beklenen hedefi seç ve FIRE kararını ver.' : 'Manuel moda geç.'
-    : mode === 'autonomous' ? 'Otonom akışı izle; sistem menzil penceresine gelince angajman kurar.' : 'Otonom modu başlat.';
+    ? mode === 'manual' ? 'Beklenen hedefi seç, ateş kararını ver.' : 'Manuel moda geç.'
+    : mode === 'autonomous' ? 'Otonom akışı izle; menzil penceresi angajmanı açar.' : 'Otonom modu başlat.';
   const ruleReminder = stage === 1
-    ? 'Aşama 1: yakın +5, orta +10, uzun +20; yanlış hedef -5; 80 taban puana zaman bonusu eklenir.'
+    ? 'A1: yakın +5, orta +10, uzun +20; yanlış sıra -5; süre bonusu.'
     : stage === 2
-      ? 'Aşama 2: resmi akış 4 turdur ve sınıflandırma beklenmez; eğitim modu ek turlarla F16 10–15 m, Helikopter/Balistik 5–15 m ve İHA yakın angajman örneklerini gösterir.'
-      : 'Aşama 3: F16 10–15 m +30; Helikopter/Balistik Füze 5–15 m +20; Mini/Micro İHA resmi puan menzili 0–15 m, eğitim stratejisi yakın angajmanı tercih eder.';
+      ? 'A2: 4 tur, 3 kol, sınıflandırma beklenmez; kaçan hedef -5.'
+      : 'A3: F16 10–15 m +30; Helikopter/Balistik 5–15 m +20; İHA 0–15 m +10.';
+  const sectionClass = 'min-w-0 rounded-lg border border-white/[.07] bg-white/[.035] px-2.5 py-2';
+  const labelClass = 'mb-1 block text-[10px] font-black uppercase tracking-[.05em] text-[#91a6b7]';
+  const textClass = 'm-0 text-xs leading-snug text-[#e8f6ff] [overflow-wrap:anywhere]';
 
   return (
-    <aside className={`guidance-panel ${tutorialHighlight === 'guidance' ? 'tutorial-pulse' : ''}`} data-testid="competition-guidance">
-      <div className="panel-kicker">Yarışma Rehberi</div>
-      <h2>{stageConfig.title}</h2>
-      <section>
-        <span>Mevcut amaç</span>
-        <p>{objective}</p>
+    <aside
+      className={cx(
+        'guidance-panel grid content-start gap-2 rounded-lg border border-[rgba(174,225,255,.18)] bg-[rgba(9,13,17,.96)] p-2.5 max-[1320px]:grid-cols-3 max-[760px]:grid-cols-1',
+        tutorialHighlight === 'guidance' && 'tutorial-pulse',
+      )}
+      data-testid="competition-guidance"
+    >
+      <div className="panel-kicker text-[10px] font-black uppercase tracking-[.08em] text-[#33e68c] max-[1320px]:col-span-full min-[1051px]:max-[1320px]:col-auto">Görev Paneli</div>
+      <h2 className="m-0 text-lg font-black leading-tight max-[1320px]:col-span-full min-[1051px]:max-[1320px]:col-auto">{stageConfig.title}</h2>
+      <section className={sectionClass}>
+        <span className={labelClass}>Odak</span>
+        <p className={textClass}>{objective}</p>
+        <p className={`${textClass} mt-1 text-[#91a6b7]`}>{nextAction}</p>
       </section>
-      <section>
-        <span>Sıradaki gerekli aksiyon</span>
-        <p>{nextAction}</p>
+      <section className={`${sectionClass} border-[#ff4757]/25 bg-[#ff4757]/10`}>
+        <span className={labelClass}>Ateş</span>
+        <b className="mb-1 block text-base text-white">{fireStatus}</b>
+        <p className={textClass}>{fireReason}</p>
+        <p className={`${textClass} mt-1 font-black text-[#ffbb42]`}>{scoreImpact}</p>
       </section>
-      <section className="fire-card">
-        <span>Ateş durumu</span>
-        <b>{fireStatus}</b>
-        <p>{fireReason}</p>
-      </section>
-      <section>
-        <span>Şimdi ateş edilirse puan etkisi</span>
-        <p>{scoreImpact}</p>
-      </section>
-      <section className="target-detail-card">
-        <span>Seçili hedef detayı</span>
+      <section className={sectionClass}>
+        <span className={labelClass}>Seçili</span>
         {selectedTrack ? (
-          <div className="target-detail-row">
-            <TargetSilhouette type={selectedTrack.type} />
-            <p>{selectedTrack.id} · {targetCopy[selectedTrack.type]} · {selectedTrack.friendFoe} · {selectedTrack.range.toFixed(1)} m · {rangeLabel(selectedTrack)}</p>
+          <div className="target-detail-row grid grid-cols-[32px_minmax(0,1fr)] items-center gap-2">
+            <TargetSilhouette className="detail-icon" type={selectedTrack.type} />
+            <div>
+              <p className={textClass}><b className="text-white">{selectedTrack.id}</b> · {targetCopy[selectedTrack.type]}</p>
+              <p className={`${textClass} mt-1 text-[#91a6b7]`}>{selectedTrack.friendFoe} · {selectedTrack.range.toFixed(1)} m · {rangeLabel(selectedTrack)}</p>
+            </div>
           </div>
-        ) : <p>Seçili hedef yok</p>}
+        ) : <p className={textClass}>Seçili hedef yok</p>}
       </section>
-      <section>
-        <span>Kural hatırlatması</span>
-        <p>{ruleReminder}</p>
+      <section className={sectionClass}>
+        <span className={labelClass}>Kural</span>
+        <p className={textClass}>{ruleReminder}</p>
       </section>
-      <section>
-        <span>Tur durumu</span>
-        <p>Tur {round}/{roundTotal} · {missionStatus}</p>
+      <section className={sectionClass}>
+        <span className={labelClass}>Tur</span>
+        <p className={textClass}>{round}/{roundTotal} · {missionStatus}</p>
       </section>
-      <button className="restart-tutorial" onClick={onRestartTutorial}>Rehberi yeniden başlat</button>
+      <button className="restart-tutorial min-h-8 rounded-lg border border-[#25d8ff]/30 bg-[#25d8ff]/10 text-xs font-black text-[#25d8ff] max-[1320px]:col-span-full min-[1051px]:max-[1320px]:col-auto" onClick={onRestartTutorial}>Rehber</button>
     </aside>
   );
 }
 
 function StageChecklist({ stage, currentTarget, destroyedIds, round, roundHits, roundTotal }: { stage: Stage; currentTarget: number; destroyedIds: string[]; round: number; roundHits: number; roundTotal: number }) {
+  const itemClass = 'grid min-h-[50px] min-w-0 place-items-center rounded-md bg-white/[.04] p-1.5 text-center text-[11px] font-black leading-tight text-[#91a6b7] [overflow-wrap:anywhere]';
   if (stage === 1) {
     return (
-      <div className="stage-checklist" data-testid="stage-1-order">
+      <div className="stage-checklist grid grid-cols-4 gap-1.5 rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)] p-2 max-[760px]:grid-cols-1" data-testid="stage-1-order">
         {TARGET_ORDER.map((target, index) => (
-          <span key={target} className={index < currentTarget ? 'done' : index === currentTarget ? 'current' : ''}>
-            <TargetSilhouette type={target} />
-            <b>{targetCopy[target]}</b>
+          <span
+            key={target}
+            className={cx(
+              itemClass,
+              index < currentTarget && 'border border-[#33e68c]/30 bg-[#33e68c]/10 text-[#33e68c]',
+              index === currentTarget && 'border border-[#ffbb42]/40 bg-[#ffbb42]/10 text-[#ffbb42]',
+            )}
+          >
+            <TargetSilhouette className="check-icon" type={target} />
+            <b className="block text-[10px] leading-none">{targetShortCopy[target]}</b>
           </span>
         ))}
       </div>
     );
   }
   return (
-    <div className="stage-checklist compact">
+    <div className="stage-checklist compact grid grid-cols-8 gap-1.5 rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)] p-2 max-[760px]:grid-cols-1">
       {Array.from({ length: roundTotal }, (_, index) => index + 1).map((item) => (
-        <span key={item} className={item < round ? 'done' : item === round ? 'current' : ''}>Tur {item}{item === round ? ` · ${roundHits || destroyedIds.length} imha` : ''}</span>
+        <span
+          key={item}
+          className={cx(
+            itemClass,
+            'min-h-[42px] text-[10px]',
+            item < round && 'border border-[#33e68c]/30 bg-[#33e68c]/10 text-[#33e68c]',
+            item === round && 'border border-[#ffbb42]/40 bg-[#ffbb42]/10 text-[#ffbb42]',
+          )}
+        >
+          Tur {item}{item === round ? ` · ${roundHits || destroyedIds.length} imha` : ''}
+        </span>
       ))}
     </div>
   );
@@ -547,20 +636,56 @@ function BottomActionBar({
   onReset: () => void;
   onEstop: () => void;
 }) {
+  const controlButtonClass = (active = false, danger = false) => cx(
+    'min-w-0 rounded-md border border-white/[.08] bg-white/[.055] text-xs font-black text-[#dcecf5] [overflow-wrap:anywhere]',
+    active && 'border-[#25d8ff]/30 bg-[#25d8ff]/15 text-[#25d8ff]',
+    danger && 'border-[#ff4757]/30 bg-[#ff4757]/10 text-[#ffb3ba]',
+    danger && active && 'bg-[#ff4757] text-white',
+  );
+  const fireClusterTone: Record<FireActionState, string> = {
+    ready: 'border-[#ff4757]/60 bg-[#ff4757]/10 shadow-[0_0_34px_rgba(255,71,87,.12)]',
+    blocked: 'border-white/10 bg-[rgba(4,6,9,.95)]',
+    penalty: 'border-[#ffbb42]/50 bg-[#ffbb42]/10',
+    autonomous: 'border-[#48a8ff]/30 bg-[#48a8ff]/10',
+  };
+  const fireButtonTone: Record<FireActionState, string> = {
+    ready: 'fire-ready-pulse bg-linear-to-b from-[#ff3146] to-[#b90819] text-white shadow-[0_14px_34px_rgba(255,71,87,.18),inset_0_0_18px_rgba(255,255,255,.07)]',
+    blocked: 'bg-linear-to-b from-[#1a2028] to-[#090c11] text-[#8fa0ad] shadow-[inset_0_0_18px_rgba(255,255,255,.04)]',
+    penalty: 'bg-linear-to-b from-[#ffc04f] to-[#8f5500] text-[#150c00]',
+    autonomous: 'bg-linear-to-b from-[#2269ae] to-[#123452] text-[#d9f0ff] shadow-[inset_0_0_18px_rgba(255,255,255,.08)]',
+  };
   return (
-    <section className="bottom-action-bar" data-testid="bottom-action-bar">
+    <section className="bottom-action-bar mt-2 grid grid-cols-1 items-stretch gap-2 min-[1321px]:[grid-template-columns:minmax(0,1fr)_minmax(330px,.72fr)_minmax(280px,360px)]" data-testid="bottom-action-bar">
       <StageChecklist stage={stage} currentTarget={currentTarget} destroyedIds={destroyedIds} round={round} roundHits={roundHits} roundTotal={roundTotal} />
-      <div className="main-controls">
-        <button className={mode === 'manual' ? 'active' : ''} onClick={() => onMode('manual')}>Manuel</button>
-        <button className={mode === 'autonomous' ? 'active' : ''} onClick={() => onMode('autonomous')}>Otonom</button>
-        <button onClick={onPause}>{paused ? 'Devam' : 'Duraklat'}</button>
-        <button className={estop ? 'danger active' : 'danger'} onClick={onEstop}>Acil Durdur</button>
-        <button onClick={onReset}>Aşamayı Sıfırla</button>
+      <div className="main-controls grid grid-cols-5 gap-1.5 rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)] p-2 max-[760px]:grid-cols-1">
+        <button className={controlButtonClass(mode === 'manual')} onClick={() => onMode('manual')}>Manuel</button>
+        <button className={controlButtonClass(mode === 'autonomous')} onClick={() => onMode('autonomous')}>Otonom</button>
+        <button className={controlButtonClass()} onClick={onPause}>{paused ? 'Devam' : 'Duraklat'}</button>
+        <button className={controlButtonClass(estop, true)} onClick={onEstop}>Acil Durdur</button>
+        <button className={controlButtonClass()} onClick={onReset}>Sıfırla</button>
       </div>
-      <div className={`fire-cluster ${fireActionState} ${tutorialHighlight === 'fire' ? 'tutorial-pulse' : ''}`} data-testid="fire-cluster">
-        <button className={`primary-fire ${fireActionState}`} disabled={fireDisabled} onClick={onFire}>{fireButtonText}</button>
-        <small>{fireReason}</small>
-        <strong>{scoreImpact}</strong>
+      <div
+        className={cx(
+          `fire-cluster ${fireActionState}`,
+          'grid content-center gap-1.5 rounded-lg border p-2',
+          fireClusterTone[fireActionState],
+          tutorialHighlight === 'fire' && 'tutorial-pulse',
+        )}
+        data-testid="fire-cluster"
+      >
+        <button
+          className={cx(
+            `primary-fire ${fireActionState}`,
+            'min-h-[54px] rounded-lg border border-white/20 text-[clamp(17px,1.35vw,22px)] font-black tracking-normal transition-transform enabled:hover:-translate-y-0.5',
+            fireButtonTone[fireActionState],
+          )}
+          disabled={fireDisabled}
+          onClick={onFire}
+        >
+          {fireButtonText}
+        </button>
+        <small className={cx('text-center text-[11px] font-extrabold leading-tight [overflow-wrap:anywhere]', fireActionState === 'blocked' ? 'text-[#ffbdc4]' : fireActionState === 'autonomous' ? 'text-[#cdeaff]' : 'text-[#ffe0a4]')}>{fireReason}</small>
+        <strong className="block text-center text-xs leading-tight text-white [overflow-wrap:anywhere]">{scoreImpact}</strong>
       </div>
     </section>
   );
@@ -583,29 +708,29 @@ function DebugDrawer({
 }) {
   const visibleEvents = events.slice(0, 10);
   return (
-    <details className="debug-drawer">
-      <summary>Gelişmiş / Debug</summary>
-      <div className="debug-grid">
-        <section>
-          <b>Güvenlik kapısı</b>
-          <code>{JSON.stringify({ ...baseSafety, command: fireSafety.blockReason }, null, 2)}</code>
+    <details className="debug-drawer mt-2 overflow-hidden rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)]">
+      <summary className="cursor-pointer px-3 py-2.5 text-xs font-black text-[#91a6b7]">Telemetri / Debug</summary>
+      <div className="debug-grid grid grid-cols-1 gap-2 px-2.5 pb-2.5 min-[1321px]:grid-cols-[1fr_1fr_1.1fr]">
+        <section className="min-w-0 rounded-lg border border-white/[.07] bg-white/[.035] p-2.5">
+          <b className="mb-2 block text-[#25d8ff]">Güvenlik kapısı</b>
+          <code className="block max-h-[200px] overflow-auto whitespace-pre-wrap text-[11px] text-[#d2e8f4]">{JSON.stringify({ ...baseSafety, command: fireSafety.blockReason }, null, 2)}</code>
         </section>
-        <section>
-          <b>Simülasyon ayarı</b>
-          <code>{JSON.stringify({ elapsed: Number(elapsed.toFixed(1)), maintenanceBudget, speed: { stage2: competitionSimulationConfig.stage2.targetSpeedMps, stage3: competitionSimulationConfig.stage3.targetSpeedMps }, selectedTrack }, null, 2)}</code>
+        <section className="min-w-0 rounded-lg border border-white/[.07] bg-white/[.035] p-2.5">
+          <b className="mb-2 block text-[#25d8ff]">Simülasyon ayarı</b>
+          <code className="block max-h-[200px] overflow-auto whitespace-pre-wrap text-[11px] text-[#d2e8f4]">{JSON.stringify({ elapsed: Number(elapsed.toFixed(1)), maintenanceBudget, speed: { stage2: competitionSimulationConfig.stage2.targetSpeedMps, stage3: competitionSimulationConfig.stage3.targetSpeedMps }, selectedTrack }, null, 2)}</code>
         </section>
-        <section className="event-debug">
-          <b>Olay kaydı</b>
+        <section className="event-debug min-w-0 rounded-lg border border-white/[.07] bg-white/[.035] p-2.5">
+          <b className="mb-2 block text-[#25d8ff]">Olay kaydı</b>
           {visibleEvents.map((event) => {
             const targetType = targetTypeFromText(`${event.decision} ${event.reason}`);
             return (
-              <p key={event.id}>
+              <p className="mb-1.5 text-xs text-[#dcecf5]" key={event.id}>
                 {targetType && <TargetSilhouette type={targetType} />}
-                <span>{event.timestamp}</span> A{event.stage} {event.decision} · {event.reason}
+                <span className="text-[#91a6b7]">{event.timestamp}</span> A{event.stage} {event.decision} · {event.reason}
               </p>
             );
           })}
-          <button onClick={() => exportJsonl(events)}>JSONL dışa aktar</button>
+          <button className="min-h-8 rounded-lg border border-[#25d8ff]/30 bg-[#25d8ff]/10 px-2.5 font-black text-[#25d8ff]" onClick={() => exportJsonl(events)}>JSONL dışa aktar</button>
         </section>
       </div>
     </details>
@@ -614,14 +739,14 @@ function DebugDrawer({
 
 function TutorialOverlay({ step, index, count, onNext, onSkip }: { step: (typeof tutorialSteps)[number]; index: number; count: number; onNext: () => void; onSkip: () => void }) {
   return (
-    <div className="tutorial-overlay" role="dialog" aria-modal="true" data-testid="tutorial-overlay">
-      <div className="tutorial-card">
-        <span>Rehber {index + 1}/{count} · simülasyon duraklatıldı</span>
-        <h2>{step.title}</h2>
-        <p>{step.message}</p>
-        <div className="tutorial-actions">
-          <button onClick={onSkip}>Bu aşamada rehberi atla</button>
-          <button className="continue" onClick={onNext}>{index + 1 === count ? 'Bitir ve devam et' : 'Devam'}</button>
+    <div className="tutorial-overlay pointer-events-none fixed inset-0 z-40 bg-black/75 backdrop-blur-[2px]" role="dialog" aria-modal="true" data-testid="tutorial-overlay">
+      <div className="tutorial-card pointer-events-auto absolute bottom-6 left-1/2 w-[min(640px,calc(100vw-24px))] -translate-x-1/2 rounded-lg border border-[#ffbb42]/55 bg-[#070b10] p-4 shadow-[0_24px_80px_rgba(0,0,0,.72),0_0_0_1px_rgba(255,187,66,.12)] min-[900px]:p-5">
+        <span className="text-[10px] font-black uppercase tracking-[.08em] text-[#ffbb42] min-[640px]:text-[11px]">Rehber {index + 1}/{count} · simülasyon duraklatıldı</span>
+        <h2 className="my-2 text-2xl font-black leading-tight text-[#edf8ff] min-[640px]:text-3xl">{step.title}</h2>
+        <p className="max-w-[62ch] text-base leading-relaxed text-[#dfeef7] min-[640px]:text-lg">{step.message}</p>
+        <div className="tutorial-actions mt-4 grid gap-2 min-[640px]:flex min-[640px]:justify-end">
+          <button className="min-h-11 rounded-lg border border-white/10 bg-white/[.09] px-4 text-sm font-black text-[#edf8ff] min-[640px]:text-base" onClick={onSkip}>Bu aşamada rehberi atla</button>
+          <button className="continue min-h-11 rounded-lg bg-[#fff3c8] px-4 text-sm font-black text-[#071016] min-[640px]:text-base" onClick={onNext}>{index + 1 === count ? 'Bitir ve devam et' : 'Devam'}</button>
         </div>
       </div>
     </div>
@@ -637,8 +762,8 @@ function Landing({ onEnter }: { onEnter: () => void }) {
   }, []);
 
   return (
-    <main className="landing">
-      <div className="landing-grid" />
+    <main className="landing relative grid min-h-screen place-items-center overflow-hidden bg-[#05070a]">
+      <div className="landing-grid pointer-events-none absolute inset-0" />
       <svg className="dome-scene" viewBox="0 0 1200 760" role="img" aria-label="Çelikkubbe simülatörü">
         <defs>
           <radialGradient id="domeGlow" cx="50%" cy="70%" r="65%">
@@ -654,14 +779,25 @@ function Landing({ onEnter }: { onEnter: () => void }) {
         <g className="radar"><circle cx="600" cy="620" r="140" /><circle cx="600" cy="620" r="260" /></g>
         {[0, 1, 2, 3].map((item) => <g key={item} className={`incoming incoming-${item}`}><path d="M0 0 l34 8 l-34 8 l8 -8 z" /><line x1="-74" y1="8" x2="-16" y2="8" /></g>)}
       </svg>
-      <section className="boot-card">
-        <h1 className="signal">GÖKKALKAN</h1>
-        <div className="boot-sub">Çelikkubbe final aşama eğitim simülatörü</div>
-        <div className="boot-checks">
-          {['Parkur', 'Aşama Kuralları', 'Menzil Kapısı', 'Dost/Düşman', 'Puanlama'].map((check, index) => <span key={check} className={progress > index * 18 ? 'done' : ''}><i />{check}</span>)}
+      <section className="boot-card relative z-[2] w-[min(720px,calc(100vw-36px))] rounded-xl border border-[#25d8ff]/25 bg-[rgba(7,10,14,.92)] p-[clamp(24px,4vw,44px)] text-center shadow-[0_24px_70px_rgba(0,0,0,.38)] backdrop-blur">
+        <h1 className="signal m-0 overflow-hidden whitespace-nowrap text-[clamp(42px,6.4vw,72px)] font-black leading-none tracking-[clamp(.06em,.9vw,.16em)] [text-shadow:0_0_28px_rgba(37,216,255,.58)] max-[760px]:text-[clamp(38px,13vw,58px)] max-[760px]:tracking-[.08em]">GÖKKALKAN</h1>
+        <div className="boot-sub my-3 mb-7 text-xs uppercase tracking-[.16em] text-[#c5d8e4]">Çelikkubbe yarışma konsolu</div>
+        <div className="boot-checks grid grid-cols-5 gap-2 max-[760px]:grid-cols-1">
+          {['Parkur', 'Aşama Kuralları', 'Menzil Kapısı', 'Dost/Düşman', 'Puanlama'].map((check, index) => (
+            <span
+              key={check}
+              className={cx(
+                'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-white/[.07] bg-[rgba(12,18,24,.88)] px-2 py-2.5 text-[#91a6b7]',
+                progress > index * 18 && 'border-[#33e68c]/30 text-[#edf8ff]',
+              )}
+            >
+              <i className={cx('mr-2 inline-block h-2 w-2 rounded-full bg-[#354553]', progress > index * 18 && 'bg-[#33e68c] shadow-[0_0_12px_#33e68c]')} />
+              {check}
+            </span>
+          ))}
         </div>
-        <div className="boot-progress"><span style={{ width: `${progress}%` }} /></div>
-        <button className="enter-console" onClick={onEnter}>Simülatöre Başla</button>
+        <div className="boot-progress my-6 h-1 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-linear-to-r from-[#25d8ff] to-[#33e68c] transition-[width]" style={{ width: `${progress}%` }} /></div>
+        <button className="enter-console rounded-lg bg-[#e5fbff] px-6 py-3 text-[#001319] shadow-[0_12px_28px_rgba(37,216,255,.18)] font-black" onClick={onEnter}>Simülatöre Başla</button>
       </section>
     </main>
   );
@@ -833,7 +969,7 @@ function Console() {
 
   const handleFire = () => {
     if (stage !== 1) {
-      addEvent('fire', 'AUTO_ONLY', 'Aşama 2/3 resmi modda manuel FIRE gerektirmez; otonom angajman görselleştirilir');
+      addEvent('fire', 'AUTO_ONLY', 'Aşama 2/3 resmi modda manuel ateş komutu gerektirmez; otonom angajman görselleştirilir');
       return;
     }
     if (!selectedTrack) {
@@ -1005,15 +1141,15 @@ function Console() {
   const fireDisabled = fireActionState === 'blocked' || fireActionState === 'autonomous';
   const timer = stage === 1 ? formatTime(timeLeft) : `${formatTime(timeLeft)} / tur`;
   const fireButtonText = fireActionState === 'autonomous'
-    ? 'AUTONOMOUS FIRE LOGIC ACTIVE'
+    ? 'OTONOM AKTİF'
     : fireActionState === 'ready'
-      ? 'FIRE READY'
+      ? 'ATEŞ HAZIR'
       : fireActionState === 'penalty'
         ? 'CEZA RİSKİ'
-        : 'FIRE BLOCKED';
+        : 'ATEŞ KİLİTLİ';
 
   return (
-    <main className="sim-shell">
+    <main className="sim-shell min-h-screen bg-[#05070a] p-2.5 text-[#ecf7ff]">
       <CompetitionHeader
         stage={stage}
         mode={mode}
@@ -1026,7 +1162,7 @@ function Console() {
         onStage={switchStage}
         onSimulatorMode={setSimulatorMode}
       />
-      <section className="sim-grid">
+      <section className="sim-grid grid min-h-[calc(100vh-216px)] grid-cols-1 gap-2 min-[1051px]:max-[1320px]:[grid-template-columns:minmax(0,1fr)_minmax(292px,320px)] min-[1321px]:[grid-template-columns:minmax(0,1fr)_minmax(292px,330px)]">
         <CourseMap
           stage={stage}
           tracks={tracks}
