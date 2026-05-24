@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
 import { COMPETITION_COURSE } from './competitionCourse';
 import {
   COMPETITION_STAGE_ROUNDS,
@@ -107,6 +108,27 @@ function xForRange(range: number) {
   return 88 - range * 5;
 }
 
+const DOME_SOURCE_NOSE_SCREEN_DEG = 135;
+const DOME_DEFAULT_LEFT_ROTATION_DEG = 45;
+
+function normalizeRotationNear(targetAngle: number, previousAngle: number): number {
+  let nextAngle = targetAngle;
+  while (nextAngle - previousAngle > 180) nextAngle -= 360;
+  while (nextAngle - previousAngle < -180) nextAngle += 360;
+  return nextAngle;
+}
+
+function domeRotationForTrack(track?: Track): number {
+  if (!track) return DOME_DEFAULT_LEFT_ROTATION_DEG;
+  const targetAngle = (Math.atan2(track.y - COMPETITION_COURSE.systemPosition.y, track.x - COMPETITION_COURSE.systemPosition.x) * 180) / Math.PI;
+  return targetAngle - DOME_SOURCE_NOSE_SCREEN_DEG;
+}
+
+function roundTotalFor(stage: Stage, simulatorMode: SimulatorMode): number {
+  if (stage === 2 && simulatorMode === 'practice') return competitionSimulationConfig.stage2.practiceRounds;
+  return COMPETITION_STAGE_ROUNDS[stage];
+}
+
 function rangeLabel(track?: Track) {
   if (!track) return 'Hedef seçilmedi';
   if (track.type === 'Mini/Micro İHA' && track.rangeGate === 'Uygun' && !track.candidate) {
@@ -152,8 +174,10 @@ function TargetSilhouette({ type, className = '' }: { type: TargetType; classNam
       )}
       {type === 'F16' && (
         <g>
-          <path d="M5 35 L29 27 L40 7 L45 9 L39 29 L59 35 L39 41 L45 56 L39 58 L28 43 Z" />
-          <path d="M20 32 L8 22 L30 29 Z M20 38 L8 49 L30 41 Z" />
+          <path d="M3 32 L25 25 L43 11 L53 15 L43 29 L62 32 L43 35 L53 49 L43 53 L25 39 Z" />
+          <path d="M23 25 L14 15 L30 23 Z M23 39 L14 49 L30 41 Z" />
+          <path d="M36 28 L45 24 L43 32 L45 40 L36 36 Z" />
+          <circle cx="47" cy="32" r="2.2" />
         </g>
       )}
       {type === 'Mini/Micro İHA' && (
@@ -179,10 +203,12 @@ function CourseMap({
   strikes,
   tutorialHighlight,
   onSelect,
+  aimTrack,
 }: {
   stage: Stage;
   tracks: Track[];
   selectedTrack?: Track;
+  aimTrack?: Track;
   destroyedIds: string[];
   strikes: StrikeEffect[];
   tutorialHighlight?: string;
@@ -204,6 +230,14 @@ function CourseMap({
       ? `≤${competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters} m BEKLE`
       : rangeLabel(selectedTrack);
   const windowLabelX = Math.min(84, Math.max(16, validStart + validWidth / 2));
+  const previousDomeRotation = useRef(DOME_DEFAULT_LEFT_ROTATION_DEG);
+  const domeAngle = normalizeRotationNear(domeRotationForTrack(aimTrack), previousDomeRotation.current);
+  previousDomeRotation.current = domeAngle;
+  const domeStyle = {
+    left: `${COMPETITION_COURSE.systemPosition.x}%`,
+    top: `${COMPETITION_COURSE.systemPosition.y}%`,
+    '--dome-rotation': `${domeAngle}deg`,
+  } as CSSProperties;
 
   return (
     <section className={`parkour-hero stage-${stage} ${tutorialHighlight === 'map' || tutorialHighlight === 'ranges' ? 'tutorial-pulse' : ''}`} data-testid="parkour-hero">
@@ -231,10 +265,14 @@ function CourseMap({
           </g>
         ) : (
           <g className="moving-course-field">
-            <rect className={`valid-window ${activeWindow ? 'active' : ''}`} x={validStart} y="15" width={validWidth} height="77" />
-            <text className={`window-label ${activeWindow ? 'active' : ''}`} x={windowLabelX} y="18.2" textAnchor="middle">
-              {windowLabelText}
-            </text>
+            {selectedTrack && (
+              <>
+                <rect className={`valid-window ${activeWindow ? 'active' : ''}`} x={validStart} y="15" width={validWidth} height="77" />
+                <text className={`window-label ${activeWindow ? 'active' : ''}`} x={windowLabelX} y="18.2" textAnchor="middle">
+                  {windowLabelText}
+                </text>
+              </>
+            )}
             {[15, 10, 5].map((range) => (
               <g key={range} className={`range-line ${selectedTrack?.candidate && Math.abs(selectedTrack.range - range) <= 2.5 ? 'active' : ''}`} data-testid={`range-${range}m`}>
                 <line x1={xForRange(range)} y1="10" x2={xForRange(range)} y2="93" />
@@ -248,7 +286,7 @@ function CourseMap({
               <g key={lane.lane} className={`lane-path lane-${lane.lane}`}>
                 <polyline points={points(lane.points)} markerEnd={`url(#arrow-${stage})`} />
                 <text x="8" y={lane.points[0].y - 2}>KOL {lane.lane}</text>
-                {lane.points.slice(1, 5).map((point, index) => (
+                {lane.points.slice(1, -1).map((point, index) => (
                   <text key={`${lane.lane}-${index}`} className={`lane-arrow arrow-${index}`} x={point.x} y={point.y - 2}>➜</text>
                 ))}
               </g>
@@ -257,8 +295,8 @@ function CourseMap({
         )}
 
         <g className="system-anchor">
-          <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="2.8" />
-          <text x="78" y="62">Gökkalkan</text>
+          <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.4" />
+          <text x={COMPETITION_COURSE.systemPosition.x - 8} y={COMPETITION_COURSE.systemPosition.y + 9}>Gökkalkan</text>
         </g>
         {selectedTrack && stage === 1 && (
           <g className="target-link">
@@ -268,12 +306,20 @@ function CourseMap({
         )}
         {strikes.map((strike) => (
           <g key={strike.id} className={`strike ${strike.result}`}>
-            <line x1={COMPETITION_COURSE.systemPosition.x} y1={COMPETITION_COURSE.systemPosition.y} x2={strike.x} y2={strike.y} />
-            <circle cx={strike.x} cy={strike.y} r="3.2" />
+            <line className="shot-trail" x1={COMPETITION_COURSE.systemPosition.x} y1={COMPETITION_COURSE.systemPosition.y} x2={strike.x} y2={strike.y} />
+            <circle className="shot-bullet" cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.05">
+              <animate attributeName="cx" from={COMPETITION_COURSE.systemPosition.x} to={strike.x} dur="0.26s" fill="freeze" />
+              <animate attributeName="cy" from={COMPETITION_COURSE.systemPosition.y} to={strike.y} dur="0.26s" fill="freeze" />
+            </circle>
+            <circle className="impact-ring" cx={strike.x} cy={strike.y} r="2.8" />
             <text x={Math.min(88, strike.x + 2)} y={Math.max(9, strike.y - 2)}>{strike.label}</text>
           </g>
         ))}
       </svg>
+
+      <div className="steel-dome" style={domeStyle} data-testid="steel-dome" data-rotation={domeAngle.toFixed(1)} aria-hidden="true">
+        <img src={gokkalkanIconUrl} alt="" />
+      </div>
 
       {tracks.map((track) => {
         const selected = selectedTrack?.id === track.id;
@@ -289,10 +335,12 @@ function CourseMap({
             onClick={() => onSelect(track.id)}
           >
             <span className="motion-trail" />
-            <TargetSilhouette type={track.type} />
-            <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
-            <small>{targetCopy[track.type]}</small>
-            <em className={`range-chip ${track.rangeGate.toLowerCase()}`}>{targetStatusLabel(track, stage)}</em>
+            <span className="target-visual"><TargetSilhouette type={track.type} /></span>
+            <span className="target-label-stack">
+              <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
+              <small>{targetCopy[track.type]}</small>
+              <em className={`range-chip ${track.rangeGate.toLowerCase()}`}>{targetStatusLabel(track, stage)}</em>
+            </span>
           </button>
         );
       })}
@@ -313,6 +361,7 @@ function CompetitionHeader({
   timer,
   score,
   round,
+  roundTotal,
   safetyState,
   simulatorMode,
   onStage,
@@ -323,6 +372,7 @@ function CompetitionHeader({
   timer: string;
   score: number;
   round: number;
+  roundTotal: number;
   safetyState: SafetyState;
   simulatorMode: SimulatorMode;
   onStage: (stage: Stage) => void;
@@ -339,7 +389,7 @@ function CompetitionHeader({
         <span>Mod <b>{modeCopy[mode]}</b></span>
         <span>Süre <b>{timer}</b></span>
         <span>Puan <b>{score}</b></span>
-        <span>Tur <b>{round}/{COMPETITION_STAGE_ROUNDS[stage]}</b></span>
+        <span>Tur <b>{round}/{roundTotal}</b></span>
         <span className={safetyOk ? 'safe' : 'unsafe'}>Güvenlik <b>{safetyOk ? 'Hazır' : blockCopy[safetyState.blockReason]}</b></span>
       </div>
       <button className={`sim-mode ${simulatorMode}`} onClick={() => onSimulatorMode(simulatorMode === 'strict' ? 'practice' : 'strict')}>
@@ -353,6 +403,7 @@ function GuidancePanel({
   stage,
   mode,
   round,
+  roundTotal,
   selectedTrack,
   fireStatus,
   fireReason,
@@ -364,6 +415,7 @@ function GuidancePanel({
   stage: Stage;
   mode: Mode;
   round: number;
+  roundTotal: number;
   selectedTrack?: Track;
   fireStatus: string;
   fireReason: string;
@@ -384,7 +436,7 @@ function GuidancePanel({
   const ruleReminder = stage === 1
     ? 'Aşama 1: yakın +5, orta +10, uzun +20; yanlış hedef -5; 80 taban puana zaman bonusu eklenir.'
     : stage === 2
-      ? 'Aşama 2: 4 tur, tur başına 1/2/3 imha = +5/+15/+30; 0 imha = -5; sınıflandırma beklenmez.'
+      ? 'Aşama 2: resmi akış 4 turdur ve sınıflandırma beklenmez; eğitim modu ek turlarla F16 10–15 m, Helikopter/Balistik 5–15 m ve İHA yakın angajman örneklerini gösterir.'
       : 'Aşama 3: F16 10–15 m +30; Helikopter/Balistik Füze 5–15 m +20; Mini/Micro İHA resmi puan menzili 0–15 m, eğitim stratejisi yakın angajmanı tercih eder.';
 
   return (
@@ -423,14 +475,14 @@ function GuidancePanel({
       </section>
       <section>
         <span>Tur durumu</span>
-        <p>Tur {round}/{COMPETITION_STAGE_ROUNDS[stage]} · {missionStatus}</p>
+        <p>Tur {round}/{roundTotal} · {missionStatus}</p>
       </section>
       <button className="restart-tutorial" onClick={onRestartTutorial}>Rehberi yeniden başlat</button>
     </aside>
   );
 }
 
-function StageChecklist({ stage, currentTarget, destroyedIds, round, roundHits }: { stage: Stage; currentTarget: number; destroyedIds: string[]; round: number; roundHits: number }) {
+function StageChecklist({ stage, currentTarget, destroyedIds, round, roundHits, roundTotal }: { stage: Stage; currentTarget: number; destroyedIds: string[]; round: number; roundHits: number; roundTotal: number }) {
   if (stage === 1) {
     return (
       <div className="stage-checklist" data-testid="stage-1-order">
@@ -445,7 +497,7 @@ function StageChecklist({ stage, currentTarget, destroyedIds, round, roundHits }
   }
   return (
     <div className="stage-checklist compact">
-      {Array.from({ length: COMPETITION_STAGE_ROUNDS[stage] }, (_, index) => index + 1).map((item) => (
+      {Array.from({ length: roundTotal }, (_, index) => index + 1).map((item) => (
         <span key={item} className={item < round ? 'done' : item === round ? 'current' : ''}>Tur {item}{item === round ? ` · ${roundHits || destroyedIds.length} imha` : ''}</span>
       ))}
     </div>
@@ -458,6 +510,7 @@ function BottomActionBar({
   currentTarget,
   destroyedIds,
   round,
+  roundTotal,
   roundHits,
   paused,
   estop,
@@ -478,6 +531,7 @@ function BottomActionBar({
   currentTarget: number;
   destroyedIds: string[];
   round: number;
+  roundTotal: number;
   roundHits: number;
   paused: boolean;
   estop: boolean;
@@ -495,7 +549,7 @@ function BottomActionBar({
 }) {
   return (
     <section className="bottom-action-bar" data-testid="bottom-action-bar">
-      <StageChecklist stage={stage} currentTarget={currentTarget} destroyedIds={destroyedIds} round={round} roundHits={roundHits} />
+      <StageChecklist stage={stage} currentTarget={currentTarget} destroyedIds={destroyedIds} round={round} roundHits={roundHits} roundTotal={roundTotal} />
       <div className="main-controls">
         <button className={mode === 'manual' ? 'active' : ''} onClick={() => onMode('manual')}>Manuel</button>
         <button className={mode === 'autonomous' ? 'active' : ''} onClick={() => onMode('autonomous')}>Otonom</button>
@@ -627,6 +681,7 @@ function Console() {
   const [missionStatus, setMissionStatus] = useState('Hazır');
   const [paused, setPaused] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
+  const [selectionCleared, setSelectionCleared] = useState(false);
   const [strikes, setStrikes] = useState<StrikeEffect[]>([]);
   const [maintenanceBudget, setMaintenanceBudget] = useState(mechanicsConfig.maintenanceBudgetSeconds);
   const [baseSafety, setBaseSafety] = useState<Omit<SafetyState, 'blockReason'>>({
@@ -650,6 +705,7 @@ function Console() {
   const tutorialStep = tutorialVisible ? stageSteps[Math.min(tutorialIndex, stageSteps.length - 1)] : undefined;
   const tutorialHighlight = tutorialStep?.highlight;
   const hardPaused = paused || tutorialVisible || baseSafety.estop || mode === 'maintenance';
+  const roundTotal = roundTotalFor(stage, simulatorMode);
   const timeLeft = stage === 1 ? Math.max(0, competitionSimulationConfig.stage1.timeLimitSeconds - elapsed) : Math.max(0, roundDurationFor(stage) - elapsed);
 
   const rawTracks = useMemo(() => generateCompetitionTracks(stage, elapsed, round), [stage, elapsed, round]);
@@ -659,7 +715,9 @@ function Console() {
       ...track,
       candidate: stage === 1 ? TARGET_ORDER[currentTarget] === track.type : track.candidate,
     })), [currentTarget, destroyedIds, rawTracks, stage]);
-  const selectedTrack = tracks.find((track) => track.id === selectedId) ?? tracks.find((track) => track.candidate) ?? tracks[0];
+  const defaultStage3Enemy = stage === 3 && !selectionCleared ? tracks.find((track) => track.friendFoe === 'Düşman') : undefined;
+  const selectedTrack = tracks.find((track) => track.id === selectedId) ?? defaultStage3Enemy;
+  const aimTrack = selectedTrack ?? tracks.find((track) => track.candidate);
   const systemHealth = evaluateSystemHealth(baseSafety);
   const fireSafety = evaluateSafety({
     stage,
@@ -695,6 +753,7 @@ function Console() {
     setMissionStatus('Hazır');
     setPaused(false);
     setSelectedId(undefined);
+    setSelectionCleared(false);
     setStrikes([]);
     setMode(stageModeExpectation(nextStage));
     setBaseSafety((previous) => ({ ...previous, estop: false, targetGateOk: true, modeOk: true }));
@@ -722,7 +781,7 @@ function Console() {
   const finishRound = (forced = false, resolution?: { stage2Hits?: number; stage3HostileDestroyed?: boolean }) => {
     if (stage === 1 || roundResolved.current) return;
     roundResolved.current = true;
-    const maxRound = COMPETITION_STAGE_ROUNDS[stage];
+    const maxRound = roundTotal;
     if (stage === 2) {
       const hits = resolution?.stage2Hits ?? destroyedIds.length;
       const delta = stage2RoundScore(hits);
@@ -753,9 +812,23 @@ function Console() {
       setDestroyedIds([]);
       setRoundHits(0);
       setSelectedId(undefined);
+      setSelectionCleared(false);
       autoFireAt.current = -10;
       roundResolved.current = false;
     }, 700);
+  };
+
+  const handleTrackSelect = (id: string) => {
+    const activeSelectionId = selectedTrack?.id;
+    if (activeSelectionId === id) {
+      setSelectedId(undefined);
+      setSelectionCleared(true);
+      addEvent('target', 'TRACK_DESELECT', id);
+      return;
+    }
+    setSelectedId(id);
+    setSelectionCleared(false);
+    addEvent('target', 'TRACK_SELECT', id);
   };
 
   const handleFire = () => {
@@ -820,19 +893,27 @@ function Console() {
   };
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (!hardPaused) setElapsed((value) => value + 0.25);
-    }, 250);
-    return () => window.clearInterval(id);
+    if (hardPaused) return undefined;
+    let frameId = 0;
+    let previousTimestamp = window.performance.now();
+    const tick = (timestamp: number) => {
+      const deltaSeconds = Math.min(0.05, Math.max(0, (timestamp - previousTimestamp) / 1000));
+      previousTimestamp = timestamp;
+      setElapsed((value) => value + deltaSeconds);
+      frameId = window.requestAnimationFrame(tick);
+    };
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
   }, [hardPaused]);
 
   useEffect(() => {
     roundResolved.current = false;
+    setSelectionCleared(false);
   }, [round, stage]);
 
   useEffect(() => {
-    if (!selectedId && selectedTrack) setSelectedId(selectedTrack.id);
-  }, [selectedId, selectedTrack]);
+    if (selectedId && !tracks.some((track) => track.id === selectedId)) setSelectedId(undefined);
+  }, [selectedId, tracks]);
 
   useEffect(() => {
     if (stage === 1 && timeLeft <= 0 && mode !== 'safe') {
@@ -872,6 +953,7 @@ function Console() {
   }, [destroyedIds, elapsed, hardPaused, mode, stage, tracks]);
 
   const selectedExpected = stage === 1 ? TARGET_ORDER[currentTarget] : undefined;
+  const noSelectedStage1 = stage === 1 && !selectedTrack;
   const fireWrongStage1 = stage === 1 && selectedTrack && selectedExpected && selectedTrack.type !== selectedExpected;
   const blockedFireReason = fireSafety.blockReason === 'BLOCKED_TARGET_GATE' && stage === 3
     ? selectedTrack?.friendFoe === 'Dost'
@@ -880,12 +962,16 @@ function Console() {
         ? 'Ateş engelli: hedef geçerli menzil dışında'
         : 'Ateş engelli: hedef seçilmedi'
     : `Ateş engelli: ${blockCopy[fireSafety.blockReason]}`;
-  const fireStatus = fireSafety.blockReason !== 'ALLOWED'
+  const fireStatus = noSelectedStage1
+    ? 'İzin yok'
+    : fireSafety.blockReason !== 'ALLOWED'
     ? 'İzin yok'
     : stage === 1
       ? fireWrongStage1 ? 'Ceza riski' : 'Ateş serbest'
       : mode === 'autonomous' ? 'Otonom mantık aktif' : 'İzin yok';
-  const fireReason = fireSafety.blockReason !== 'ALLOWED'
+  const fireReason = noSelectedStage1
+    ? 'Ateş engelli: hedef seçilmedi'
+    : fireSafety.blockReason !== 'ALLOWED'
     ? blockedFireReason
     : stage === 1
       ? fireWrongStage1
@@ -901,7 +987,9 @@ function Console() {
               ? `Otonom hazır: ${targetCopy[selectedTrack.type]} düşman hedef için menzil uygun`
               : `Otonom bekliyor: ${rangeLabel(selectedTrack)}`;
   const scoreImpact = stage === 1
-    ? fireWrongStage1
+    ? noSelectedStage1
+      ? 'Puan etkisi: 0'
+      : fireWrongStage1
       ? '-5 ceza'
       : selectedTrack ? `Puan etkisi: +${stage1ScoreForRange(selectedTrack.range)}` : 'Puan etkisi: 0'
     : stage === 2
@@ -932,6 +1020,7 @@ function Console() {
         timer={timer}
         score={score}
         round={round}
+        roundTotal={roundTotal}
         safetyState={systemHealth}
         simulatorMode={simulatorMode}
         onStage={switchStage}
@@ -942,15 +1031,17 @@ function Console() {
           stage={stage}
           tracks={tracks}
           selectedTrack={selectedTrack}
+          aimTrack={aimTrack}
           destroyedIds={destroyedIds}
           strikes={strikes}
           tutorialHighlight={tutorialHighlight}
-          onSelect={(id) => { setSelectedId(id); addEvent('target', 'TRACK_SELECT', id); }}
+          onSelect={handleTrackSelect}
         />
         <GuidancePanel
           stage={stage}
           mode={mode}
           round={round}
+          roundTotal={roundTotal}
           selectedTrack={selectedTrack}
           fireStatus={fireStatus}
           fireReason={fireReason}
@@ -970,6 +1061,7 @@ function Console() {
         currentTarget={currentTarget}
         destroyedIds={destroyedIds}
         round={round}
+        roundTotal={roundTotal}
         roundHits={roundHits}
         paused={paused || tutorialVisible}
         estop={baseSafety.estop}

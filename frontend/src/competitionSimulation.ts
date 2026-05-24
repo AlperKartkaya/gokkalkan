@@ -30,6 +30,17 @@ export const HOSTILE_TYPES_BY_ROUND: TargetType[] = [
   'Balistik Füze',
 ];
 
+export const STAGE2_TRAINING_SCENARIOS: Array<readonly [TargetType, TargetType, TargetType]> = [
+  ['F16', 'Helikopter', 'Balistik Füze'],
+  ['Mini/Micro İHA', 'F16', 'Helikopter'],
+  ['Balistik Füze', 'Mini/Micro İHA', 'F16'],
+  ['Helikopter', 'Balistik Füze', 'Mini/Micro İHA'],
+  ['F16', 'Balistik Füze', 'Helikopter'],
+  ['Mini/Micro İHA', 'Helikopter', 'F16'],
+  ['Balistik Füze', 'F16', 'Mini/Micro İHA'],
+  ['Helikopter', 'Mini/Micro İHA', 'Balistik Füze'],
+];
+
 export const competitionSimulationConfig = {
   assumptionNotice:
     'Hız, hedef boyutu ve kesin rota koordinatları şartnamede sayısal verilmediği için bu değerler simülasyon varsayımıdır; gerçek saha ölçüsü gelince yalnızca konfigürasyon güncellenir.',
@@ -42,6 +53,7 @@ export const competitionSimulationConfig = {
   },
   stage2: {
     rounds: 4,
+    practiceRounds: numberFromEnv('VITE_GOKKALKAN_STAGE2_PRACTICE_ROUNDS', 8, 5, 24),
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE2_ROUND_SECONDS', 18, 6, 120),
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 2.4, 0.1, 20),
@@ -93,7 +105,7 @@ export function roundDurationFor(stage: Stage): number {
 function scaledSize(type: TargetType): { w: number; h: number } {
   const scale = competitionSimulationConfig.targetVisualScale[type];
   const base = {
-    F16: { w: 10.5, h: 8.4 },
+    F16: { w: 11.8, h: 7.6 },
     Helikopter: { w: 8.7, h: 8.7 },
     'Balistik Füze': { w: 7.2, h: 11.5 },
     'Mini/Micro İHA': { w: 7.5, h: 7.5 },
@@ -126,7 +138,7 @@ function movingTrack(params: {
   const velocity = stage === 2 ? competitionSimulationConfig.stage2.targetSpeedMps : competitionSimulationConfig.stage3.targetSpeedMps;
   const uavCloseEnough = type !== 'Mini/Micro İHA' || trackRange <= competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters;
   const candidate = stage === 2
-    ? progress >= competitionSimulationConfig.stage2.engagementProgressMin && progress < 0.92 && uavCloseEnough
+    ? gate === 'Uygun' && progress >= competitionSimulationConfig.stage2.engagementProgressMin && progress < 0.94 && uavCloseEnough
     : friendFoe === 'Düşman' && gate === 'Uygun' && progress >= competitionSimulationConfig.stage3.engagementProgressMin && progress < 0.96 && uavCloseEnough;
   const uavTrainingNote = type === 'Mini/Micro İHA'
     ? ` · İHA eğitim tercihi ≤${competitionSimulationConfig.uavPreferredAutoEngagementMaxRangeMeters} m`
@@ -177,12 +189,13 @@ export function generateCompetitionTracks(stage: Stage, elapsedInRound: number, 
   }
 
   if (stage === 2) {
+    const scenario = STAGE2_TRAINING_SCENARIOS[(round - 1) % STAGE2_TRAINING_SCENARIOS.length];
     return ([1, 2, 3] as const).map((lane) => movingTrack({
       stage: 2,
       round,
       lane,
       elapsedInRound,
-      type: lane === 2 ? 'Balistik Füze' : 'Mini/Micro İHA',
+      type: scenario[lane - 1],
       friendFoe: 'Bilinmeyen',
     }));
   }

@@ -158,14 +158,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .system-anchor circle { fill: var(--green); stroke: rgba(2,3,4,.9); stroke-width: .6; filter: drop-shadow(0 0 6px rgba(51,230,140,.8)); }
 .aircraft {
   position: absolute;
-  z-index: 5;
-  min-width: 82px;
-  min-height: 72px;
+  z-index: 6;
+  min-width: 92px;
+  min-height: 112px;
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 1px;
+  gap: 4px;
   padding: 3px;
   border-radius: 999px;
   background: transparent;
@@ -174,6 +174,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   box-shadow: none;
   text-align: center;
   transition: transform .16s ease, color .16s ease, filter .16s ease;
+  will-change: left, top;
+}
+.target-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
 }
 .target-silhouette {
   width: 48px;
@@ -190,11 +198,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .aircraft.enemy { color: #ff6876; }
 .aircraft.friend { color: #69b8ff; }
 .aircraft.neutral { color: #ffd17a; }
-.aircraft.selected::before,
-.aircraft.candidate::before {
+.aircraft.selected .target-visual::before,
+.aircraft.candidate .target-visual::before {
   content: "";
   position: absolute;
-  inset: -5px 4px 16px;
+  inset: 1px;
   border-radius: 999px;
   border: 2px solid rgba(255,187,66,.85);
   box-shadow: 0 0 20px rgba(255,187,66,.42);
@@ -212,8 +220,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   color: #fff;
   text-shadow: 0 0 8px rgba(255,71,87,.85);
 }
+.target-label-stack {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 132px;
+}
 .aircraft .target-name {
-  margin-top: -2px;
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(2,4,7,.72);
@@ -259,6 +273,26 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: blur(2px);
 }
 .aircraft.moving .motion-trail { opacity: .27; animation: trailFade 1.2s ease-in-out infinite; }
+.steel-dome {
+  position: absolute;
+  z-index: 5;
+  width: 88px;
+  height: 88px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 20px rgba(51,230,140,.26)) drop-shadow(0 12px 24px rgba(0,0,0,.5));
+}
+.steel-dome img {
+  width: 78px;
+  height: 78px;
+  object-fit: contain;
+  border-radius: 50%;
+  transform: rotate(var(--dome-rotation));
+  will-change: transform;
+  opacity: .9;
+}
 .map-legend {
   position: absolute;
   left: 22px;
@@ -292,9 +326,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   font-size: 11px;
   line-height: 1.25;
 }
-.strike line { stroke: rgba(255,255,255,.94); stroke-width: .65; stroke-dasharray: 3 2; animation: strikeFade 2.4s ease-out forwards; }
-.strike circle { fill: var(--green); stroke: #fff; stroke-width: .55; animation: strikePop 2.4s ease-out forwards; }
-.strike.penalty circle, .strike.miss circle { fill: var(--red); }
+.strike .shot-trail { stroke: rgba(255,241,190,.62); stroke-width: .45; stroke-dasharray: 2 2; animation: strikeFade 2.4s ease-out forwards; }
+.strike .shot-bullet { fill: #fff2a8; stroke: #fff; stroke-width: .35; filter: drop-shadow(0 0 5px rgba(255,242,168,.95)); }
+.strike .impact-ring { fill: none; stroke: var(--green); stroke-width: .7; animation: strikePop 2.4s ease-out forwards; }
+.strike.penalty .impact-ring, .strike.miss .impact-ring { stroke: var(--red); }
+.strike.penalty .shot-bullet, .strike.miss .shot-bullet { fill: #ffb0b7; }
 .strike text { fill: #fff; font-size: 3.4px; font-weight: 1000; paint-order: stroke; stroke: rgba(2,3,4,.9); stroke-width: .8; animation: strikeFade 2.4s ease-out forwards; }
 
 .guidance-panel {

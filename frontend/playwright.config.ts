@@ -8,7 +8,7 @@ export default defineConfig({
     viewport: { width: 1366, height: 768 },
   },
   webServer: {
-    command: 'npm run dev -- --port 5173',
+    command: 'VITE_GOKKALKAN_STAGE2_ROUND_SECONDS=6 npm run dev -- --port 5173',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: true,
   },
