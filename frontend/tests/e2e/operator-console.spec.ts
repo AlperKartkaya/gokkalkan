@@ -33,6 +33,12 @@ test('landing is simulator-branded and removes mock/keyboard skip copy', async (
     return titleRect.left >= cardRect.left && titleRect.right <= cardRect.right && titleRect.height <= lineHeight * 1.25;
   });
   expect(fits).toBe(true);
+
+  const startButtonContrast = await page.getByRole('button', { name: 'Simülatöre Başla' }).evaluate((button) => {
+    const style = getComputedStyle(button);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(startButtonContrast.color).toBe('rgb(0, 19, 25)');
 });
 
 test('console prioritizes parkour, guidance, and central fire action', async ({ page }) => {
@@ -94,7 +100,9 @@ test('tutorial copy and buttons stay readable on narrow viewports', async ({ pag
     const slashAlpha = color.match(/\/\s*([0-9.]+)\)?$/)?.[1];
     const overlayAlpha = Number.parseFloat(rgbaAlpha ?? slashAlpha ?? '1');
     const cardRect = card.getBoundingClientRect();
-    return overlayAlpha >= 0.7 && buttons.every((button) => {
+    const nextButton = buttons.find((button) => button.textContent?.toLocaleLowerCase('tr-TR').includes('devam'));
+    const nextButtonColor = nextButton ? getComputedStyle(nextButton).color : '';
+    return overlayAlpha >= 0.7 && nextButtonColor === 'rgb(7, 16, 22)' && buttons.every((button) => {
       const rect = button.getBoundingClientRect();
       return rect.left >= cardRect.left && rect.right <= cardRect.right && rect.height >= 40;
     });
