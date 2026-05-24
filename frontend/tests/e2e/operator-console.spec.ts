@@ -56,6 +56,7 @@ test('contextual onboarding pauses timer and is skippable', async ({ page }) => 
   await page.goto('/?console=1');
 
   await expect(page.getByTestId('tutorial-overlay')).toContainText('simülasyon duraklatıldı');
+  await expect(page.getByTestId('tutorial-overlay')).toContainText('Aşama 1’de 5/10/15 m');
   await expect(headerMetrics(page)).toContainText('Süre 5:00');
   await page.waitForTimeout(900);
   await expect(headerMetrics(page)).toContainText('Süre 5:00');
@@ -70,6 +71,36 @@ test('contextual onboarding pauses timer and is skippable', async ({ page }) => 
   await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
   await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
   await expect(page.getByTestId('tutorial-overlay')).toContainText('Aşama 2 otonom akıştır');
+});
+
+test('tutorial copy and buttons stay readable on narrow viewports', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?console=1');
+
+  await expect(page.getByTestId('tutorial-overlay')).toContainText('Aşama 1’de 5/10/15 m');
+  await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
+  await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
+  await page.getByTestId('tutorial-overlay').getByRole('button', { name: 'Devam' }).click();
+  await expect(page.getByTestId('tutorial-overlay')).toContainText('ATEŞ düğmesi');
+  await expect(page.getByTestId('tutorial-overlay')).not.toContainText('FIRE');
+
+  const readable = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-testid="tutorial-overlay"]');
+    const card = document.querySelector('.tutorial-card');
+    const buttons = Array.from(document.querySelectorAll('.tutorial-card button'));
+    if (!overlay || !card || buttons.length === 0) return false;
+    const color = getComputedStyle(overlay).backgroundColor;
+    const rgbaAlpha = color.match(/rgba?\((?:[^,]+,\s*){3}([^,)]+)/)?.[1];
+    const slashAlpha = color.match(/\/\s*([0-9.]+)\)?$/)?.[1];
+    const overlayAlpha = Number.parseFloat(rgbaAlpha ?? slashAlpha ?? '1');
+    const cardRect = card.getBoundingClientRect();
+    return overlayAlpha >= 0.7 && buttons.every((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.left >= cardRect.left && rect.right <= cardRect.right && rect.height >= 40;
+    });
+  });
+  expect(readable).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('compact dashboard avoids horizontal overflow on desktop and narrow viewports', async ({ page }) => {

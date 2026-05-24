@@ -51,7 +51,7 @@ const tutorialSteps: Array<{
     id: 'global-map',
     stage: 'global',
     title: 'Parkur ana çalışma alanıdır',
-    message: 'Hedefler A noktasından başlayıp B bölgesine doğru ilerler. Rehber açıkken hedefler, süre ve puan tamamen duraklatılır.',
+    message: 'Aşama 1’de 5/10/15 m durağan bantlar izlenir; Aşama 2/3’te hedefler A noktasından B bölgesine ilerler. Rehber açıkken süre ve puan duraklatılır.',
     highlight: 'map',
   },
   {
@@ -71,15 +71,15 @@ const tutorialSteps: Array<{
   {
     id: 'stage1-fire',
     stage: 1,
-    title: 'FIRE düğmesi yarışma aksiyonudur',
-    message: 'Doğru hedef seçiliyken FIRE düğmesine bas. Basmazsan hedef imha edilmez; süre işlemeye devam eder.',
+    title: 'ATEŞ düğmesi yarışma aksiyonudur',
+    message: 'Doğru hedef seçiliyken ATEŞ HAZIR düğmesine bas. Basmazsan hedef imha edilmez; süre işlemeye devam eder.',
     highlight: 'fire',
   },
   {
     id: 'stage2-auto',
     stage: 2,
     title: 'Aşama 2 otonom akıştır',
-    message: 'Dört tur vardır. Her turda üç kolda birer hedef A→B hareket eder. Sistem hedefleri girişte değil, eğitim angajman penceresine ulaştıklarında imha eder.',
+    message: 'Resmi akış 4 turdur; pratik modunda ek turlar eğitim içindir. Her turda üç kolda birer hedef A→B hareket eder ve sistem angajmanı otonom kurar.',
     highlight: 'mode',
   },
   {
@@ -739,14 +739,14 @@ function DebugDrawer({
 
 function TutorialOverlay({ step, index, count, onNext, onSkip }: { step: (typeof tutorialSteps)[number]; index: number; count: number; onNext: () => void; onSkip: () => void }) {
   return (
-    <div className="tutorial-overlay pointer-events-none fixed inset-0 z-40 bg-black/30" role="dialog" aria-modal="true" data-testid="tutorial-overlay">
-      <div className="tutorial-card pointer-events-auto absolute bottom-7 left-1/2 w-[min(560px,calc(100vw-28px))] -translate-x-1/2 rounded-[10px] border border-[#ffbb42]/40 bg-[rgba(9,13,18,.96)] p-4 shadow-[0_20px_64px_rgba(0,0,0,.50),0_0_28px_rgba(255,187,66,.11)]">
-        <span className="text-[11px] font-black uppercase tracking-[.11em] text-[#ffbb42]">Rehber {index + 1}/{count} · simülasyon duraklatıldı</span>
-        <h2 className="my-2 text-xl font-black">{step.title}</h2>
-        <p className="text-sm leading-normal text-[#dfeef7]">{step.message}</p>
-        <div className="tutorial-actions flex justify-end gap-2.5">
-          <button className="min-h-[38px] rounded-lg border border-white/10 bg-white/[.07] px-3.5 font-black" onClick={onSkip}>Bu aşamada rehberi atla</button>
-          <button className="continue min-h-[38px] rounded-lg bg-[#fff3c8] px-3.5 font-black text-[#071016]" onClick={onNext}>{index + 1 === count ? 'Bitir ve devam et' : 'Devam'}</button>
+    <div className="tutorial-overlay pointer-events-none fixed inset-0 z-40 bg-black/75 backdrop-blur-[2px]" role="dialog" aria-modal="true" data-testid="tutorial-overlay">
+      <div className="tutorial-card pointer-events-auto absolute bottom-6 left-1/2 w-[min(640px,calc(100vw-24px))] -translate-x-1/2 rounded-lg border border-[#ffbb42]/55 bg-[#070b10] p-4 shadow-[0_24px_80px_rgba(0,0,0,.72),0_0_0_1px_rgba(255,187,66,.12)] min-[900px]:p-5">
+        <span className="text-[10px] font-black uppercase tracking-[.08em] text-[#ffbb42] min-[640px]:text-[11px]">Rehber {index + 1}/{count} · simülasyon duraklatıldı</span>
+        <h2 className="my-2 text-2xl font-black leading-tight text-[#edf8ff] min-[640px]:text-3xl">{step.title}</h2>
+        <p className="max-w-[62ch] text-base leading-relaxed text-[#dfeef7] min-[640px]:text-lg">{step.message}</p>
+        <div className="tutorial-actions mt-4 grid gap-2 min-[640px]:flex min-[640px]:justify-end">
+          <button className="min-h-11 rounded-lg border border-white/10 bg-white/[.09] px-4 text-sm font-black text-[#edf8ff] min-[640px]:text-base" onClick={onSkip}>Bu aşamada rehberi atla</button>
+          <button className="continue min-h-11 rounded-lg bg-[#fff3c8] px-4 text-sm font-black text-[#071016] min-[640px]:text-base" onClick={onNext}>{index + 1 === count ? 'Bitir ve devam et' : 'Devam'}</button>
         </div>
       </div>
     </div>
@@ -969,7 +969,7 @@ function Console() {
 
   const handleFire = () => {
     if (stage !== 1) {
-      addEvent('fire', 'AUTO_ONLY', 'Aşama 2/3 resmi modda manuel FIRE gerektirmez; otonom angajman görselleştirilir');
+      addEvent('fire', 'AUTO_ONLY', 'Aşama 2/3 resmi modda manuel ateş komutu gerektirmez; otonom angajman görselleştirilir');
       return;
     }
     if (!selectedTrack) {
