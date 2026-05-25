@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchOperatorSnapshot, normalizeOperatorApiBaseUrl, sendOperatorFireIntent, sendOperatorModeRequest } from './operatorApiClient';
+import {
+  fetchOperatorReplay,
+  fetchOperatorSnapshot,
+  fetchOperatorTelemetryExport,
+  normalizeOperatorApiBaseUrl,
+  resetOperatorTelemetry,
+  sendOperatorFireIntent,
+  sendOperatorModeRequest,
+} from './operatorApiClient';
 
 const originalFetch = globalThis.fetch;
 
@@ -54,6 +62,28 @@ describe('operator API client', () => {
 
     expect(globalThis.fetch).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8088/mode', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
     expect(globalThis.fetch).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8088/fire-intent', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
+  });
+
+  it('fetches telemetry export, replay, and reset endpoints without live output', async () => {
+    mockFetch({
+      schemaVersion: 1,
+      physicalOutputEnabled: false,
+      replayOnly: true,
+      telemetry: { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 2 },
+      entries: [{ recordType: 'event', payload: { physicalOutput: false } }],
+      state: { dryRun: true },
+    });
+
+    const exported = await fetchOperatorTelemetryExport('http://127.0.0.1:8088');
+    const replay = await fetchOperatorReplay('http://127.0.0.1:8088');
+    const reset = await resetOperatorTelemetry('http://127.0.0.1:8088');
+
+    expect(exported.physicalOutputEnabled).toBe(false);
+    expect(replay.physicalOutputEnabled).toBe(false);
+    expect(reset.physicalOutputEnabled).toBe(false);
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8088/telemetry/export', expect.objectContaining({ method: 'GET' }));
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8088/replay', expect.objectContaining({ method: 'GET' }));
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(3, 'http://127.0.0.1:8088/telemetry/reset', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
   });
 
   it('surfaces backend failures instead of silently claiming acceptance', async () => {

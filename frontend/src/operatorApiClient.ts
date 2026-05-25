@@ -1,6 +1,20 @@
 import type { CommandResult, FireIntent, ManualAimCommand, ModeRequest, OperatorSafetyState, OperatorTrackState } from './operatorContracts';
 import type { Mode, Stage } from './types';
 
+export interface OperatorTelemetryMetadata {
+  path: string;
+  exists: boolean;
+  recordCount: number;
+}
+
+export interface OperatorTelemetryLogRecord {
+  recordId?: number;
+  timestamp?: string;
+  recordType: string;
+  payload?: Record<string, unknown>;
+  raw?: string;
+}
+
 export interface OperatorTelemetryEvent {
   id: number;
   timestamp: string;
@@ -25,6 +39,7 @@ export interface OperatorApiSnapshot {
   commandResults: CommandResult[];
   events: OperatorTelemetryEvent[];
   physicalOutputEnabled: boolean;
+  telemetry?: OperatorTelemetryMetadata;
 }
 
 export interface HardwareResult {
@@ -36,6 +51,36 @@ export interface HardwareResult {
   physicalOutput: boolean;
   message: string;
   createdAt: string;
+}
+
+export interface OperatorTelemetryExport {
+  schemaVersion: number;
+  generatedAt: string;
+  physicalOutputEnabled: boolean;
+  telemetry: OperatorTelemetryMetadata;
+  state: OperatorApiSnapshot;
+  events: OperatorTelemetryEvent[];
+  commandResults: CommandResult[];
+  entries: OperatorTelemetryLogRecord[];
+}
+
+export interface OperatorReplayBundle {
+  schemaVersion: number;
+  generatedAt: string;
+  sourceLogPath: string;
+  physicalOutputEnabled: boolean;
+  replayOnly: true;
+  entries: OperatorTelemetryLogRecord[];
+  events: Record<string, unknown>[];
+  commandResults: CommandResult[];
+  hardwareResults: HardwareResult[];
+}
+
+export interface OperatorTelemetryResetResponse {
+  ok: boolean;
+  physicalOutputEnabled: boolean;
+  telemetry: OperatorTelemetryMetadata;
+  state: OperatorApiSnapshot;
 }
 
 export interface OperatorApiCommandResponse {
@@ -63,6 +108,18 @@ export async function sendOperatorManualAimCommand(baseUrl: string, request: Man
 
 export async function sendOperatorFireIntent(baseUrl: string, request: FireIntent): Promise<OperatorApiCommandResponse> {
   return requestJson<OperatorApiCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/fire-intent`, request);
+}
+
+export async function fetchOperatorTelemetryExport(baseUrl: string): Promise<OperatorTelemetryExport> {
+  return requestJson<OperatorTelemetryExport>(`${normalizeOperatorApiBaseUrl(baseUrl)}/telemetry/export`);
+}
+
+export async function fetchOperatorReplay(baseUrl: string): Promise<OperatorReplayBundle> {
+  return requestJson<OperatorReplayBundle>(`${normalizeOperatorApiBaseUrl(baseUrl)}/replay`);
+}
+
+export async function resetOperatorTelemetry(baseUrl: string): Promise<OperatorTelemetryResetResponse> {
+  return requestJson<OperatorTelemetryResetResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/telemetry/reset`, {});
 }
 
 async function requestJson<T>(url: string, body?: unknown): Promise<T> {

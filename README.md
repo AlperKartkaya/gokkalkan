@@ -7,7 +7,7 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `frontend/` artık React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü** içerir.
 - Simülatör; Aşama 1 manuel hedef pratiği, Aşama 2 sürü saldırısı, Aşama 3 dost/düşman + menzil kurallarını görselleştirir.
 - Hız, kesin parkur koordinatı, hedef fiziksel ölçüsü ve sensör modeli şartnamede sayısal verilmediği için simülasyon parametreleri yapılandırılabilir varsayımdır.
-- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez.
+- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez ve JSONL telemetri/replay kanıtı üretir.
 - `perception/` ve gerçek sensör/donanım bağlantıları hâlâ saha sistemi için geliştirme alanıdır.
 
 ## Ürün yüzeyleri
@@ -28,6 +28,8 @@ Dry-run operatör backend’i:
 
 ```bash
 PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+# KTR/debug kanıtı için isteğe bağlı özel JSONL yolu:
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Doğrulama komutları:
@@ -57,5 +59,7 @@ npm run test
 - Görev Kabiliyeti Gösterimi Videosu: tek YouTube linki, 720p+, 2-5 dakika, şartnamedeki yetenek sırasına uygun.
 
 ## Güvenlik ilkesi
+
+Dry-run operatör API, `/telemetry/export` ve `/replay` endpoint’leriyle komut/olay kanıtı üretir; replay akışı fiziksel çıkış üretmez ve hardware adapter çağırmaz.
 
 Simülatör eğitim amaçlıdır. Gerçek sistemde operatör paneli doğrudan ateşleme/imha hattını tetiklememelidir. Komut akışı `Operatör Paneli → Backend API → Safety Gate → Hardware Adapter → MCU/İmha Hattı` zincirinden geçmeli; Acil Durdur ve yasak alan kontrolleri UI’dan bağımsız olarak uygulanmalıdır.

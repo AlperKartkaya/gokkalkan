@@ -8,6 +8,8 @@ Bu klasör, gerçek operatör panelinin bağlanacağı görev çekirdeği ve don
 
 ```bash
 PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+# İsteğe bağlı kanıt/replay yolu:
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Endpoint’ler:
@@ -15,9 +17,14 @@ Endpoint’ler:
 - `GET /health`
 - `GET /state`
 - `GET /events`
+- `GET /telemetry/export` — KTR/debug için tek JSON kanıt paketi döner.
+- `GET /replay` — JSONL kayıtlarından replay-only olay/komut/donanım sonucu paketi döner.
 - `POST /mode`
 - `POST /manual-aim`
 - `POST /fire-intent`
+- `POST /telemetry/reset` — dry-run oturumu ve JSONL kanıtını güvenli başlangıç durumuna sıfırlar.
+
+Telemetri varsayılan olarak git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır. `GOKKALKAN_TELEMETRY_JSONL` ortam değişkeni veya `--telemetry-jsonl` parametresiyle yol değiştirilebilir. `/replay` yalnız kayıtları okur; gerçek hardware adapter çağırmaz.
 
 Güvenlik notu: Bu API geçişinde `hardware_mock.dry_run` adapter kullanılır. Komut kabul edilse bile `physicalOutput=false` döner; gerçek motor, MCU, radar/LiDAR veya imha hattı sürülmez.
 

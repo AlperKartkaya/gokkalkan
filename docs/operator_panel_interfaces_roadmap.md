@@ -145,6 +145,8 @@ Bu geçişte backend tarafında bağımlılıksız Python iskeleti başlatılmı
 
 ```bash
 PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+# KTR/debug kanıtını belirli dosyaya yazmak için:
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Uygulanan endpoint’ler:
@@ -154,11 +156,14 @@ Uygulanan endpoint’ler:
 | `GET /health` | UI → Backend | API sağlığı, dry-run ve fiziksel çıkış durumunu okur | `physicalOutputEnabled=false` döner |
 | `GET /state` | UI → Backend | mod, aşama, izler, `SafetyState`, `CommandResult` ve olay akışını alır | varsayılan izler dry-run kaynaktır |
 | `GET /events` | UI → Backend | telemetri/komut olay listesini alır | rapor ve KTR kanıtı için JSON olaylar |
+| `GET /telemetry/export` | UI/Debug → Backend | JSONL log, state, command result ve event kayıtlarını tek kanıt paketinde dışa aktarır | replay/export fiziksel çıkış üretmez |
+| `GET /replay` | UI/Debug → Backend | JSONL kayıtlarından replay-only olay/komut/donanım sonucu üretir | hardware adapter çağırmaz; yalnız kayıt okur |
 | `POST /mode` | UI → Backend | `ModeRequest` gönderir | geçersiz modlar `BLOCKED_MODE` olur |
 | `POST /manual-aim` | UI → Backend | `ManualAimCommand` gönderir | manuel mod + deadman koşulu yoksa engellenir |
 | `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
+| `POST /telemetry/reset` | UI/Debug → Backend | dry-run state ve JSONL kanıtını sıfırlar | safe moda döner; fiziksel çıkış üretmez |
 
-İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
+İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
 
 ## 6. Karar önerisi
 
@@ -174,4 +179,4 @@ Ancak canlı saha testi başlamadan önce şu kararlar kapatılmalıdır:
 - MCU haberleşme protokolü,
 - gerçek panelin dry-run/live geçiş prosedürü,
 - Acil Durdur’un fiziksel kesme hattı ve backend state bildirimi,
-- log/telemetri saklama formatı ve KTR kanıt export yolu.
+- dry-run için JSONL telemetri/replay yolu uygulanmıştır; canlı saha log saklama, süre/latency metriği ve export saklama politikası ayrıca netleştirilmelidir.

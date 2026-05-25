@@ -180,12 +180,12 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
 - **Gerçek operatör paneli önerisi:** ilk aşamada React/Vite içinde yeni sayfa + backend API; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
 - **Backend / görev çekirdeği:** Python 3.x.
-- **Backend API ilk geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez.
+- **Backend API ilk geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, JSONL telemetri yazar ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.
 - **Test:** pytest + frontend için Vitest/Playwright.
-- **Log formatı:** geliştirme sırasında JSONL veya CSV olabilir; üretilen log/telemetri dosyaları git’e eklenmemelidir.
+- **Log formatı:** dry-run operatör API için JSONL uygulanmıştır (`telemetry_data/operator-api-dry-run.jsonl`, git’e eklenmez). Canlı saha log saklama politikası ve elektronik entegrasyon metrikleri donanım seçimiyle netleştirilmelidir.
 
 ROS2, Hailo veya derin öğrenme tabanlı algı çekirdek zorunluluk değildir. Bu teknolojiler yalnızca gecikme, doğruluk veya entegrasyon testleri açıkça ihtiyaç gösterirse eklenmelidir.
 
@@ -203,7 +203,7 @@ Kod eklendiğinde doğrulama sırası şu olmalıdır:
 
 1. Güvenlik kapısı ve Acil Durdur birim testleri.
 2. Mock donanımla manuel mod ve otonom mod senaryo testleri.
-3. Backend API dry-run testleri: UI komutu hardware çıkışı üretmeden CommandResult döndürmeli.
+3. Backend API dry-run testleri: UI komutu hardware çıkışı üretmeden CommandResult döndürmeli; `/telemetry/export` ve `/replay` kayıtları fiziksel çıkışsız olmalı.
 4. Kamera/perception kayıtlarıyla algı ve takip tekrar testleri.
 5. Operatör arayüzünde gerçek görev akışı denemesi.
 6. Gerçek donanımda düşük güç/güvenli koşul testi.

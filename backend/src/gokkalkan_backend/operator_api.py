@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from itertools import count
 from typing import Any, Callable, Literal
 
+from .telemetry_log import JsonlTelemetryStore
+
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
 Stage = Literal[1, 2, 3]
 TargetType = Literal["F16", "Helikopter", "Balistik Füze", "Mini/Micro İHA"]
@@ -156,7 +158,7 @@ class DryRunHardwareAdapter:
 class OperatorService:
     """Stateful dry-run backend service for the real operator panel."""
 
-    def __init__(self, clock: Clock = utc_now, hardware: DryRunHardwareAdapter | None = None) -> None:
+    def __init__(self, clock: Clock = utc_now, hardware: DryRunHardwareAdapter | None = None, telemetry: JsonlTelemetryStore | None = None) -> None:
         self._clock = clock
         self._ids = count(1)
         self.mode: Mode = "safe"
@@ -171,6 +173,7 @@ class OperatorService:
         self.dry_run = True
         self.live_arm_enabled = False
         self.hardware = hardware or DryRunHardwareAdapter(clock=clock)
+        self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._default_tracks()
         self.command_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
@@ -199,6 +202,7 @@ class OperatorService:
             "commandResults": self.command_results[:8],
             "events": self.events[:20],
             "physicalOutputEnabled": False,
+            "telemetry": self.telemetry.metadata(),
         }
 
     def health(self) -> dict[str, Any]:
@@ -208,8 +212,50 @@ class OperatorService:
             "mode": self.mode,
             "dryRun": self.dry_run,
             "physicalOutputEnabled": False,
+            "telemetry": self.telemetry.metadata(),
             "timestamp": self._clock(),
         }
+
+    def telemetry_export(self) -> dict[str, Any]:
+        entries = self.telemetry.read_all()
+        return {
+            "schemaVersion": 1,
+            "generatedAt": self._clock(),
+            "physicalOutputEnabled": False,
+            "telemetry": self.telemetry.metadata(),
+            "state": self.snapshot(),
+            "events": self.events[:50],
+            "commandResults": self.command_results[:50],
+            "entries": entries,
+        }
+
+    def replay(self, limit: int | None = None) -> dict[str, Any]:
+        entries = self.telemetry.read_all(limit=limit)
+        events = [entry["payload"] for entry in entries if entry.get("recordType") == "event" and isinstance(entry.get("payload"), dict)]
+        command_results = [entry["payload"] for entry in entries if entry.get("recordType") == "command_result" and isinstance(entry.get("payload"), dict)]
+        hardware_results = [entry["payload"] for entry in entries if entry.get("recordType") == "hardware_result" and isinstance(entry.get("payload"), dict)]
+        return {
+            "schemaVersion": 1,
+            "generatedAt": self._clock(),
+            "sourceLogPath": str(self.telemetry.path),
+            "physicalOutputEnabled": False,
+            "replayOnly": True,
+            "entries": entries,
+            "events": events,
+            "commandResults": command_results,
+            "hardwareResults": hardware_results,
+        }
+
+    def reset_telemetry(self) -> dict[str, Any]:
+        self.mode = "safe"
+        self.round = 1
+        self.command_results = []
+        self.events = []
+        self.hardware.commands = []
+        self._ids = count(1)
+        self.telemetry.reset()
+        self._append_event("telemetry", "RESET", "Dry-run telemetri sıfırlandı; fiziksel çıkış yok.", {})
+        return {"ok": True, "physicalOutputEnabled": False, "telemetry": self.telemetry.metadata(), "state": self.snapshot()}
 
     def evaluate_safety(self, kind: CommandKind, target: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> SafetyState:
         payload = payload or {}
@@ -270,7 +316,7 @@ class OperatorService:
         if accepted:
             self.mode = requested  # type: ignore[assignment]
         result = self._command_result("ModeRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
-        self._append_event("mode", "ModeRequest", result["message"], {"requestedMode": requested, "safety": safety.to_dict()})
+        self._append_event("mode", "ModeRequest", result["message"], {"requestedMode": requested, "safety": safety.to_dict(), "result": result})
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -280,7 +326,8 @@ class OperatorService:
         hardware_result = None
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "ManualAimCommand", "payload": payload})
-        self._append_event("command", "ManualAimCommand", result["message"], {"safety": safety.to_dict(), "hardwareResult": hardware_result})
+            self.telemetry.append("hardware_result", hardware_result)
+        self._append_event("command", "ManualAimCommand", result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
     def handle_fire_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -292,7 +339,8 @@ class OperatorService:
         hardware_result = None
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "FireIntent", "target": target_dict, "payload": payload})
-        self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "hardwareResult": hardware_result})
+            self.telemetry.append("hardware_result", hardware_result)
+        self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
     def _find_track(self, track_id: str) -> DryRunTrack | None:
@@ -320,10 +368,11 @@ class OperatorService:
         }
         self.command_results.insert(0, result)
         self.command_results = self.command_results[:20]
+        self.telemetry.append("command_result", result)
         return result
 
     def _append_event(self, event_type: str, decision: str, reason: str, payload: dict[str, Any]) -> None:
-        self.events.insert(0, {
+        event = {
             "id": next(self._ids),
             "timestamp": self._clock(),
             "stage": self.stage,
@@ -332,5 +381,8 @@ class OperatorService:
             "decision": decision,
             "reason": reason,
             "payload": payload,
-        })
+            "physicalOutput": False,
+        }
+        self.events.insert(0, event)
         self.events = self.events[:50]
+        self.telemetry.append("event", event)
