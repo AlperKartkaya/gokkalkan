@@ -265,3 +265,158 @@ test('operator panel can be opened directly with query parameter and returns to 
   await expect(page.getByTestId('tutorial-overlay')).toBeVisible();
   await expect(page.getByTestId('parkour-hero')).toBeVisible();
 });
+
+test('operator panel evidence drawer reads backend telemetry export and replay safely', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/operator-api';
+  const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 6 };
+  const track = {
+    trackId: 'DRY-RUN-F16-01',
+    stage: 3,
+    round: 1,
+    targetType: 'F16',
+    friendFoe: 'Düşman',
+    rangeM: 12.4,
+    bearingDeg: -18,
+    confidence: 0.96,
+    source: 'dry-run',
+    updatedAt: '2026-05-25T20:20:00Z',
+  };
+  const safety = {
+    estop: false,
+    motionZoneOk: true,
+    fireZoneOk: true,
+    targetGateOk: true,
+    modeOk: true,
+    backendConnected: true,
+    perceptionConnected: false,
+    sensorAdapterConnected: false,
+    dryRun: true,
+    liveArmEnabled: false,
+    blockReason: 'ALLOWED',
+    explanation: 'Dry-run güvenli.',
+  };
+  const commandResult = {
+    commandId: 'CMD-00002',
+    kind: 'FireIntent',
+    accepted: true,
+    completed: true,
+    dryRun: true,
+    safetyBlockReason: 'ALLOWED',
+    message: 'Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi.',
+    physicalOutput: false,
+    createdAt: '2026-05-25T20:20:00Z',
+  };
+  let statePayload = {
+    app: 'gokkalkan-operator-api',
+    version: 1,
+    mode: 'autonomous',
+    stage: 3,
+    round: 1,
+    dryRun: true,
+    liveArmEnabled: false,
+    tracks: [track],
+    safety,
+    commandResults: [commandResult],
+    events: [],
+    physicalOutputEnabled: false,
+    telemetry,
+  };
+  const entries = [
+    { recordId: 1, timestamp: '2026-05-25T20:20:00Z', recordType: 'event', payload: { decision: 'BOOT', physicalOutput: false } },
+    { recordId: 2, timestamp: '2026-05-25T20:20:01Z', recordType: 'command_result', payload: commandResult },
+    { recordId: 3, timestamp: '2026-05-25T20:20:02Z', recordType: 'hardware_result', payload: { commandId: 'CMD-00002', physicalOutput: false } },
+  ];
+  let exportPayload = {
+    schemaVersion: 1,
+    generatedAt: '2026-05-25T20:21:00Z',
+    physicalOutputEnabled: false,
+    telemetry,
+    state: statePayload,
+    events: [],
+    commandResults: [commandResult],
+    entries,
+  };
+  let replayPayload = {
+    schemaVersion: 1,
+    generatedAt: '2026-05-25T20:21:00Z',
+    sourceLogPath: telemetry.path,
+    physicalOutputEnabled: false,
+    replayOnly: true,
+    entries,
+    events: [{ decision: 'BOOT', physicalOutput: false }],
+    commandResults: [commandResult],
+    hardwareResults: [{ commandId: 'CMD-00002', physicalOutput: false }],
+  };
+
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
+  await page.route(`${apiBase}/telemetry/export`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(exportPayload) }));
+  await page.route(`${apiBase}/replay`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(replayPayload) }));
+  await page.route(`${apiBase}/telemetry/reset`, async (route) => {
+    const resetTelemetry = { ...telemetry, recordCount: 1 };
+    statePayload = { ...statePayload, mode: 'safe', commandResults: [], telemetry: resetTelemetry };
+    exportPayload = { ...exportPayload, telemetry: resetTelemetry, state: statePayload, commandResults: [], entries: [{ recordId: 1, timestamp: '2026-05-25T20:22:00Z', recordType: 'event', payload: { decision: 'RESET', physicalOutput: false } }] };
+    replayPayload = { ...replayPayload, entries: exportPayload.entries, events: [{ decision: 'RESET', physicalOutput: false }], commandResults: [], hardwareResults: [] };
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, physicalOutputEnabled: false, telemetry: resetTelemetry, state: statePayload }) });
+  });
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await page.getByText('Kanıt / Replay').click();
+  await expect(page.getByText('JSONL kayıt yolu')).toBeVisible();
+  await page.getByRole('button', { name: 'Kanıtı Yenile' }).click();
+  await expect(page.getByText('Kanıt paketi güncellendi; replay yalnız kayıt okur.')).toBeVisible();
+  await expect(page.getByText('telemetry_data/operator-api-dry-run.jsonl')).toBeVisible();
+  await expect(page.getByText('1 olay · 1 komut · 1 dry-run hardware sonucu')).toBeVisible();
+  await expect(page.getByText('KAPALI / YOK')).toBeVisible();
+  await expect(page.getByText('hardware_result')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Telemetriyi Sıfırla' }).click();
+  await expect(page.getByText('Telemetri sıfırlandı; safe moda dönüldü ve fiziksel çıkış üretilmedi.')).toBeVisible();
+  await expect(page.getByText('1 olay · 0 komut · 0 dry-run hardware sonucu')).toBeVisible();
+  await expect(page.getByText('RESET')).toBeVisible();
+});
+
+test('operator panel evidence drawer surfaces backend telemetry failures without false success', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/bad-operator-api';
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      app: 'gokkalkan-operator-api',
+      version: 1,
+      mode: 'safe',
+      stage: 3,
+      round: 1,
+      dryRun: true,
+      liveArmEnabled: false,
+      tracks: [],
+      safety: {
+        estop: false,
+        motionZoneOk: true,
+        fireZoneOk: true,
+        targetGateOk: false,
+        modeOk: false,
+        backendConnected: true,
+        perceptionConnected: false,
+        sensorAdapterConnected: false,
+        dryRun: true,
+        liveArmEnabled: false,
+        blockReason: 'BLOCKED_MODE',
+        explanation: 'Safe mod.',
+      },
+      commandResults: [],
+      events: [],
+      physicalOutputEnabled: false,
+      telemetry: { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 },
+    }),
+  }));
+  await page.route(`${apiBase}/telemetry/export`, async (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'telemetry unavailable' }) }));
+  await page.route(`${apiBase}/replay`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ schemaVersion: 1, replayOnly: true, entries: [], events: [], commandResults: [], hardwareResults: [], physicalOutputEnabled: false }) }));
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await page.getByText('Kanıt / Replay').click();
+  await page.getByRole('button', { name: 'Kanıtı Yenile' }).click();
+
+  await expect(page.getByText('Operator API 503: Service Unavailable')).toBeVisible();
+  await expect(page.getByText('Kanıt paketi güncellendi; replay yalnız kayıt okur.')).toHaveCount(0);
+});

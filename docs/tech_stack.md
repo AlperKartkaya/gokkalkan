@@ -120,7 +120,7 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: canlı kamera/sensör, backend durumları, komut niyeti, Safety Gate gerekçesi ve hardware geri bildirimi.
+- Gerçek panelde: canlı kamera/sensör, backend durumları, komut niyeti, Safety Gate gerekçesi, hardware geri bildirimi ve kapalı gelen JSONL kanıt/replay çekmecesi.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri

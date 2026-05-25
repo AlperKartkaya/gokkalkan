@@ -7,13 +7,13 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `frontend/` artık React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü** içerir.
 - Simülatör; Aşama 1 manuel hedef pratiği, Aşama 2 sürü saldırısı, Aşama 3 dost/düşman + menzil kurallarını görselleştirir.
 - Hız, kesin parkur koordinatı, hedef fiziksel ölçüsü ve sensör modeli şartnamede sayısal verilmediği için simülasyon parametreleri yapılandırılabilir varsayımdır.
-- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez ve JSONL telemetri/replay kanıtı üretir.
+- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez ve JSONL telemetri/replay kanıtı üretir. Operatör panelindeki `Kanıt / Replay` çekmecesi bu kayıtları okuyabilir.
 - `perception/` ve gerçek sensör/donanım bağlantıları hâlâ saha sistemi için geliştirme alanıdır.
 
 ## Ürün yüzeyleri
 
 1. **Yarışma Simülatörü** — eğitim, KTR ekran görüntüsü ve görev akışı provası için. Gerçek donanım komutu göndermez.
-2. **Gerçek Operatör Paneli** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. İlk geçişte React panel + dry-run Backend API vardır. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
+2. **Gerçek Operatör Paneli** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. İlk geçişte React panel + dry-run Backend API + kapalı gelen `Kanıt / Replay` çekmecesi vardır. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
 3. **Rapor/KTR dokümantasyonu** — mimari, arayüzler, sequence diyagramları ve yarışma kanıtlarının yazılı kaynağı.
 
 ## Hızlı başlangıç

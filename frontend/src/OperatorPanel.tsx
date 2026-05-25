@@ -11,10 +11,16 @@ import {
   type OperatorTrackState,
 } from './operatorContracts';
 import {
+  fetchOperatorReplay,
   fetchOperatorSnapshot,
+  fetchOperatorTelemetryExport,
+  resetOperatorTelemetry,
   sendOperatorFireIntent,
   sendOperatorModeRequest,
   type OperatorApiSnapshot,
+  type OperatorReplayBundle,
+  type OperatorTelemetryExport,
+  type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
 import type { Mode, TargetType } from './types';
 
@@ -78,8 +84,15 @@ function commandLabel(result: CommandResult) {
   return 'ModeRequest';
 }
 
+function shortRecordPayload(record: OperatorTelemetryLogRecord) {
+  const value = record.payload ? JSON.stringify(record.payload) : record.raw ?? 'payload yok';
+  return value.length > 120 ? `${value.slice(0, 120)}…` : value;
+}
+
 export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () => void; onOpenSimulator: () => void }) {
-  const apiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
+  const queryApiBaseUrl = useMemo(() => new URLSearchParams(window.location.search).get('operatorApi')?.trim() ?? '', []);
+  const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
+  const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
   const [dryRun, setDryRun] = useState(true);
   const [mode, setMode] = useState<Mode>('safe');
@@ -88,6 +101,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
+  const [telemetryExport, setTelemetryExport] = useState<OperatorTelemetryExport>();
+  const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState('');
+  const [evidenceNotice, setEvidenceNotice] = useState('');
   const [commandResults, setCommandResults] = useState<CommandResult[]>([
     makeCommandResult({
       commandId: 'BOOT-DRY-RUN',
@@ -102,7 +120,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   useEffect(() => {
     if (!apiBaseUrl) {
       setApiSnapshot(undefined);
+      setTelemetryExport(undefined);
+      setReplayBundle(undefined);
       setApiError('');
+      setEvidenceError('');
+      setEvidenceNotice('Backend API bağlantısı olmadan yalnız yerel dry-run olay akışı gösterilir.');
       return;
     }
 
@@ -114,6 +136,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         setApiSnapshot(snapshot);
         setApiError('');
         setMode(snapshot.mode);
+        if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
         if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
           setSelectedTrackId(snapshot.tracks[0].trackId);
         }
@@ -158,9 +181,70 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     liveArmEnabled: config.liveArmEnabled,
   });
   const fireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+  const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
+  const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
+  const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
+  const replayCommandCount = replayBundle?.commandResults.length ?? 0;
+  const replayEventCount = replayBundle?.events.length ?? 0;
 
   const pushResult = (result: CommandResult) => {
     setCommandResults((previous) => [result, ...previous].slice(0, 8));
+  };
+
+  const loadTelemetryEvidence = async () => {
+    if (!apiBaseUrl) {
+      setEvidenceError('Backend API bağlantısı yok; export/replay için dry-run API başlatılmalı.');
+      setEvidenceNotice('Yerel panel olay akışı görüntüleniyor.');
+      return;
+    }
+
+    const [exported, replay] = await Promise.all([
+      fetchOperatorTelemetryExport(apiBaseUrl),
+      fetchOperatorReplay(apiBaseUrl),
+    ]);
+    setTelemetryExport(exported);
+    setReplayBundle(replay);
+    setApiSnapshot(exported.state);
+    if (exported.commandResults.length > 0) setCommandResults(exported.commandResults);
+    setEvidenceError('');
+    setEvidenceNotice('Kanıt paketi güncellendi; replay yalnız kayıt okur.');
+  };
+
+  const refreshTelemetryEvidence = () => {
+    setEvidenceBusy(true);
+    void loadTelemetryEvidence()
+      .catch((error: unknown) => {
+        setEvidenceError(error instanceof Error ? error.message : 'Telemetri kanıtı alınamadı.');
+        setEvidenceNotice('');
+      })
+      .finally(() => setEvidenceBusy(false));
+  };
+
+  const resetTelemetryEvidence = () => {
+    if (!apiBaseUrl) {
+      setEvidenceError('Backend API bağlantısı yok; sıfırlama yalnız API üzerinden yapılır.');
+      return;
+    }
+
+    setEvidenceBusy(true);
+    void resetOperatorTelemetry(apiBaseUrl)
+      .then(async (response) => {
+        setApiSnapshot(response.state);
+        setCommandResults(response.state.commandResults);
+        setEvidenceNotice('Telemetri sıfırlandı; safe moda dönüldü ve fiziksel çıkış üretilmedi.');
+        setEvidenceError('');
+        const [exported, replay] = await Promise.all([
+          fetchOperatorTelemetryExport(apiBaseUrl),
+          fetchOperatorReplay(apiBaseUrl),
+        ]);
+        setTelemetryExport(exported);
+        setReplayBundle(replay);
+      })
+      .catch((error: unknown) => {
+        setEvidenceError(error instanceof Error ? error.message : 'Telemetri sıfırlanamadı.');
+        setEvidenceNotice('');
+      })
+      .finally(() => setEvidenceBusy(false));
   };
 
   const recordMode = (nextMode: Mode) => {
@@ -348,6 +432,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
           <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
             <h2 className="m-0 text-xl font-black">Olay akışı</h2>
             <div className="mt-3 grid gap-2">
+              {commandResults.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz komut sonucu yok.</p>}
               {commandResults.map((result) => (
                 <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
                   <b className={result.accepted ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{commandLabel(result)} · {result.accepted ? 'Kabul' : 'Blok'}</b>
@@ -357,9 +442,55 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
               ))}
             </div>
           </section>
+
+          <details className="rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
+            <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">
+              Kanıt / Replay
+              <span className="ml-2 rounded-full border border-[#48a8ff]/25 bg-[#48a8ff]/10 px-2 py-1 align-middle text-xs text-[#bfe7ff]">Gelişmiş</span>
+            </summary>
+            <p className="mt-3 text-sm leading-relaxed text-[#b7c9d5]">
+              Bu çekmece KTR/debug kanıtı içindir. Export ve replay sadece dry-run JSONL kayıtlarını okur; replay hardware adapter çağırmaz.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={refreshTelemetryEvidence}>
+                {evidenceBusy ? 'Kanıt alınıyor' : 'Kanıtı Yenile'}
+              </button>
+              <button className="rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={resetTelemetryEvidence}>
+                Telemetriyi Sıfırla
+              </button>
+            </div>
+            {!apiBaseUrl && <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">Backend API yok: panel yerel dry-run modunda. Export/replay için `operatorApi` veya VITE_GOKKALKAN_OPERATOR_API_BASE gerekir.</p>}
+            {evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#ff4757]/25 bg-[#ff4757]/10 p-3 text-sm font-bold text-[#ffbdc4]">{evidenceError}</p>}
+            {evidenceNotice && !evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#33e68c]/25 bg-[#33e68c]/10 p-3 text-sm font-bold text-[#bfffe0]">{evidenceNotice}</p>}
+            <div className="mt-3 grid gap-2 text-sm">
+              <EvidenceRow label="JSONL kayıt yolu" value={telemetryMetadata?.path ?? 'Henüz backend kanıtı alınmadı'} />
+              <EvidenceRow label="Kayıt sayısı" value={String(telemetryMetadata?.recordCount ?? evidenceEntries.length)} />
+              <EvidenceRow label="Replay özeti" value={`${replayEventCount} olay · ${replayCommandCount} komut · ${replayHardwareCount} dry-run hardware sonucu`} />
+              <EvidenceRow label="Fiziksel çıkış" value={(telemetryExport?.physicalOutputEnabled ?? replayBundle?.physicalOutputEnabled ?? apiSnapshot?.physicalOutputEnabled) ? 'AÇIK' : 'KAPALI / YOK'} />
+            </div>
+            <div className="mt-3 grid max-h-64 gap-2 overflow-auto pr-1" aria-label="Replay kayıtları">
+              {evidenceEntries.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz export/replay kaydı alınmadı.</p>}
+              {evidenceEntries.slice(0, 8).map((record, index) => (
+                <article key={`${record.recordId ?? index}-${record.timestamp ?? 'no-time'}`} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-xs">
+                  <b className="text-[#d7efff]">{record.recordType}</b>
+                  <small className="ml-2 text-[#91a6b7]">{record.timestamp ?? 'timestamp yok'}</small>
+                  <p className="m-0 mt-1 break-words text-[#c8d8e2]">{shortRecordPayload(record)}</p>
+                </article>
+              ))}
+            </div>
+          </details>
         </aside>
       </section>
     </main>
+  );
+}
+
+function EvidenceRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/[.07] bg-white/[.04] p-3">
+      <span className="block text-xs font-black uppercase tracking-[.12em] text-[#91a6b7]">{label}</span>
+      <b className="mt-1 block break-words text-[#eaf7ff]">{value}</b>
+    </div>
   );
 }
 
