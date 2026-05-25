@@ -19,6 +19,7 @@ test('landing is simulator-branded and removes mock/keyboard skip copy', async (
 
   await expect(page.getByText('GÖKKALKAN')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Simülatöre Başla' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Operatör Paneli' })).toBeVisible();
   await expect(page.getByText(/mock/i)).toHaveCount(0);
   await expect(page.getByText(/Enter\/Esc ile atla/i)).toHaveCount(0);
   await expect(page.locator('.radar-sweep')).toHaveCount(0);
@@ -236,4 +237,31 @@ test('emergency stop freezes simulator state and reports summary safety', async 
   const before = await headerText(page);
   await page.waitForTimeout(800);
   expect(await headerText(page)).toBe(before);
+});
+
+
+test('landing opens the dry-run real operator panel without live hardware claims', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Operatör Paneli' }).click();
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
+  await expect(page.getByText('DRY-RUN AÇIK · fiziksel çıkış yok')).toBeVisible();
+  await expect(page.getByText('UI doğrudan ateşleme/imha hattını enerjilendirmez.')).toBeVisible();
+  await expect(page.getByText(/Puan/)).toHaveCount(0);
+
+  await expect(page.getByRole('button', { name: 'FIRE INTENT KİLİTLİ' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Otonom' }).click();
+  await expect(page.getByRole('button', { name: 'FIRE INTENT GÖNDER (DRY-RUN)' })).toBeEnabled();
+  await page.getByRole('button', { name: 'FIRE INTENT GÖNDER (DRY-RUN)' }).click();
+  await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
+});
+
+test('operator panel can be opened directly with query parameter and returns to simulator', async ({ page }) => {
+  await page.goto('/?operator=1');
+
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await page.getByRole('button', { name: 'Simülatöre dön' }).click();
+  await expect(page.getByTestId('tutorial-overlay')).toBeVisible();
+  await expect(page.getByTestId('parkour-hero')).toBeVisible();
 });

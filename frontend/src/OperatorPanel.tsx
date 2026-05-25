@@ -1,0 +1,279 @@
+import { useMemo, useState } from 'react';
+import {
+  canSendFireIntent,
+  evaluateOperatorSafety,
+  makeCommandResult,
+  makeFireIntent,
+  operatorBlockCopy,
+  type CommandResult,
+  type FireIntent,
+  type OperatorPanelConfig,
+  type OperatorTrackState,
+} from './operatorContracts';
+import type { Mode, TargetType } from './types';
+
+const targetLabel: Record<TargetType, string> = {
+  F16: 'Savaş Uçağı / F16',
+  Helikopter: 'Helikopter',
+  'Balistik Füze': 'Balistik Füze',
+  'Mini/Micro İHA': 'Mini/Micro İHA',
+};
+
+const dryRunTracks: OperatorTrackState[] = [
+  {
+    trackId: 'DRY-RUN-F16-01',
+    stage: 3,
+    round: 1,
+    targetType: 'F16',
+    friendFoe: 'Düşman',
+    rangeM: 12.4,
+    bearingDeg: -18,
+    confidence: 0.96,
+    source: 'dry-run',
+    updatedAt: '2026-05-25T20:00:00.000Z',
+  },
+  {
+    trackId: 'DRY-RUN-HEL-02',
+    stage: 3,
+    round: 1,
+    targetType: 'Helikopter',
+    friendFoe: 'Dost',
+    rangeM: 8.1,
+    bearingDeg: 4,
+    confidence: 0.91,
+    source: 'dry-run',
+    updatedAt: '2026-05-25T20:00:00.000Z',
+  },
+  {
+    trackId: 'DRY-RUN-UAV-03',
+    stage: 3,
+    round: 1,
+    targetType: 'Mini/Micro İHA',
+    friendFoe: 'Dost',
+    rangeM: 4.2,
+    bearingDeg: 23,
+    confidence: 0.88,
+    source: 'dry-run',
+    updatedAt: '2026-05-25T20:00:00.000Z',
+  },
+];
+
+function statusTone(ok: boolean) {
+  return ok ? 'border-[#33e68c]/30 bg-[#33e68c]/10 text-[#bfffe0]' : 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]';
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function commandLabel(result: CommandResult) {
+  if (result.kind === 'FireIntent') return 'FireIntent';
+  if (result.kind === 'ManualAimCommand') return 'ManualAimCommand';
+  return 'ModeRequest';
+}
+
+export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () => void; onOpenSimulator: () => void }) {
+  const apiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
+  const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
+  const [dryRun, setDryRun] = useState(true);
+  const [mode, setMode] = useState<Mode>('safe');
+  const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
+  const [lastIntent, setLastIntent] = useState<FireIntent>();
+  const [commandResults, setCommandResults] = useState<CommandResult[]>([
+    makeCommandResult({
+      commandId: 'BOOT-DRY-RUN',
+      kind: 'ModeRequest',
+      accepted: true,
+      dryRun: true,
+      safetyBlockReason: 'ALLOWED',
+      createdAt: new Date('2026-05-25T20:00:00Z'),
+    }),
+  ]);
+
+  const config: OperatorPanelConfig = useMemo(() => {
+    const connectionState = dryRun ? 'dry-run' : apiBaseUrl ? 'live' : 'offline';
+    return {
+      apiBaseUrl: apiBaseUrl || 'local-dry-run-adapter',
+      connectionState,
+      dryRun,
+      liveArmEnabled: liveArmEnabled && !dryRun,
+    };
+  }, [apiBaseUrl, dryRun, liveArmEnabled]);
+
+  const selectedTrack = dryRunTracks.find((track) => track.trackId === selectedTrackId);
+  const safety = evaluateOperatorSafety({
+    estop: false,
+    motionZoneOk: true,
+    fireZoneOk: true,
+    targetGateOk: selectedTrack?.friendFoe === 'Düşman',
+    modeOk: mode === 'manual' || mode === 'autonomous',
+    backendConnected: config.connectionState !== 'offline',
+    perceptionConnected: config.connectionState === 'live',
+    sensorAdapterConnected: config.connectionState === 'live',
+    dryRun: config.dryRun,
+    liveArmEnabled: config.liveArmEnabled,
+  });
+  const fireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+
+  const pushResult = (result: CommandResult) => {
+    setCommandResults((previous) => [result, ...previous].slice(0, 8));
+  };
+
+  const recordMode = (nextMode: Mode) => {
+    setMode(nextMode);
+    const accepted = config.connectionState !== 'offline';
+    pushResult(makeCommandResult({
+      commandId: `MODE-${nextMode}-${Date.now()}`,
+      kind: 'ModeRequest',
+      accepted,
+      dryRun: config.dryRun,
+      safetyBlockReason: accepted ? 'ALLOWED' : 'BLOCKED_BACKEND',
+    }));
+  };
+
+  const sendFireIntent = () => {
+    if (!selectedTrack || !fireReady) {
+      pushResult(makeCommandResult({
+        commandId: `BLOCK-${Date.now()}`,
+        kind: 'FireIntent',
+        accepted: false,
+        dryRun: config.dryRun,
+        safetyBlockReason: safety.blockReason,
+      }));
+      return;
+    }
+
+    const intent = makeFireIntent({ targetId: selectedTrack.trackId, stage: selectedTrack.stage, round: selectedTrack.round, dryRun: config.dryRun });
+    setLastIntent(intent);
+    pushResult(makeCommandResult({
+      commandId: intent.requestedAt,
+      kind: intent.kind,
+      accepted: true,
+      dryRun: intent.dryRun,
+      safetyBlockReason: 'ALLOWED',
+    }));
+  };
+
+  return (
+    <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel">
+      <header className="mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[1000px]:grid-cols-[1fr_auto]">
+        <div>
+          <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Gerçek sistem paneli · ilk entegrasyon geçişi</p>
+          <h1 className="m-0 mt-1 text-3xl font-black tracking-[.04em] text-white min-[760px]:text-4xl">GÖKKALKAN OPERATÖR PANELİ</h1>
+          <p className="m-0 mt-2 max-w-[78ch] text-sm leading-relaxed text-[#b7c9d5]">
+            Bu ekran simülasyon değildir; backend/perception/hardware entegrasyonu için hazırlanmış güvenli operatör yüzeyidir. Bu geçişte komutlar dry-run niyeti olarak loglanır, fiziksel çıkış üretilmez.
+          </p>
+        </div>
+        <div className="grid content-start gap-2 min-[560px]:grid-cols-2 min-[1000px]:min-w-[360px]">
+          <button className="rounded-lg border border-white/10 bg-white/[.07] px-3 py-2 text-sm font-black text-[#eaf7ff]" onClick={onBack}>Landing’e dön</button>
+          <button className="rounded-lg border border-[#25d8ff]/25 bg-[#25d8ff]/10 px-3 py-2 text-sm font-black text-[#bff2ff]" onClick={onOpenSimulator}>Simülatöre dön</button>
+          <button className="col-span-full rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad]" onClick={() => setDryRun((value) => !value)}>
+            {dryRun ? 'DRY-RUN AÇIK · fiziksel çıkış yok' : 'DRY-RUN KAPALI · canlı kilit gerekli'}
+          </button>
+        </div>
+      </header>
+
+      <section className="mb-3 grid gap-2 min-[900px]:grid-cols-5" aria-label="Canlı bağlantı durumları">
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(config.connectionState !== 'offline')}`}>Backend: {config.connectionState === 'offline' ? 'bağlantı yok' : config.connectionState === 'dry-run' ? 'dry-run adapter' : 'canlı API'}</span>
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : 'placeholder'}</span>
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.sensorAdapterConnected)}`}>Radar/LiDAR: {safety.sensorAdapterConnected ? 'canlı' : 'TBD'}</span>
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
+        <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {config.apiBaseUrl}</span>
+      </section>
+
+      <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1.25fr)_minmax(330px,.75fr)]">
+        <div className="grid gap-3">
+          <section className="relative min-h-[420px] overflow-hidden rounded-xl border border-[#25d8ff]/18 bg-[radial-gradient(circle_at_50%_45%,rgba(37,216,255,.12),rgba(4,7,10,.96)_58%)] p-4" aria-label="Canlı görüntü ve sensör füzyonu">
+            <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.035)_1px,transparent_1px)] [background-size:34px_34px]" />
+            <div className="relative z-[1] flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Canlı görüntü / sensor fusion</p>
+                <h2 className="m-0 mt-1 text-2xl font-black">Kamera ve iz bindirmesi</h2>
+                <p className="m-0 mt-1 max-w-[62ch] text-sm text-[#b7c9d5]">Kamera, radar ve LiDAR bağlantısı geldiğinde bu alan `TrackState` ve `SensorFrame` akışıyla beslenecek. Şu an dry-run hedef izleri gösteriliyor.</p>
+              </div>
+              <span className="rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-1 text-xs font-black text-[#ffe4ad]">Fiziksel çıkış yok</span>
+            </div>
+            <div className="relative z-[1] mt-8 h-[290px] rounded-lg border border-white/[.08] bg-black/25">
+              <div className="absolute left-[12%] top-[18%] text-xs font-black text-[#91a6b7]">15 m</div>
+              <div className="absolute left-[42%] top-[18%] text-xs font-black text-[#91a6b7]">10 m</div>
+              <div className="absolute left-[68%] top-[18%] text-xs font-black text-[#91a6b7]">5 m</div>
+              <div className="absolute bottom-6 right-6 grid h-20 w-20 place-items-center rounded-full border border-[#33e68c]/40 bg-[#33e68c]/10 text-xs font-black text-[#ccffe2]">Gökkalkan</div>
+              {dryRunTracks.map((track, index) => (
+                <button
+                  key={track.trackId}
+                  className={`absolute min-w-[132px] rounded-lg border px-3 py-2 text-left text-xs shadow-[0_12px_24px_rgba(0,0,0,.28)] ${track.trackId === selectedTrackId ? 'border-[#ffbb42] bg-[#ffbb42]/20 text-white' : track.friendFoe === 'Düşman' ? 'border-[#ff4757]/45 bg-[#ff4757]/12 text-[#ffd6da]' : 'border-[#48a8ff]/45 bg-[#48a8ff]/12 text-[#d7efff]'}`}
+                  style={{ left: `${18 + index * 25}%`, top: `${38 + index * 13}%` }}
+                  onClick={() => setSelectedTrackId(track.trackId)}
+                >
+                  <b className="block text-sm">{targetLabel[track.targetType]}</b>
+                  <span>{track.friendFoe} · {track.rangeM.toFixed(1)} m · {formatPercent(track.confidence)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-3 min-[760px]:grid-cols-3">
+            <InfoCard title="Seçili hedef" value={selectedTrack ? selectedTrack.trackId : 'Yok'} detail={selectedTrack ? `${targetLabel[selectedTrack.targetType]} · ${selectedTrack.friendFoe} · ${selectedTrack.rangeM.toFixed(1)} m` : 'FireIntent kapalı'} />
+            <InfoCard title="Safety açıklaması" value={safety.blockReason} detail={safety.explanation} />
+            <InfoCard title="Son niyet" value={lastIntent?.kind ?? 'Henüz yok'} detail={lastIntent ? `${lastIntent.targetId} · dryRun=${String(lastIntent.dryRun)}` : 'Komut gönderilmedi'} />
+          </section>
+        </div>
+
+        <aside className="grid gap-3 content-start">
+          <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" aria-label="Komut paneli">
+            <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Komut paneli</p>
+            <h2 className="m-0 mt-1 text-2xl font-black">Backend’e niyet gönder</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#b7c9d5]">Bu geçişte butonlar yalnız yüksek seviye mesaj modeli üretir. Gerçek sistemde backend Safety Gate onayı olmadan Hardware Adapter çağrılmaz.</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {(['safe', 'manual', 'autonomous', 'maintenance'] as const).map((item) => (
+                <button key={item} className={`rounded-lg border px-3 py-2 text-sm font-black ${mode === item ? 'border-[#33e68c]/40 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`} onClick={() => recordMode(item)}>
+                  {item === 'safe' ? 'Safe' : item === 'manual' ? 'Manuel' : item === 'autonomous' ? 'Otonom' : 'Bakım'}
+                </button>
+              ))}
+            </div>
+            <button
+              className={`mt-4 min-h-16 w-full rounded-xl px-4 text-lg font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)]' : 'bg-white/[.08] text-[#91a6b7]'}`}
+              disabled={!fireReady}
+              onClick={sendFireIntent}
+            >
+              {fireReady ? 'FIRE INTENT GÖNDER (DRY-RUN)' : 'FIRE INTENT KİLİTLİ'}
+            </button>
+            <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{fireReady ? 'Puan veya fiziksel çıkış yok; yalnız CommandResult loglanır.' : operatorBlockCopy[safety.blockReason]}</p>
+          </section>
+
+          <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Güvenlik ilkeleri">
+            <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Güvenlik sınırı</h2>
+            <ul className="mt-3 grid gap-2 pl-5 text-sm leading-relaxed text-[#f4e4bf]">
+              <li>UI doğrudan ateşleme/imha hattını enerjilendirmez.</li>
+              <li>Acil Durdur ve yasak alan kontrolleri backend/hardware katmanında uygulanır.</li>
+              <li>Canlı kullanım için radar/LiDAR, perception ve MCU adapter kararları ayrıca bağlanmalıdır.</li>
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
+            <h2 className="m-0 text-xl font-black">Olay akışı</h2>
+            <div className="mt-3 grid gap-2">
+              {commandResults.map((result) => (
+                <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
+                  <b className={result.accepted ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{commandLabel(result)} · {result.accepted ? 'Kabul' : 'Blok'}</b>
+                  <p className="m-0 mt-1 text-[#c8d8e2]">{result.message}</p>
+                  <small className="mt-1 block text-[#91a6b7]">{result.createdAt}</small>
+                </article>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function InfoCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+  return (
+    <section className="min-w-0 rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4">
+      <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#91a6b7]">{title}</p>
+      <b className="mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-lg text-white">{value}</b>
+      <p className="m-0 mt-1 text-sm leading-snug text-[#b7c9d5]">{detail}</p>
+    </section>
+  );
+}
