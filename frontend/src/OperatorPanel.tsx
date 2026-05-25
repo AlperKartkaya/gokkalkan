@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   canSendFireIntent,
   evaluateOperatorSafety,
@@ -10,6 +10,12 @@ import {
   type OperatorPanelConfig,
   type OperatorTrackState,
 } from './operatorContracts';
+import {
+  fetchOperatorSnapshot,
+  sendOperatorFireIntent,
+  sendOperatorModeRequest,
+  type OperatorApiSnapshot,
+} from './operatorApiClient';
 import type { Mode, TargetType } from './types';
 
 const targetLabel: Record<TargetType, string> = {
@@ -79,6 +85,9 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [mode, setMode] = useState<Mode>('safe');
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
+  const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
+  const [apiError, setApiError] = useState('');
+  const [apiBusy, setApiBusy] = useState(false);
   const [commandResults, setCommandResults] = useState<CommandResult[]>([
     makeCommandResult({
       commandId: 'BOOT-DRY-RUN',
@@ -90,17 +99,52 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     }),
   ]);
 
+  useEffect(() => {
+    if (!apiBaseUrl) {
+      setApiSnapshot(undefined);
+      setApiError('');
+      return;
+    }
+
+    let cancelled = false;
+    setApiBusy(true);
+    fetchOperatorSnapshot(apiBaseUrl)
+      .then((snapshot) => {
+        if (cancelled) return;
+        setApiSnapshot(snapshot);
+        setApiError('');
+        setMode(snapshot.mode);
+        if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
+          setSelectedTrackId(snapshot.tracks[0].trackId);
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setApiSnapshot(undefined);
+        setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
+      })
+      .finally(() => {
+        if (!cancelled) setApiBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseUrl, selectedTrackId]);
+
   const config: OperatorPanelConfig = useMemo(() => {
-    const connectionState = dryRun ? 'dry-run' : apiBaseUrl ? 'live' : 'offline';
+    const apiReady = Boolean(apiSnapshot && !apiError);
+    const connectionState = dryRun ? 'dry-run' : apiReady ? (apiSnapshot?.dryRun ? 'dry-run' : 'live') : 'offline';
     return {
       apiBaseUrl: apiBaseUrl || 'local-dry-run-adapter',
       connectionState,
       dryRun,
       liveArmEnabled: liveArmEnabled && !dryRun,
     };
-  }, [apiBaseUrl, dryRun, liveArmEnabled]);
+  }, [apiBaseUrl, apiError, apiSnapshot, dryRun, liveArmEnabled]);
 
-  const selectedTrack = dryRunTracks.find((track) => track.trackId === selectedTrackId);
+  const visibleTracks = apiSnapshot?.tracks.length ? apiSnapshot.tracks : dryRunTracks;
+  const selectedTrack = visibleTracks.find((track) => track.trackId === selectedTrackId);
   const safety = evaluateOperatorSafety({
     estop: false,
     motionZoneOk: true,
@@ -108,8 +152,8 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     targetGateOk: selectedTrack?.friendFoe === 'Düşman',
     modeOk: mode === 'manual' || mode === 'autonomous',
     backendConnected: config.connectionState !== 'offline',
-    perceptionConnected: config.connectionState === 'live',
-    sensorAdapterConnected: config.connectionState === 'live',
+    perceptionConnected: apiSnapshot?.safety.perceptionConnected ?? config.connectionState === 'live',
+    sensorAdapterConnected: apiSnapshot?.safety.sensorAdapterConnected ?? config.connectionState === 'live',
     dryRun: config.dryRun,
     liveArmEnabled: config.liveArmEnabled,
   });
@@ -121,6 +165,35 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
   const recordMode = (nextMode: Mode) => {
     setMode(nextMode);
+    if (apiBaseUrl) {
+      setApiBusy(true);
+      void sendOperatorModeRequest(apiBaseUrl, {
+        kind: 'ModeRequest',
+        requestedMode: nextMode,
+        operatorId: 'OP-UI-1',
+        timestamp: new Date().toISOString(),
+        reason: 'operator-panel',
+        dryRun: config.dryRun,
+      })
+        .then((response) => {
+          pushResult(response.result);
+          setApiSnapshot(response.state);
+          setApiError('');
+        })
+        .catch((error: unknown) => {
+          pushResult(makeCommandResult({
+            commandId: `MODE-BLOCK-${Date.now()}`,
+            kind: 'ModeRequest',
+            accepted: false,
+            dryRun: config.dryRun,
+            safetyBlockReason: 'BLOCKED_BACKEND',
+          }));
+          setApiError(error instanceof Error ? error.message : 'Backend API mode komutunu kabul etmedi.');
+        })
+        .finally(() => setApiBusy(false));
+      return;
+    }
+
     const accepted = config.connectionState !== 'offline';
     pushResult(makeCommandResult({
       commandId: `MODE-${nextMode}-${Date.now()}`,
@@ -145,6 +218,28 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
     const intent = makeFireIntent({ targetId: selectedTrack.trackId, stage: selectedTrack.stage, round: selectedTrack.round, dryRun: config.dryRun });
     setLastIntent(intent);
+    if (apiBaseUrl) {
+      setApiBusy(true);
+      void sendOperatorFireIntent(apiBaseUrl, intent)
+        .then((response) => {
+          pushResult(response.result);
+          setApiSnapshot(response.state);
+          setApiError('');
+        })
+        .catch((error: unknown) => {
+          pushResult(makeCommandResult({
+            commandId: `FIRE-BLOCK-${Date.now()}`,
+            kind: 'FireIntent',
+            accepted: false,
+            dryRun: config.dryRun,
+            safetyBlockReason: 'BLOCKED_BACKEND',
+          }));
+          setApiError(error instanceof Error ? error.message : 'Backend API fire intent komutunu kabul etmedi.');
+        })
+        .finally(() => setApiBusy(false));
+      return;
+    }
+
     pushResult(makeCommandResult({
       commandId: intent.requestedAt,
       kind: intent.kind,
@@ -174,11 +269,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
       </header>
 
       <section className="mb-3 grid gap-2 min-[900px]:grid-cols-5" aria-label="Canlı bağlantı durumları">
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(config.connectionState !== 'offline')}`}>Backend: {config.connectionState === 'offline' ? 'bağlantı yok' : config.connectionState === 'dry-run' ? 'dry-run adapter' : 'canlı API'}</span>
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(config.connectionState !== 'offline')}`}>Backend: {apiBusy ? 'kontrol ediliyor' : config.connectionState === 'offline' ? 'bağlantı yok' : config.connectionState === 'dry-run' ? 'dry-run adapter' : 'canlı API'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : 'placeholder'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.sensorAdapterConnected)}`}>Radar/LiDAR: {safety.sensorAdapterConnected ? 'canlı' : 'TBD'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
-        <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {config.apiBaseUrl}</span>
+        <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {apiError || config.apiBaseUrl}</span>
       </section>
 
       <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1.25fr)_minmax(330px,.75fr)]">
@@ -187,7 +282,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
             <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.035)_1px,transparent_1px)] [background-size:34px_34px]" />
             <div className="relative z-[1] flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Canlı görüntü / sensor fusion</p>
+                <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Canlı görüntü / sensör füzyonu</p>
                 <h2 className="m-0 mt-1 text-2xl font-black">Kamera ve iz bindirmesi</h2>
                 <p className="m-0 mt-1 max-w-[62ch] text-sm text-[#b7c9d5]">Kamera, radar ve LiDAR bağlantısı geldiğinde bu alan `TrackState` ve `SensorFrame` akışıyla beslenecek. Şu an dry-run hedef izleri gösteriliyor.</p>
               </div>
@@ -198,7 +293,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
               <div className="absolute left-[42%] top-[18%] text-xs font-black text-[#91a6b7]">10 m</div>
               <div className="absolute left-[68%] top-[18%] text-xs font-black text-[#91a6b7]">5 m</div>
               <div className="absolute bottom-6 right-6 grid h-20 w-20 place-items-center rounded-full border border-[#33e68c]/40 bg-[#33e68c]/10 text-xs font-black text-[#ccffe2]">Gökkalkan</div>
-              {dryRunTracks.map((track, index) => (
+              {visibleTracks.map((track, index) => (
                 <button
                   key={track.trackId}
                   className={`absolute min-w-[132px] rounded-lg border px-3 py-2 text-left text-xs shadow-[0_12px_24px_rgba(0,0,0,.28)] ${track.trackId === selectedTrackId ? 'border-[#ffbb42] bg-[#ffbb42]/20 text-white' : track.friendFoe === 'Düşman' ? 'border-[#ff4757]/45 bg-[#ff4757]/12 text-[#ffd6da]' : 'border-[#48a8ff]/45 bg-[#48a8ff]/12 text-[#d7efff]'}`}

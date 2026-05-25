@@ -139,6 +139,27 @@ Kesin elektronik değerler tasarım netleşince doldurulmalıdır. KTR’de yanl
 7. **KTR ve video kanıtı**
    - Arayüz ekran görüntüleri, mesaj akış tabloları ve Mermaid sequence diyagramları KTR’ye taşınır.
 
+## 5.1. İlk uygulanmış dry-run API sözleşmesi
+
+Bu geçişte backend tarafında bağımlılıksız Python iskeleti başlatılmıştır:
+
+```bash
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+```
+
+Uygulanan endpoint’ler:
+
+| Endpoint | Yön | Amaç | Güvenlik notu |
+| --- | --- | --- | --- |
+| `GET /health` | UI → Backend | API sağlığı, dry-run ve fiziksel çıkış durumunu okur | `physicalOutputEnabled=false` döner |
+| `GET /state` | UI → Backend | mod, aşama, izler, `SafetyState`, `CommandResult` ve olay akışını alır | varsayılan izler dry-run kaynaktır |
+| `GET /events` | UI → Backend | telemetri/komut olay listesini alır | rapor ve KTR kanıtı için JSON olaylar |
+| `POST /mode` | UI → Backend | `ModeRequest` gönderir | geçersiz modlar `BLOCKED_MODE` olur |
+| `POST /manual-aim` | UI → Backend | `ManualAimCommand` gönderir | manuel mod + deadman koşulu yoksa engellenir |
+| `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
+
+İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
+
 ## 6. Karar önerisi
 
 Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı sayfa olarak başlatmak en pratik yoldur. Bunun nedeni:

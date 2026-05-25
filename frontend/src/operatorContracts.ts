@@ -76,6 +76,7 @@ export interface CommandResult {
   safetyBlockReason: OperatorBlockReason;
   message: string;
   createdAt: string;
+  physicalOutput?: boolean;
 }
 
 export const operatorBlockCopy: Record<OperatorBlockReason, string> = {
@@ -149,5 +150,6 @@ export function makeCommandResult(params: {
     safetyBlockReason: params.safetyBlockReason,
     message: acceptedText,
     createdAt: (params.createdAt ?? new Date()).toISOString(),
+    physicalOutput: false,
   };
 }

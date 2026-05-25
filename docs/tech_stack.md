@@ -180,6 +180,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
 - **Gerçek operatör paneli önerisi:** ilk aşamada React/Vite içinde yeni sayfa + backend API; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
 - **Backend / görev çekirdeği:** Python 3.x.
+- **Backend API ilk geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.

@@ -7,12 +7,13 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `frontend/` artık React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü** içerir.
 - Simülatör; Aşama 1 manuel hedef pratiği, Aşama 2 sürü saldırısı, Aşama 3 dost/düşman + menzil kurallarını görselleştirir.
 - Hız, kesin parkur koordinatı, hedef fiziksel ölçüsü ve sensör modeli şartnamede sayısal verilmediği için simülasyon parametreleri yapılandırılabilir varsayımdır.
-- `backend/`, `perception/` ve donanım bağlantıları hâlâ gerçek operatör paneli / saha sistemi için geliştirme alanıdır.
+- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez.
+- `perception/` ve gerçek sensör/donanım bağlantıları hâlâ saha sistemi için geliştirme alanıdır.
 
 ## Ürün yüzeyleri
 
 1. **Yarışma Simülatörü** — eğitim, KTR ekran görüntüsü ve görev akışı provası için. Gerçek donanım komutu göndermez.
-2. **Gerçek Operatör Paneli (planlanan)** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
+2. **Gerçek Operatör Paneli** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. İlk geçişte React panel + dry-run Backend API vardır. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
 3. **Rapor/KTR dokümantasyonu** — mimari, arayüzler, sequence diyagramları ve yarışma kanıtlarının yazılı kaynağı.
 
 ## Hızlı başlangıç
@@ -23,9 +24,16 @@ npm install
 npm run dev
 ```
 
+Dry-run operatör backend’i:
+
+```bash
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+```
+
 Doğrulama komutları:
 
 ```bash
+PYTHONPATH=backend/src python3 -m unittest discover -s tests -p 'test_*.py'
 cd frontend
 npm run typecheck
 npm run build
