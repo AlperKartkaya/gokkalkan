@@ -12,6 +12,7 @@ import {
 } from './operatorContracts';
 import {
   fetchOperatorReplay,
+  fetchOperatorReadiness,
   fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
   resetOperatorTelemetry,
@@ -19,6 +20,9 @@ import {
   sendOperatorModeRequest,
   type OperatorApiSnapshot,
   type OperatorReplayBundle,
+  type OperatorReadinessItem,
+  type OperatorReadinessReport,
+  type OperatorReadinessStatus,
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
@@ -74,6 +78,20 @@ function statusTone(ok: boolean) {
   return ok ? 'border-[#33e68c]/30 bg-[#33e68c]/10 text-[#bfffe0]' : 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]';
 }
 
+const readinessCopy: Record<OperatorReadinessStatus, string> = {
+  ready: 'Hazır',
+  partial: 'Kısmi',
+  tbd: 'TBD',
+  blocked: 'Kilitli',
+};
+
+function readinessTone(status: OperatorReadinessStatus) {
+  if (status === 'ready') return 'border-[#33e68c]/30 bg-[#33e68c]/10 text-[#bfffe0]';
+  if (status === 'partial') return 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]';
+  if (status === 'blocked') return 'border-[#ff4757]/30 bg-[#ff4757]/10 text-[#ffbdc4]';
+  return 'border-[#48a8ff]/30 bg-[#48a8ff]/10 text-[#cbe9ff]';
+}
+
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -101,6 +119,8 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
+  const [readinessReport, setReadinessReport] = useState<OperatorReadinessReport>();
+  const [readinessError, setReadinessError] = useState('');
   const [telemetryExport, setTelemetryExport] = useState<OperatorTelemetryExport>();
   const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
   const [evidenceBusy, setEvidenceBusy] = useState(false);
@@ -120,9 +140,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   useEffect(() => {
     if (!apiBaseUrl) {
       setApiSnapshot(undefined);
+      setReadinessReport(undefined);
       setTelemetryExport(undefined);
       setReplayBundle(undefined);
       setApiError('');
+      setReadinessError('');
       setEvidenceError('');
       setEvidenceNotice('Backend API bağlantısı olmadan yalnız yerel dry-run olay akışı gösterilir.');
       return;
@@ -130,11 +152,19 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
     let cancelled = false;
     setApiBusy(true);
-    fetchOperatorSnapshot(apiBaseUrl)
-      .then((snapshot) => {
+    Promise.all([
+      fetchOperatorSnapshot(apiBaseUrl),
+      fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
+        if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
+        return undefined;
+      }),
+    ])
+      .then(([snapshot, readiness]) => {
         if (cancelled) return;
         setApiSnapshot(snapshot);
+        setReadinessReport(readiness);
         setApiError('');
+        if (readiness) setReadinessError('');
         setMode(snapshot.mode);
         if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
         if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
@@ -144,6 +174,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
       .catch((error: unknown) => {
         if (cancelled) return;
         setApiSnapshot(undefined);
+        setReadinessReport(undefined);
         setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
       })
       .finally(() => {
@@ -186,6 +217,63 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
   const replayCommandCount = replayBundle?.commandResults.length ?? 0;
   const replayEventCount = replayBundle?.events.length ?? 0;
+  const fallbackReadiness: OperatorReadinessReport = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    summary: apiBaseUrl
+      ? 'Backend readiness raporu alınamadı; panel temel state üzerinden çalışıyor.'
+      : 'Backend API bağlanmadan yalnız operatör UI kabuğu ve yerel dry-run izleri görülebilir.',
+    scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+    readinessPercent: apiBaseUrl && !apiError ? 28 : 12,
+    physicalOutputEnabled: false,
+    mode,
+    dryRun: config.dryRun,
+    items: [
+      {
+        id: 'operator_panel_ui',
+        label: 'Operatör Paneli UI',
+        status: 'partial',
+        owner: 'Frontend',
+        evidence: 'Panel komut niyeti, hedef izi, güvenlik özeti ve kanıt çekmecesini gösterebiliyor.',
+        nextStep: 'Canlı backend readiness raporunu ve gerçek sensör akışını bağla.',
+        ktrInterface: 'Kullanıcı Arayüzü',
+      },
+      {
+        id: 'backend_api',
+        label: 'Backend Operatör API',
+        status: apiBaseUrl && !apiError ? 'partial' : 'tbd',
+        owner: 'Backend',
+        evidence: apiBaseUrl ? 'API base URL verilmiş; readiness endpoint yanıtı henüz doğrulanmadı.' : 'API base URL yok.',
+        nextStep: 'Dry-run API sunucusunu başlat ve operatorApi/VITE_GOKKALKAN_OPERATOR_API_BASE ile bağla.',
+        ktrInterface: 'ModeRequest, FireIntent, CommandResult',
+      },
+      {
+        id: 'radar_lidar_adapter',
+        label: 'Radar/LiDAR Adapter',
+        status: 'tbd',
+        owner: 'Sensör',
+        evidence: 'Gerçek menzil/açı/kalite akışı henüz bağlı değil.',
+        nextStep: 'Seçilen sensörün güç, veri, timestamp ve sağlık mesajı sözleşmesini doldur.',
+        ktrInterface: 'SensorFrame',
+      },
+      {
+        id: 'live_arming',
+        label: 'Canlı Arming / Fiziksel Çıkış',
+        status: 'blocked',
+        owner: 'Safety + Elektronik',
+        evidence: 'Geliştirme paneli fiziksel çıkış üretmez.',
+        nextStep: 'İki aşamalı arming ve fiziksel interlock doğrulaması tamamlanmadan canlı çıkış açma.',
+        ktrInterface: 'ArmingState, InterlockState',
+      },
+    ],
+    nextCriticalActions: [
+      'Dry-run backend API ile readiness raporunu canlı doğrula.',
+      'Radar/LiDAR ve perception adapter sözleşmelerini gerçek donanıma bağla.',
+      'MCU haberleşme protokolü ve imha hattı interlock mesajlarını netleştir.',
+    ],
+  };
+  const displayReadiness = readinessReport ?? fallbackReadiness;
+  const topReadinessItems = displayReadiness.items.slice(0, 6);
 
   const pushResult = (result: CommandResult) => {
     setCommandResults((previous) => [result, ...previous].slice(0, 8));
@@ -198,12 +286,20 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
       return;
     }
 
-    const [exported, replay] = await Promise.all([
+    const [exported, replay, readiness] = await Promise.all([
       fetchOperatorTelemetryExport(apiBaseUrl),
       fetchOperatorReplay(apiBaseUrl),
+      fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
+        setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
+        return undefined;
+      }),
     ]);
     setTelemetryExport(exported);
     setReplayBundle(replay);
+    if (readiness) {
+      setReadinessReport(readiness);
+      setReadinessError('');
+    }
     setApiSnapshot(exported.state);
     if (exported.commandResults.length > 0) setCommandResults(exported.commandResults);
     setEvidenceError('');
@@ -233,12 +329,20 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         setCommandResults(response.state.commandResults);
         setEvidenceNotice('Telemetri sıfırlandı; safe moda dönüldü ve fiziksel çıkış üretilmedi.');
         setEvidenceError('');
-        const [exported, replay] = await Promise.all([
+        const [exported, replay, readiness] = await Promise.all([
           fetchOperatorTelemetryExport(apiBaseUrl),
           fetchOperatorReplay(apiBaseUrl),
+          fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
+            setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
+            return undefined;
+          }),
         ]);
         setTelemetryExport(exported);
         setReplayBundle(replay);
+        if (readiness) {
+          setReadinessReport(readiness);
+          setReadinessError('');
+        }
       })
       .catch((error: unknown) => {
         setEvidenceError(error instanceof Error ? error.message : 'Telemetri sıfırlanamadı.');
@@ -358,6 +462,30 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.sensorAdapterConnected)}`}>Radar/LiDAR: {safety.sensorAdapterConnected ? 'canlı' : 'TBD'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
         <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {apiError || config.apiBaseUrl}</span>
+      </section>
+
+      <section className="mb-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-readiness-dashboard" aria-label="Finale hazırlık göstergesi">
+        <div className="grid gap-4 min-[1000px]:grid-cols-[minmax(260px,.42fr)_1fr]">
+          <div>
+            <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Finale Hazırlık</p>
+            <h2 className="m-0 mt-1 text-2xl font-black text-white">Gerçek sisteme yakınlık: %{displayReadiness.readinessPercent}</h2>
+            <div className="mt-3 h-3 overflow-hidden rounded-full border border-white/[.08] bg-white/[.06]" aria-label="Readiness progress">
+              <div className="h-full rounded-full bg-gradient-to-r from-[#ffbb42] via-[#25d8ff] to-[#33e68c]" style={{ width: `${Math.max(4, Math.min(100, displayReadiness.readinessPercent))}%` }} />
+            </div>
+            <p className="m-0 mt-3 text-sm leading-relaxed text-[#b7c9d5]">{displayReadiness.summary}</p>
+            <p className="m-0 mt-2 text-xs font-bold text-[#91a6b7]">{displayReadiness.scoreBasis}</p>
+            {readinessError && <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">Hazırlık API uyarısı: {readinessError}</p>}
+            <div className="mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3">
+              <b className="block text-sm text-[#ffe4ad]">Sıradaki kritik adım</b>
+              <p className="m-0 mt-1 text-sm leading-relaxed text-[#f4e4bf]">{displayReadiness.nextCriticalActions[0] ?? 'Plan güncel; sıradaki entegrasyon adımı seçilmeli.'}</p>
+            </div>
+          </div>
+          <div className="grid gap-2 min-[760px]:grid-cols-2 min-[1300px]:grid-cols-3">
+            {topReadinessItems.map((item) => (
+              <ReadinessCard key={item.id} item={item} />
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1.25fr)_minmax(330px,.75fr)]">
@@ -491,6 +619,22 @@ function EvidenceRow({ label, value }: { label: string; value: string }) {
       <span className="block text-xs font-black uppercase tracking-[.12em] text-[#91a6b7]">{label}</span>
       <b className="mt-1 block break-words text-[#eaf7ff]">{value}</b>
     </div>
+  );
+}
+
+function ReadinessCard({ item }: { item: OperatorReadinessItem }) {
+  return (
+    <article className="rounded-lg border border-white/[.07] bg-white/[.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b className="text-sm text-white">{item.label}</b>
+        <span className={`rounded-full border px-2 py-1 text-[11px] font-black uppercase tracking-[.08em] ${readinessTone(item.status)}`}>
+          {readinessCopy[item.status]}
+        </span>
+      </div>
+      <p className="m-0 mt-2 text-xs font-bold uppercase tracking-[.12em] text-[#91a6b7]">{item.owner} · {item.ktrInterface}</p>
+      <p className="m-0 mt-2 text-sm leading-snug text-[#c8d8e2]">{item.evidence}</p>
+      <p className="m-0 mt-2 text-xs leading-snug text-[#ffe4ad]">Sonraki: {item.nextStep}</p>
+    </article>
   );
 }
 

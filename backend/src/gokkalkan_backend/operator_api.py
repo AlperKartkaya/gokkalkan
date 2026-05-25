@@ -20,6 +20,7 @@ Stage = Literal[1, 2, 3]
 TargetType = Literal["F16", "Helikopter", "Balistik Füze", "Mini/Micro İHA"]
 FriendFoe = Literal["Dost", "Düşman", "Bilinmeyen"]
 CommandKind = Literal["ModeRequest", "ManualAimCommand", "FireIntent"]
+ReadinessStatus = Literal["ready", "partial", "tbd", "blocked"]
 BlockReason = Literal[
     "ALLOWED",
     "BLOCKED_ESTOP",
@@ -35,6 +36,12 @@ BlockReason = Literal[
 
 VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked", "maintenance"}
 ENGAGEMENT_MODES: set[str] = {"manual", "autonomous", "engagement"}
+READINESS_SCORE: dict[ReadinessStatus, float] = {
+    "ready": 1.0,
+    "partial": 0.55,
+    "tbd": 0.0,
+    "blocked": 0.0,
+}
 
 BLOCK_COPY: dict[BlockReason, str] = {
     "ALLOWED": "Komut niyeti güvenli dry-run kanalında kabul edildi; fiziksel çıkış yok.",
@@ -216,6 +223,117 @@ class OperatorService:
             "timestamp": self._clock(),
         }
 
+    def readiness(self) -> dict[str, Any]:
+        """Return an honest final-phase integration readiness report.
+
+        This is an internal implementation-readiness checklist, not an official
+        competition compliance score. Hardware values and protocols stay TBD
+        until the real radar/LiDAR, MCU and firing-line electronics are chosen.
+        """
+
+        items = [
+            self._readiness_item(
+                "backend_api",
+                "Backend Operatör API",
+                "ready" if self.backend_connected else "blocked",
+                "Backend",
+                "GET /state, GET /readiness, POST /mode, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
+                "API hata toleransı ve oturum/imza katmanı saha entegrasyonu öncesi eklenecek.",
+                "ModeRequest, FireIntent, CommandResult",
+            ),
+            self._readiness_item(
+                "safety_gate",
+                "Safety Gate",
+                "partial",
+                "Backend",
+                "Acil durdurma, mod, dost/düşman, menzil ve dry-run arming kontrolleri backend tarafında uygulanıyor.",
+                "Gerçek Acil Durdur, yasak alan ve hakem/operatör kilit girişleri elektronik arayüzle bağlanacak.",
+                "SafetyState, HardwareCommand",
+            ),
+            self._readiness_item(
+                "telemetry_replay",
+                "Telemetri / Replay Kanıtı",
+                "ready",
+                "Backend + UI",
+                f"JSONL kayıt yolu: {self.telemetry.path}; kayıt sayısı: {self.telemetry.metadata()['recordCount']}. Replay yalnız kayıt okur.",
+                "KTR için indirilebilir/sürüm bilgili kanıt paketi formatı netleştirilecek.",
+                "TelemetryEvent, CommandResult, HardwareResult",
+            ),
+            self._readiness_item(
+                "operator_panel_ui",
+                "Operatör Paneli UI",
+                "partial",
+                "Frontend",
+                "React panel backend state, komut niyeti, blok gerekçesi ve kanıt çekmecesini gösteriyor.",
+                "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla denenmeli.",
+                "Kullanıcı Arayüzü, TrackState",
+            ),
+            self._readiness_item(
+                "perception_adapter",
+                "Perception Adapter",
+                "ready" if self.perception_connected else "tbd",
+                "Perception",
+                "Şu an dry-run TrackState kullanılıyor; canlı sınıflandırma bağlantısı yapılmadı.",
+                "Kamera + model çıktısını TrackState sözleşmesine bağla.",
+                "TrackState",
+            ),
+            self._readiness_item(
+                "radar_lidar_adapter",
+                "Radar/LiDAR Adapter",
+                "ready" if self.sensor_adapter_connected else "tbd",
+                "Sensör",
+                "Menzil/açı/kalite verisi için adapter sözleşmesi tanımlı; gerçek sensör protokolü seçilmedi.",
+                "Seçilen radar/LiDAR için güç, veri, timestamp ve sağlık mesajı arayüzünü doldur.",
+                "SensorFrame",
+            ),
+            self._readiness_item(
+                "hardware_adapter",
+                "Hardware Adapter",
+                "partial",
+                "Backend + Elektronik",
+                "hardware_mock.dry_run komutları kaydediyor ve physicalOutput=false döndürüyor.",
+                "MCU haberleşme protokolü (UART/RS422/CAN/Ethernet TBD) ve imha hattı interlock mesajları bağlanacak.",
+                "HardwareCommand, HardwareResult",
+            ),
+            self._readiness_item(
+                "live_arming",
+                "Canlı Arming / Fiziksel Çıkış",
+                "blocked",
+                "Safety + Elektronik",
+                "Bu geliştirme ortamında canlı arming kapalı; fiziksel çıkış yetkisi yok.",
+                "Saha öncesi iki aşamalı arming, hakem/operatör kilidi ve fiziksel interlock doğrulaması gerekir.",
+                "ArmingState, InterlockState",
+            ),
+            self._readiness_item(
+                "ktr_interfaces",
+                "KTR Arayüz Anlatımı",
+                "partial",
+                "Dokümantasyon",
+                "Kullanıcı, yazılım mesaj, sensör/veri ve elektronik arayüz tabloları repo dokümanlarında başlatıldı.",
+                "Kesin gerilim, kablo, MCU ve sensör protokol değerleri donanım seçimi sonrası TBD'den çıkarılacak.",
+                "KTR arayüz tabloları",
+            ),
+        ]
+        score = sum(READINESS_SCORE[item["status"]] for item in items)
+        percent = round((score / len(items)) * 100)
+        next_actions = [item["nextStep"] for item in items if item["status"] in {"blocked", "tbd"}][:4]
+        if len(next_actions) < 4:
+            next_actions.extend(item["nextStep"] for item in items if item["status"] == "partial")
+            next_actions = next_actions[:4]
+
+        return {
+            "schemaVersion": 1,
+            "generatedAt": self._clock(),
+            "summary": "Dry-run operatör zinciri çalışıyor; final fazı için perception, radar/LiDAR, MCU ve canlı arming arayüzleri hâlâ TBD/entegrasyon bekliyor.",
+            "scoreBasis": "Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.",
+            "readinessPercent": percent,
+            "physicalOutputEnabled": False,
+            "mode": self.mode,
+            "dryRun": self.dry_run,
+            "items": items,
+            "nextCriticalActions": next_actions,
+        }
+
     def telemetry_export(self) -> dict[str, Any]:
         entries = self.telemetry.read_all()
         return {
@@ -227,6 +345,26 @@ class OperatorService:
             "events": self.events[:50],
             "commandResults": self.command_results[:50],
             "entries": entries,
+        }
+
+    def _readiness_item(
+        self,
+        item_id: str,
+        label: str,
+        status: ReadinessStatus,
+        owner: str,
+        evidence: str,
+        next_step: str,
+        ktr_interface: str,
+    ) -> dict[str, Any]:
+        return {
+            "id": item_id,
+            "label": label,
+            "status": status,
+            "owner": owner,
+            "evidence": evidence,
+            "nextStep": next_step,
+            "ktrInterface": ktr_interface,
         }
 
     def replay(self, limit: int | None = None) -> dict[str, Any]:

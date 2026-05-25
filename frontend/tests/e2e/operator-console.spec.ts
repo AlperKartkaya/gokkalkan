@@ -248,6 +248,10 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
   await expect(page.getByText('DRY-RUN AÇIK · fiziksel çıkış yok')).toBeVisible();
   await expect(page.getByText('UI doğrudan ateşleme/imha hattını enerjilendirmez.')).toBeVisible();
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Finale Hazırlık');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Gerçek sisteme yakınlık');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Radar/LiDAR Adapter');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Canlı Arming / Fiziksel Çıkış');
   await expect(page.getByText(/Puan/)).toHaveCount(0);
 
   await expect(page.getByRole('button', { name: 'FIRE INTENT KİLİTLİ' })).toBeDisabled();
@@ -264,6 +268,74 @@ test('operator panel can be opened directly with query parameter and returns to 
   await page.getByRole('button', { name: 'Simülatöre dön' }).click();
   await expect(page.getByTestId('tutorial-overlay')).toBeVisible();
   await expect(page.getByTestId('parkour-hero')).toBeVisible();
+});
+
+test('operator panel readiness dashboard reads backend final-phase gap report', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/readiness-api';
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      app: 'gokkalkan-operator-api',
+      version: 1,
+      mode: 'safe',
+      stage: 3,
+      round: 1,
+      dryRun: true,
+      liveArmEnabled: false,
+      tracks: [],
+      safety: {
+        estop: false,
+        motionZoneOk: true,
+        fireZoneOk: true,
+        targetGateOk: false,
+        modeOk: false,
+        backendConnected: true,
+        perceptionConnected: false,
+        sensorAdapterConnected: false,
+        dryRun: true,
+        liveArmEnabled: false,
+        blockReason: 'BLOCKED_MODE',
+        explanation: 'Safe mod.',
+      },
+      commandResults: [],
+      events: [],
+      physicalOutputEnabled: false,
+      telemetry: { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 },
+    }),
+  }));
+  await page.route(`${apiBase}/readiness`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-05-25T20:30:00Z',
+      summary: 'Dry-run zinciri çalışıyor; final fazı için sensör ve MCU bağlantıları bekliyor.',
+      scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+      readinessPercent: 43,
+      physicalOutputEnabled: false,
+      mode: 'safe',
+      dryRun: true,
+      items: [
+        { id: 'backend_api', label: 'Backend Operatör API', status: 'ready', owner: 'Backend', evidence: 'State ve command endpointleri çalışıyor.', nextStep: 'Oturum/imza katmanı ekle.', ktrInterface: 'ModeRequest' },
+        { id: 'radar_lidar_adapter', label: 'Radar/LiDAR Adapter', status: 'tbd', owner: 'Sensör', evidence: 'Gerçek sensör protokolü seçilmedi.', nextStep: 'Seçilen sensörün güç/veri arayüzünü doldur.', ktrInterface: 'SensorFrame' },
+        { id: 'hardware_adapter', label: 'Hardware Adapter', status: 'partial', owner: 'Backend + Elektronik', evidence: 'Dry-run adapter physicalOutput=false döndürüyor.', nextStep: 'MCU haberleşme protokolünü bağla.', ktrInterface: 'HardwareCommand' },
+        { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'İki aşamalı arming ve interlock doğrulaması gerekir.', ktrInterface: 'ArmingState' },
+      ],
+      nextCriticalActions: ['Seçilen sensörün güç/veri arayüzünü doldur.', 'MCU haberleşme protokolünü bağla.'],
+    }),
+  }));
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+
+  const dashboard = page.getByTestId('operator-readiness-dashboard');
+  await expect(dashboard).toContainText('Gerçek sisteme yakınlık: %43');
+  await expect(dashboard).toContainText('resmi yarışma uygunluk skoru değildir');
+  await expect(dashboard).toContainText('Radar/LiDAR Adapter');
+  await expect(dashboard).toContainText('TBD');
+  await expect(dashboard).toContainText('Canlı Arming / Fiziksel Çıkış');
+  await expect(dashboard).toContainText('Kilitli');
+  await expect(dashboard).toContainText('Sıradaki kritik adım');
+  await expect(dashboard).toContainText('Seçilen sensörün güç/veri arayüzünü doldur.');
+  await expect(page.getByText('tamamen hazır')).toHaveCount(0);
 });
 
 test('operator panel evidence drawer reads backend telemetry export and replay safely', async ({ page }) => {
@@ -349,6 +421,24 @@ test('operator panel evidence drawer reads backend telemetry export and replay s
   };
 
   await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
+  await page.route(`${apiBase}/readiness`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-05-25T20:21:00Z',
+      summary: 'Dry-run operatör zinciri çalışıyor; final adaptörleri bekliyor.',
+      scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+      readinessPercent: 44,
+      physicalOutputEnabled: false,
+      mode: 'autonomous',
+      dryRun: true,
+      items: [
+        { id: 'backend_api', label: 'Backend Operatör API', status: 'ready', owner: 'Backend', evidence: 'API yanıt veriyor.', nextStep: 'Oturum katmanı ekle.', ktrInterface: 'ModeRequest' },
+        { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'Interlock doğrula.', ktrInterface: 'ArmingState' },
+      ],
+      nextCriticalActions: ['Interlock doğrula.'],
+    }),
+  }));
   await page.route(`${apiBase}/telemetry/export`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(exportPayload) }));
   await page.route(`${apiBase}/replay`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(replayPayload) }));
   await page.route(`${apiBase}/telemetry/reset`, async (route) => {

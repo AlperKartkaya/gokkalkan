@@ -7,13 +7,13 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `frontend/` artık React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü** içerir.
 - Simülatör; Aşama 1 manuel hedef pratiği, Aşama 2 sürü saldırısı, Aşama 3 dost/düşman + menzil kurallarını görselleştirir.
 - Hız, kesin parkur koordinatı, hedef fiziksel ölçüsü ve sensör modeli şartnamede sayısal verilmediği için simülasyon parametreleri yapılandırılabilir varsayımdır.
-- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez ve JSONL telemetri/replay kanıtı üretir. Operatör panelindeki `Kanıt / Replay` çekmecesi bu kayıtları okuyabilir.
+- `backend/` içinde ilk **dry-run Operatör API** iskeleti başlamıştır; gerçek donanım çıkışı üretmez, JSONL telemetri/replay kanıtı üretir ve `/readiness` ile final fazı entegrasyon boşluklarını dürüstçe raporlar. Operatör panelindeki `Finale Hazırlık` kartı ve `Kanıt / Replay` çekmecesi bu verileri okuyabilir.
 - `perception/` ve gerçek sensör/donanım bağlantıları hâlâ saha sistemi için geliştirme alanıdır.
 
 ## Ürün yüzeyleri
 
 1. **Yarışma Simülatörü** — eğitim, KTR ekran görüntüsü ve görev akışı provası için. Gerçek donanım komutu göndermez.
-2. **Gerçek Operatör Paneli** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. İlk geçişte React panel + dry-run Backend API + kapalı gelen `Kanıt / Replay` çekmecesi vardır. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
+2. **Gerçek Operatör Paneli** — final fazında backend, algı, sensör ve donanım adaptörlerine bağlanacak güvenlik-kritik kontrol paneli. İlk geçişte React panel + dry-run Backend API + `Finale Hazırlık` göstergesi + kapalı gelen `Kanıt / Replay` çekmecesi vardır. UI yalnızca komut niyeti üretmeli; hareket/ateş izni backend Safety Gate tarafından verilmelidir.
 3. **Rapor/KTR dokümantasyonu** — mimari, arayüzler, sequence diyagramları ve yarışma kanıtlarının yazılı kaynağı.
 
 ## Hızlı başlangıç
@@ -60,6 +60,6 @@ npm run test
 
 ## Güvenlik ilkesi
 
-Dry-run operatör API, `/telemetry/export` ve `/replay` endpoint’leriyle komut/olay kanıtı üretir; replay akışı fiziksel çıkış üretmez ve hardware adapter çağırmaz.
+Dry-run operatör API, `/readiness`, `/telemetry/export` ve `/replay` endpoint’leriyle entegrasyon durumu ve komut/olay kanıtı üretir; readiness yüzdesi resmi yarışma uygunluk skoru değildir. Replay akışı fiziksel çıkış üretmez ve hardware adapter çağırmaz.
 
 Simülatör eğitim amaçlıdır. Gerçek sistemde operatör paneli doğrudan ateşleme/imha hattını tetiklememelidir. Komut akışı `Operatör Paneli → Backend API → Safety Gate → Hardware Adapter → MCU/İmha Hattı` zincirinden geçmeli; Acil Durdur ve yasak alan kontrolleri UI’dan bağımsız olarak uygulanmalıdır.

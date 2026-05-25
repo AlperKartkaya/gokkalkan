@@ -37,6 +37,7 @@ Bu frontend iki farklı yüzeyi destekleyecek şekilde düşünülmelidir:
    - Backend, perception, sensör ve hardware adapter durumlarını canlı izler.
    - UI yalnızca niyet gönderir; Safety Gate ve Hardware Adapter backend tarafındadır.
    - Simülasyon puanı veya eğitim senaryosu göstermez.
+   - `Finale Hazırlık` kartı ile hazır/kısmi/TBD/kilitli arayüz durumlarını ve sıradaki kritik entegrasyon adımını gösterir.
 
 Gerçek panel tasarımı için ana yol haritası: `docs/operator_panel_interfaces_roadmap.md`.
 
@@ -51,15 +52,17 @@ Gerçek panel tasarımı için ana yol haritası: `docs/operator_panel_interface
 ### Faz B — Operatör paneli sayfa iskeleti
 
 - Üst durum şeridi: backend, perception, sensör, Safety Gate, E-stop.
+- Finale Hazırlık: `/readiness` raporu, repo içi entegrasyon yüzdesi, resmi uygunluk skoru olmadığı uyarısı.
 - Canlı görüntü/sensör paneli: kamera görüntüsü placeholder, hedef izleri, radar/LiDAR ölçümü placeholder.
 - Komut paneli: mod seçimi, manuel pan/tilt, FireIntent, blok nedeni.
-- Olay akışı: `SafetyState`, `CommandResult`, `TelemetryEvent`.
+- Olay akışı ve kanıt: `SafetyState`, `CommandResult`, `TelemetryEvent`, JSONL export/replay.
 
 ### Faz C — Backend API dry-run entegrasyonu
 
 - UI gerçek backend endpoint’lerine bağlanır; backend yoksa komut gönderilemez.
 - İlk entegrasyon `hardware_mock` ile yapılır.
 - Dry-run modda fiziksel çıkış üretildiği iddia edilmez.
+- `/readiness`, `/telemetry/export` ve `/replay` ile KTR/debug kanıtı fiziksel çıkışsız doğrulanır.
 
 ### Faz D — Canlı sensör ve hardware adapter entegrasyonu
 

@@ -26,6 +26,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._send_json(self.operator_service.health())
         elif path == "/state":
             self._send_json(self.operator_service.snapshot())
+        elif path == "/readiness":
+            self._send_json(self.operator_service.readiness())
         elif path == "/events":
             self._send_json({"events": self.operator_service.events})
         elif path == "/telemetry/export":

@@ -53,6 +53,31 @@ export interface HardwareResult {
   createdAt: string;
 }
 
+export type OperatorReadinessStatus = 'ready' | 'partial' | 'tbd' | 'blocked';
+
+export interface OperatorReadinessItem {
+  id: string;
+  label: string;
+  status: OperatorReadinessStatus;
+  owner: string;
+  evidence: string;
+  nextStep: string;
+  ktrInterface: string;
+}
+
+export interface OperatorReadinessReport {
+  schemaVersion: number;
+  generatedAt: string;
+  summary: string;
+  scoreBasis: string;
+  readinessPercent: number;
+  physicalOutputEnabled: boolean;
+  mode: Mode;
+  dryRun: boolean;
+  items: OperatorReadinessItem[];
+  nextCriticalActions: string[];
+}
+
 export interface OperatorTelemetryExport {
   schemaVersion: number;
   generatedAt: string;
@@ -98,6 +123,10 @@ export async function fetchOperatorSnapshot(baseUrl: string): Promise<OperatorAp
   return requestJson<OperatorApiSnapshot>(`${normalizeOperatorApiBaseUrl(baseUrl)}/state`);
 }
 
+export async function fetchOperatorReadiness(baseUrl: string): Promise<OperatorReadinessReport> {
+  return requestJson<OperatorReadinessReport>(`${normalizeOperatorApiBaseUrl(baseUrl)}/readiness`);
+}
+
 export async function sendOperatorModeRequest(baseUrl: string, request: ModeRequest): Promise<OperatorApiCommandResponse> {
   return requestJson<OperatorApiCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/mode`, request);
 }
@@ -133,5 +162,9 @@ async function requestJson<T>(url: string, body?: unknown): Promise<T> {
     throw new Error(`Operator API ${response.status}: ${response.statusText}`);
   }
 
-  return response.json() as Promise<T>;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new Error(`Operator API ${response.status}: JSON yanıtı okunamadı`);
+  }
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchOperatorReplay,
+  fetchOperatorReadiness,
   fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
   normalizeOperatorApiBaseUrl,
@@ -37,6 +38,24 @@ describe('operator API client', () => {
 
     expect(snapshot).toMatchObject({ app: 'gokkalkan-operator-api', dryRun: true, physicalOutputEnabled: false });
     expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:8088/state', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('fetches the backend readiness report without treating it as official compliance', async () => {
+    mockFetch({
+      schemaVersion: 1,
+      readinessPercent: 42,
+      physicalOutputEnabled: false,
+      scoreBasis: 'repo içi entegrasyon kontrol listesi',
+      items: [{ id: 'radar_lidar_adapter', status: 'tbd', label: 'Radar/LiDAR Adapter' }],
+      nextCriticalActions: ['Radar/LiDAR adapter bağla.'],
+    });
+
+    const readiness = await fetchOperatorReadiness('http://127.0.0.1:8088/');
+
+    expect(readiness.readinessPercent).toBe(42);
+    expect(readiness.physicalOutputEnabled).toBe(false);
+    expect(readiness.items[0]).toMatchObject({ id: 'radar_lidar_adapter', status: 'tbd' });
+    expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:8088/readiness', expect.objectContaining({ method: 'GET' }));
   });
 
   it('posts mode and fire-intent commands as JSON', async () => {
@@ -90,5 +109,18 @@ describe('operator API client', () => {
     mockFetch({ error: 'unavailable' }, false);
 
     await expect(fetchOperatorSnapshot('http://127.0.0.1:8088')).rejects.toThrow('Operator API 503');
+  });
+
+  it('surfaces non-JSON API responses as contract failures', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    })) as unknown as typeof fetch;
+
+    await expect(fetchOperatorReadiness('http://127.0.0.1:8088')).rejects.toThrow('JSON yanıtı okunamadı');
   });
 });

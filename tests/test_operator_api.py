@@ -92,6 +92,23 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(response["telemetry"]["recordCount"], 1)
         self.assertEqual(self.telemetry.read_all()[0]["payload"]["decision"], "RESET")
 
+    def test_readiness_report_is_honest_about_final_phase_gaps(self) -> None:
+        report = self.service.readiness()
+
+        self.assertEqual(report["schemaVersion"], 1)
+        self.assertFalse(report["physicalOutputEnabled"])
+        self.assertIn("resmi yarışma uygunluk skoru değildir", report["scoreBasis"])
+        self.assertGreater(report["readinessPercent"], 0)
+        self.assertLess(report["readinessPercent"], 100)
+
+        items = {item["id"]: item for item in report["items"]}
+        self.assertEqual(items["backend_api"]["status"], "ready")
+        self.assertEqual(items["telemetry_replay"]["status"], "ready")
+        self.assertEqual(items["perception_adapter"]["status"], "tbd")
+        self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")
+        self.assertEqual(items["live_arming"]["status"], "blocked")
+        self.assertTrue(any("radar/LiDAR" in action for action in report["nextCriticalActions"]))
+
     def test_friendly_target_fire_is_blocked(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-HEL-02", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
@@ -121,6 +138,12 @@ class OperatorHttpServerTest(unittest.TestCase):
                     health = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(health["ok"])
                 self.assertFalse(health["physicalOutputEnabled"])
+
+                with urlopen(f"{base}/readiness", timeout=2) as response:
+                    readiness = json.loads(response.read().decode("utf-8"))
+                self.assertLess(readiness["readinessPercent"], 100)
+                self.assertFalse(readiness["physicalOutputEnabled"])
+                self.assertTrue(any(item["id"] == "radar_lidar_adapter" and item["status"] == "tbd" for item in readiness["items"]))
 
                 mode_payload = json.dumps({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "http-test", "dryRun": True}).encode("utf-8")
                 with urlopen(Request(f"{base}/mode", data=mode_payload, headers={"Content-Type": "application/json"}, method="POST"), timeout=2) as response:

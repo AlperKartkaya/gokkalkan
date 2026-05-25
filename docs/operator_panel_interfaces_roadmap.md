@@ -68,7 +68,13 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
    - servo limitleri,
    - dry-run/live ayrımı,
    - ham mesajlar.
-6. **Kanıt / Replay çekmecesi**
+6. **Finale Hazırlık göstergesi**
+   - `/readiness` raporu,
+   - repo içi entegrasyon yüzdesi,
+   - hazır/kısmi/TBD/kilitli arayüz kartları,
+   - sıradaki kritik radar/LiDAR, perception, MCU ve arming adımları.
+   - Bu gösterge resmi yarışma uygunluk skoru değildir; yalnız uygulanmış yazılım arayüzlerinin durumunu dürüstçe gösterir.
+7. **Kanıt / Replay çekmecesi**
    - JSONL telemetri yolu ve kayıt sayısı,
    - `/telemetry/export` kanıt paketi,
    - replay-only olay/komut/hardware sonucu özeti,
@@ -160,6 +166,7 @@ Uygulanan endpoint’ler:
 | --- | --- | --- | --- |
 | `GET /health` | UI → Backend | API sağlığı, dry-run ve fiziksel çıkış durumunu okur | `physicalOutputEnabled=false` döner |
 | `GET /state` | UI → Backend | mod, aşama, izler, `SafetyState`, `CommandResult` ve olay akışını alır | varsayılan izler dry-run kaynaktır |
+| `GET /readiness` | UI/KTR → Backend | final fazı entegrasyon hazırlığı, arayüz durumu ve kritik sonraki adımları alır | resmi yarışma uygunluk skoru değildir; TBD değerleri açık bırakır |
 | `GET /events` | UI → Backend | telemetri/komut olay listesini alır | rapor ve KTR kanıtı için JSON olaylar |
 | `GET /telemetry/export` | UI/Debug → Backend | JSONL log, state, command result ve event kayıtlarını tek kanıt paketinde dışa aktarır | replay/export fiziksel çıkış üretmez |
 | `GET /replay` | UI/Debug → Backend | JSONL kayıtlarından replay-only olay/komut/donanım sonucu üretir | hardware adapter çağırmaz; yalnız kayıt okur |
@@ -168,7 +175,7 @@ Uygulanan endpoint’ler:
 | `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
 | `POST /telemetry/reset` | UI/Debug → Backend | dry-run state ve JSONL kanıtını sıfırlar | safe moda döner; fiziksel çıkış üretmez |
 
-İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki kapalı gelen `Kanıt / Replay` çekmecesi bu endpoint’leri okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
+İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Finale Hazırlık` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi uygunluk skoru değildir. Kapalı gelen `Kanıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
 
 ## 6. Karar önerisi
 

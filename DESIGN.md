@@ -71,8 +71,9 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 - Gerçek operatör paneli ekranı:
   1. Canlı görev başlığı: mod, bağlantı, Safety Gate, E-stop, enerji/hardware sağlık özeti.
   2. Canlı görüntü/sensör alanı: kamera, hedef izi, radar/LiDAR izleri, takip kilidi.
-  3. Komut paneli: mod geçişi, manuel pan/tilt, güvenli arming, FireIntent.
-  4. Olay kayıtları: command_result, safety_block, track_update, hardware_fault.
+  3. Finale Hazırlık göstergesi: `/readiness` raporu, hazır/kısmi/TBD/kilitli arayüz kartları ve sıradaki kritik entegrasyon adımı. Bu yüzde resmi yarışma uygunluk skoru olarak sunulmamalıdır.
+  4. Komut paneli: mod geçişi, manuel pan/tilt, güvenli arming, FireIntent.
+  5. Olay kayıtları ve kanıt çekmecesi: command_result, safety_block, track_update, hardware_fault, JSONL export/replay kanıtı.
 
 ## Visual language
 

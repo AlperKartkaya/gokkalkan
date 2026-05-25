@@ -16,6 +16,7 @@ Endpoint’ler:
 
 - `GET /health`
 - `GET /state`
+- `GET /readiness` — final fazı arayüz hazırlığı, TBD/kilitli boşluklar ve sıradaki kritik adımları döner; resmi uygunluk skoru değildir.
 - `GET /events`
 - `GET /telemetry/export` — KTR/debug için tek JSON kanıt paketi döner.
 - `GET /replay` — JSONL kayıtlarından replay-only olay/komut/donanım sonucu paketi döner.
@@ -24,7 +25,7 @@ Endpoint’ler:
 - `POST /fire-intent`
 - `POST /telemetry/reset` — dry-run oturumu ve JSONL kanıtını güvenli başlangıç durumuna sıfırlar.
 
-Telemetri varsayılan olarak git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır. `GOKKALKAN_TELEMETRY_JSONL` ortam değişkeni veya `--telemetry-jsonl` parametresiyle yol değiştirilebilir. `/replay` yalnız kayıtları okur; gerçek hardware adapter çağırmaz.
+Telemetri varsayılan olarak git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır. `GOKKALKAN_TELEMETRY_JSONL` ortam değişkeni veya `--telemetry-jsonl` parametresiyle yol değiştirilebilir. `/readiness` repo içi entegrasyon durumunu gösterir; `/replay` yalnız kayıtları okur ve gerçek hardware adapter çağırmaz.
 
 Güvenlik notu: Bu API geçişinde `hardware_mock.dry_run` adapter kullanılır. Komut kabul edilse bile `physicalOutput=false` döner; gerçek motor, MCU, radar/LiDAR veya imha hattı sürülmez.
 
