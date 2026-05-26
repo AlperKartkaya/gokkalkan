@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchOperatorReplay,
   fetchOperatorReadiness,
+  fetchOperatorSensorFrames,
   fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
   normalizeOperatorApiBaseUrl,
@@ -9,6 +10,7 @@ import {
   sendOperatorFireIntent,
   sendOperatorManualAimCommand,
   sendOperatorModeRequest,
+  sendOperatorStageRequest,
 } from './operatorApiClient';
 
 const originalFetch = globalThis.fetch;
@@ -57,6 +59,36 @@ describe('operator API client', () => {
     expect(readiness.physicalOutputEnabled).toBe(false);
     expect(readiness.items[0]).toMatchObject({ id: 'radar_lidar_adapter', status: 'tbd' });
     expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:8088/readiness', expect.objectContaining({ method: 'GET' }));
+  });
+
+  it('fetches sensor frames and posts stage requests', async () => {
+    mockFetch({
+      schemaVersion: 1,
+      stage: 3,
+      round: 1,
+      replayOnly: true,
+      physicalOutputEnabled: false,
+      sensorHealth: { status: 'replay', replayOnly: true, physicalOutputEnabled: false },
+      frames: [{ frameId: 'SENS-1', sensor: 'fusion', targetType: 'F16', friendFoe: 'Düşman' }],
+      result: { accepted: true, physicalOutput: false },
+      state: { stage: 3, round: 1, dryRun: true },
+    });
+
+    const frames = await fetchOperatorSensorFrames('http://127.0.0.1:8088/');
+    await sendOperatorStageRequest('http://127.0.0.1:8088/', {
+      kind: 'StageRequest',
+      stage: 3,
+      round: 1,
+      operatorId: 'OP-UI-1',
+      timestamp: '2026-05-25T20:20:00Z',
+      reason: 'unit-test',
+      dryRun: true,
+    });
+
+    expect(frames.replayOnly).toBe(true);
+    expect(frames.frames[0]).toMatchObject({ sensor: 'fusion', friendFoe: 'Düşman' });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8088/sensor-frames', expect.objectContaining({ method: 'GET' }));
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8088/stage', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
   });
 
   it('posts mode, manual-aim, and fire-intent commands as JSON', async () => {

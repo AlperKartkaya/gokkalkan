@@ -26,6 +26,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._send_json(self.operator_service.health())
         elif path == "/state":
             self._send_json(self.operator_service.snapshot())
+        elif path == "/sensor-frames":
+            self._send_json(self.operator_service.sensor_frames_snapshot())
         elif path == "/readiness":
             self._send_json(self.operator_service.readiness())
         elif path == "/events":
@@ -42,6 +44,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         payload = self._read_json()
         if path == "/mode":
             self._send_json(self.operator_service.handle_mode_request(payload))
+        elif path == "/stage":
+            self._send_json(self.operator_service.handle_stage_request(payload))
         elif path == "/manual-aim":
             self._send_json(self.operator_service.handle_manual_aim(payload))
         elif path == "/fire-intent":

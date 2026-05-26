@@ -20,7 +20,8 @@ Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "mainten
 Stage = Literal[1, 2, 3]
 TargetType = Literal["F16", "Helikopter", "Balistik Füze", "Mini/Micro İHA"]
 FriendFoe = Literal["Dost", "Düşman", "Bilinmeyen"]
-CommandKind = Literal["ModeRequest", "ManualAimCommand", "FireIntent"]
+CommandKind = Literal["ModeRequest", "StageRequest", "ManualAimCommand", "FireIntent"]
+SensorSource = Literal["radar", "lidar", "camera", "fusion", "dry-run"]
 ReadinessStatus = Literal["ready", "partial", "tbd", "blocked"]
 BlockReason = Literal[
     "ALLOWED",
@@ -37,7 +38,7 @@ BlockReason = Literal[
 ]
 
 VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked", "maintenance"}
-ENGAGEMENT_MODES: set[str] = {"manual", "autonomous", "engagement"}
+ENGAGEMENT_MODES: set[str] = {"autonomous", "engagement"}
 MAX_MANUAL_AIM_DELTA_DEG = 10.0
 MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30.0
 READINESS_SCORE: dict[ReadinessStatus, float] = {
@@ -83,6 +84,43 @@ def target_range_gate(target_type: str, range_m: float) -> bool:
     if target_type == "Mini/Micro İHA":
         return 0 <= range_m <= 15
     return False
+
+
+def stage_round_limit(stage: int) -> int:
+    """Return the official operator-panel round/target context limit per stage."""
+
+    if stage == 1:
+        return 4
+    if stage == 2:
+        return 4
+    if stage == 3:
+        return 8
+    return 0
+
+
+def stage_expected_mode(stage: int) -> Mode:
+    """Return the şartname-aligned mode expectation for a stage."""
+
+    return "manual" if stage == 1 else "autonomous"
+
+
+def _payload_int(payload: dict[str, Any], key: str) -> int | None:
+    if key not in payload or isinstance(payload[key], bool):
+        return None
+    value = payload[key]
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and isfinite(value) and value.is_integer():
+        return int(value)
+    return None
+
+
+def stage_request_payload_ok(payload: dict[str, Any]) -> bool:
+    stage = _payload_int(payload, "stage")
+    round_no = _payload_int(payload, "round")
+    if stage not in {1, 2, 3} or round_no is None:
+        return False
+    return 1 <= round_no <= stage_round_limit(stage)
 
 
 def _finite_payload_number(payload: dict[str, Any], key: str) -> float | None:
@@ -143,6 +181,58 @@ class DryRunTrack:
             "confidence": self.confidence,
             "source": self.source,
             "updatedAt": self.updatedAt,
+        }
+
+
+@dataclass(frozen=True)
+class SensorFrame:
+    frameId: str
+    stage: Stage
+    round: int
+    trackId: str
+    sensor: SensorSource
+    timestamp: str
+    rangeM: float
+    bearingDeg: float
+    elevationDeg: float
+    radialVelocityMps: float
+    rcsDbsm: float | None
+    snrDb: float | None
+    pointCount: int
+    quality: float
+    targetType: TargetType
+    friendFoe: FriendFoe
+    classificationConfidence: float
+    rangeGate: str
+    recommendation: str
+    sourceDataset: str
+    replayOnly: bool = True
+    rawSampleRef: str = "gokkalkan-recorded-style-fixture"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "frameId": self.frameId,
+            "stage": self.stage,
+            "round": self.round,
+            "trackId": self.trackId,
+            "sensor": self.sensor,
+            "timestamp": self.timestamp,
+            "rangeM": self.rangeM,
+            "bearingDeg": self.bearingDeg,
+            "elevationDeg": self.elevationDeg,
+            "radialVelocityMps": self.radialVelocityMps,
+            "rcsDbsm": self.rcsDbsm,
+            "snrDb": self.snrDb,
+            "pointCount": self.pointCount,
+            "quality": self.quality,
+            "targetType": self.targetType,
+            "friendFoe": self.friendFoe,
+            "classificationConfidence": self.classificationConfidence,
+            "rangeGate": self.rangeGate,
+            "recommendation": self.recommendation,
+            "sourceDataset": self.sourceDataset,
+            "replayOnly": self.replayOnly,
+            "rawSampleRef": self.rawSampleRef,
         }
 
 
@@ -219,18 +309,161 @@ class OperatorService:
         self.live_arm_enabled = False
         self.hardware = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
-        self.tracks: list[DryRunTrack] = self._default_tracks()
+        self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
+        self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.command_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
         self._append_event("telemetry", "BOOT", "Dry-run backend API hazır; fiziksel çıkış yok.", {})
 
-    def _default_tracks(self) -> list[DryRunTrack]:
+    def _tracks_for_stage(self, stage: Stage, round_no: int) -> list[DryRunTrack]:
         now = self._clock()
+        if stage == 1:
+            return [
+                DryRunTrack("S1-ORDER-FUZE-01", 1, round_no, "Balistik Füze", "Düşman", 15.0, -24, 0.86, "dry-run", now),
+                DryRunTrack("S1-ORDER-HEL-02", 1, round_no, "Helikopter", "Düşman", 10.0, -7, 0.84, "dry-run", now),
+                DryRunTrack("S1-ORDER-F16-03", 1, round_no, "F16", "Düşman", 5.0, 10, 0.82, "dry-run", now),
+                DryRunTrack("S1-ORDER-UAV-04", 1, round_no, "Mini/Micro İHA", "Düşman", 5.0, 27, 0.8, "dry-run", now),
+            ]
+        if stage == 2:
+            return [
+                DryRunTrack("S2-R1-L1-BALISTIK", 2, round_no, "Balistik Füze", "Düşman", 14.2, -28, 0.78, "fused", now),
+                DryRunTrack("S2-R1-L2-UAV", 2, round_no, "Mini/Micro İHA", "Düşman", 11.6, 2, 0.74, "radar-lidar", now),
+                DryRunTrack("S2-R1-L3-UAV", 2, round_no, "Mini/Micro İHA", "Düşman", 8.9, 31, 0.72, "radar-lidar", now),
+            ]
         return [
-            DryRunTrack("DRY-RUN-F16-01", 3, 1, "F16", "Düşman", 12.4, -18, 0.96, updatedAt=now),
-            DryRunTrack("DRY-RUN-HEL-02", 3, 1, "Helikopter", "Dost", 8.1, 4, 0.91, updatedAt=now),
-            DryRunTrack("DRY-RUN-UAV-03", 3, 1, "Mini/Micro İHA", "Dost", 4.2, 23, 0.88, updatedAt=now),
+            DryRunTrack("DRY-RUN-F16-01", 3, round_no, "F16", "Düşman", 12.4, -18, 0.96, "fused", now),
+            DryRunTrack("DRY-RUN-HEL-02", 3, round_no, "Helikopter", "Dost", 8.1, 4, 0.91, "fused", now),
+            DryRunTrack("DRY-RUN-UAV-03", 3, round_no, "Mini/Micro İHA", "Dost", 4.2, 23, 0.88, "fused", now),
         ]
+
+    def _sensor_frames_for_stage(self, stage: Stage, round_no: int, tracks: list[DryRunTrack]) -> list[SensorFrame]:
+        now = self._clock()
+        frames: list[SensorFrame] = []
+        for index, track in enumerate(tracks, start=1):
+            range_gate = self._range_gate_label(track.to_dict())
+            stage_note = (
+                "Aşama 2: sınıflandırma zorunlu değil; takip ve imha önceliği gösteriliyor."
+                if stage == 2
+                else "Aşama 3: dost/düşman ve hedef tipine göre menzil kapısı uygulanıyor."
+                if stage == 3
+                else "Aşama 1: manuel hedef sırası ve 5/10/15 m bağlamı gösteriliyor."
+            )
+            recommendation = self._sensor_recommendation(track.to_dict(), stage_note)
+            frames.extend(
+                [
+                    SensorFrame(
+                        f"SENS-{stage}-{round_no}-{index}-RADAR",
+                        stage,
+                        round_no,
+                        track.trackId,
+                        "radar",
+                        now,
+                        track.rangeM,
+                        track.bearingDeg,
+                        0.4 + index * 0.2,
+                        -4.8 + index,
+                        13.5 - index,
+                        23.0 - index,
+                        0,
+                        min(0.98, track.confidence + 0.01),
+                        track.targetType,
+                        track.friendFoe,
+                        track.confidence if stage != 2 else 0.52,
+                        range_gate,
+                        recommendation,
+                        "Gökkalkan recorded-style dry-run fixture; Oxford Radar RobotCar/nuScenes biçimlerine map edilebilir.",
+                        True,
+                        f"replay/stage-{stage}/round-{round_no}/radar/{track.trackId}",
+                    ),
+                    SensorFrame(
+                        f"SENS-{stage}-{round_no}-{index}-LIDAR",
+                        stage,
+                        round_no,
+                        track.trackId,
+                        "lidar",
+                        now,
+                        track.rangeM + 0.08,
+                        track.bearingDeg + 0.5,
+                        0.2 + index * 0.1,
+                        -4.3 + index,
+                        None,
+                        None,
+                        86 + index * 24,
+                        min(0.99, track.confidence + 0.02),
+                        track.targetType,
+                        track.friendFoe,
+                        track.confidence if stage != 2 else 0.5,
+                        range_gate,
+                        recommendation,
+                        "Gökkalkan recorded-style dry-run fixture; gerçek LiDAR nokta bulutu adapterı TBD.",
+                        True,
+                        f"replay/stage-{stage}/round-{round_no}/lidar/{track.trackId}",
+                    ),
+                    SensorFrame(
+                        f"SENS-{stage}-{round_no}-{index}-FUSION",
+                        stage,
+                        round_no,
+                        track.trackId,
+                        "fusion",
+                        now,
+                        track.rangeM,
+                        track.bearingDeg,
+                        0.3 + index * 0.1,
+                        -4.5 + index,
+                        12.0 - index if track.friendFoe == "Düşman" else 5.0,
+                        21.0 - index,
+                        86 + index * 24,
+                        track.confidence,
+                        track.targetType,
+                        track.friendFoe,
+                        track.confidence,
+                        range_gate,
+                        recommendation,
+                        "Gökkalkan recorded-style dry-run fixture; canlı sensor fusion adapterı TBD.",
+                        True,
+                        f"replay/stage-{stage}/round-{round_no}/fusion/{track.trackId}",
+                    ),
+                ]
+            )
+        return frames
+
+    def _range_gate_label(self, target: dict[str, Any]) -> str:
+        if self.stage == 2:
+            return "Takip önceliği"
+        if self._target_gate_ok_for_stage(target):
+            return "Uygun"
+        return "Kilitli"
+
+    def _sensor_recommendation(self, target: dict[str, Any], stage_note: str) -> str:
+        if target.get("friendFoe") == "Dost":
+            return f"Dost unsur korunur; FireIntent kilitli. {stage_note}"
+        if self._target_gate_ok_for_stage(target):
+            return f"Angajman adayı; Safety Gate ve operatör/hakem kilitleri beklenir. {stage_note}"
+        return f"Hedef izlenir; menzil/mod kapısı tamamlanmadan FireIntent kilitli. {stage_note}"
+
+    def _target_gate_ok_for_stage(self, target: dict[str, Any] | None) -> bool:
+        if not target or target.get("friendFoe") != "Düşman":
+            return False
+        range_m = float(target.get("rangeM", -1))
+        if self.stage == 1:
+            return 0 < range_m <= 15
+        if self.stage == 2:
+            return 0 < range_m <= 15
+        return target_range_gate(str(target.get("targetType")), range_m)
+
+    def _sensor_health(self) -> dict[str, Any]:
+        latest = self.sensor_frames[0].timestamp if self.sensor_frames else self._clock()
+        return {
+            "schemaVersion": 1,
+            "status": "replay" if self.sensor_frames else "empty",
+            "adapterConnected": self.sensor_adapter_connected,
+            "perceptionConnected": self.perception_connected,
+            "replayOnly": True,
+            "sourceDataset": "Gökkalkan recorded-style dry-run fixture; gerçek radar/LiDAR verisi için Oxford Radar RobotCar veya nuScenes benzeri offline replay adapterı eklenebilir.",
+            "latestFrameAt": latest,
+            "frameCount": len(self.sensor_frames),
+            "physicalOutputEnabled": False,
+        }
 
     def snapshot(self) -> dict[str, Any]:
         selected = self.tracks[0] if self.tracks else None
@@ -243,11 +476,25 @@ class OperatorService:
             "dryRun": self.dry_run,
             "liveArmEnabled": self.live_arm_enabled,
             "tracks": [track.to_dict() for track in self.tracks],
+            "sensorFrames": [frame.to_dict() for frame in self.sensor_frames],
+            "sensorHealth": self._sensor_health(),
             "safety": self.evaluate_safety("FireIntent", selected.to_dict() if selected else None).to_dict(),
             "commandResults": self.command_results[:8],
             "events": self.events[:20],
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
+        }
+
+    def sensor_frames_snapshot(self) -> dict[str, Any]:
+        return {
+            "schemaVersion": 1,
+            "generatedAt": self._clock(),
+            "stage": self.stage,
+            "round": self.round,
+            "sensorHealth": self._sensor_health(),
+            "frames": [frame.to_dict() for frame in self.sensor_frames],
+            "physicalOutputEnabled": False,
+            "replayOnly": True,
         }
 
     def health(self) -> dict[str, Any]:
@@ -275,9 +522,9 @@ class OperatorService:
                 "Backend Operatör API",
                 "ready" if self.backend_connected else "blocked",
                 "Backend",
-                "GET /state, GET /readiness, POST /mode, POST /manual-aim, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
+                "GET /state, GET /sensor-frames, GET /readiness, POST /stage, POST /mode, POST /manual-aim, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
                 "API hata toleransı ve oturum/imza katmanı saha entegrasyonu öncesi eklenecek.",
-                "ModeRequest, ManualAimCommand, FireIntent, CommandResult",
+                "StageRequest, ModeRequest, SensorFrame, ManualAimCommand, FireIntent, CommandResult",
             ),
             self._readiness_item(
                 "safety_gate",
@@ -302,9 +549,9 @@ class OperatorService:
                 "Operatör Paneli UI",
                 "ready",
                 "Frontend",
-                "React panel mod seçimi, manuel yönlendirme, FireIntent, hedef detayı, Safety Gate, hardware mock sonucu, readiness ve kanıt/replay yüzeylerini gösteriyor.",
+                "React panel aşama/tur seçimi, mod seçimi, radar/LiDAR replay katmanı, sınıflandırma/dost-düşman yorumları, manuel yönlendirme, FireIntent, Safety Gate, hardware mock sonucu, readiness ve kanıt/replay yüzeylerini gösteriyor.",
                 "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla ayrıca denenmeli.",
-                "Kullanıcı Arayüzü, TrackState, ManualAimCommand",
+                "Kullanıcı Arayüzü, StageRequest, SensorFrame, TrackState, ManualAimCommand",
             ),
             self._readiness_item(
                 "perception_adapter",
@@ -320,7 +567,7 @@ class OperatorService:
                 "Radar/LiDAR Adapter",
                 "ready" if self.sensor_adapter_connected else "tbd",
                 "Sensör",
-                "Menzil/açı/kalite verisi için adapter sözleşmesi tanımlı; gerçek sensör protokolü seçilmedi.",
+                "Menzil/açı/kalite verisi için SensorFrame replay sözleşmesi ve fixture görünümü hazır; gerçek sensör protokolü seçilmedi.",
                 "Seçilen radar/LiDAR için güç, veri, timestamp ve sağlık mesajı arayüzünü doldur.",
                 "SensorFrame",
             ),
@@ -374,10 +621,13 @@ class OperatorService:
 
     def telemetry_export(self) -> dict[str, Any]:
         entries = self.telemetry.read_all()
+        unsafe_replay = self._unsafe_physical_output_entries(entries)
         return {
             "schemaVersion": 1,
             "generatedAt": self._clock(),
             "physicalOutputEnabled": False,
+            "unsafeReplayEvidence": unsafe_replay,
+            "evidenceWarning": "Replay log içinde physicalOutput=true kaydı var; kanıt güvenli kabul edilmez." if unsafe_replay else "",
             "telemetry": self.telemetry.metadata(),
             "state": self.snapshot(),
             "events": self.events[:50],
@@ -407,6 +657,7 @@ class OperatorService:
 
     def replay(self, limit: int | None = None) -> dict[str, Any]:
         entries = self.telemetry.read_all(limit=limit)
+        unsafe_replay = self._unsafe_physical_output_entries(entries)
         events = [entry["payload"] for entry in entries if entry.get("recordType") == "event" and isinstance(entry.get("payload"), dict)]
         command_results = [entry["payload"] for entry in entries if entry.get("recordType") == "command_result" and isinstance(entry.get("payload"), dict)]
         hardware_results = [entry["payload"] for entry in entries if entry.get("recordType") == "hardware_result" and isinstance(entry.get("payload"), dict)]
@@ -415,6 +666,8 @@ class OperatorService:
             "generatedAt": self._clock(),
             "sourceLogPath": str(self.telemetry.path),
             "physicalOutputEnabled": False,
+            "unsafeReplayEvidence": unsafe_replay,
+            "evidenceWarning": "Replay log içinde physicalOutput=true kaydı var; kanıt güvenli kabul edilmez." if unsafe_replay else "",
             "replayOnly": True,
             "entries": entries,
             "events": events,
@@ -422,9 +675,15 @@ class OperatorService:
             "hardwareResults": hardware_results,
         }
 
+    def _unsafe_physical_output_entries(self, entries: list[dict[str, Any]]) -> bool:
+        return any(isinstance(entry.get("payload"), dict) and entry["payload"].get("physicalOutput") is True for entry in entries)
+
     def reset_telemetry(self) -> dict[str, Any]:
         self.mode = "safe"
+        self.stage = 3
         self.round = 1
+        self.tracks = self._tracks_for_stage(self.stage, self.round)
+        self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.command_results = []
         self.events = []
         self.hardware.commands = []
@@ -442,17 +701,18 @@ class OperatorService:
         command_payload_ok = True
 
         if kind == "FireIntent":
-            mode_ok = self.mode in ENGAGEMENT_MODES
-            target_gate_ok = bool(
-                target
-                and target.get("friendFoe") == "Düşman"
-                and target_range_gate(str(target.get("targetType")), float(target.get("rangeM", -1)))
-            )
+            payload_stage = _payload_int(payload, "stage")
+            payload_round = _payload_int(payload, "round")
+            command_payload_ok = payload_stage == self.stage and payload_round == self.round
+            mode_ok = self.mode == "manual" if self.stage == 1 else self.mode in ENGAGEMENT_MODES
+            target_gate_ok = self._target_gate_ok_for_stage(target)
         elif kind == "ManualAimCommand":
-            mode_ok = self.mode == "manual" and bool(payload.get("deadmanActive"))
+            mode_ok = self.stage == 1 and self.mode == "manual" and bool(payload.get("deadmanActive"))
             command_payload_ok = manual_aim_payload_ok(payload)
         elif kind == "ModeRequest":
             mode_ok = payload.get("requestedMode") in VALID_MODES
+        elif kind == "StageRequest":
+            command_payload_ok = stage_request_payload_ok(payload)
 
         block: BlockReason = "ALLOWED"
         if self.estop:
@@ -467,7 +727,7 @@ class OperatorService:
             block = "BLOCKED_FIRE_ZONE"
         elif not mode_ok:
             block = "BLOCKED_MODE"
-        elif kind == "ManualAimCommand" and not command_payload_ok:
+        elif kind in {"ManualAimCommand", "FireIntent", "StageRequest"} and not command_payload_ok:
             block = "BLOCKED_INVALID_COMMAND"
         elif not target_gate_ok:
             block = "BLOCKED_TARGET_GATE"
@@ -497,6 +757,35 @@ class OperatorService:
             self.mode = requested  # type: ignore[assignment]
         result = self._command_result("ModeRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
         self._append_event("mode", "ModeRequest", result["message"], {"requestedMode": requested, "safety": safety.to_dict(), "result": result})
+        return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
+
+    def handle_stage_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        safety = self.evaluate_safety("StageRequest", payload=payload)
+        accepted = safety.blockReason == "ALLOWED"
+        if accepted:
+            requested_stage = _payload_int(payload, "stage")
+            requested_round = _payload_int(payload, "round")
+            assert requested_stage in {1, 2, 3}
+            assert requested_round is not None
+            self.stage = requested_stage  # type: ignore[assignment]
+            self.round = requested_round
+            self.mode = stage_expected_mode(self.stage)
+            self.tracks = self._tracks_for_stage(self.stage, self.round)
+            self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
+        result = self._command_result("StageRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
+        self._append_event(
+            "mission",
+            "StageRequest",
+            result["message"],
+            {
+                "requestedStage": payload.get("stage"),
+                "requestedRound": payload.get("round"),
+                "expectedMode": stage_expected_mode(self.stage) if accepted else None,
+                "safety": safety.to_dict(),
+                "result": result,
+                "physicalOutput": False,
+            },
+        )
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:

@@ -120,7 +120,7 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: canlı kamera/sensör alanı, backend durumları, mod seçimi, deadman’li manuel pan/tilt niyeti, FireIntent, seçili hedef detayı, Safety Gate gerekçesi, hardware mock geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi, adapter/TBD bakım çekmecesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
+- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend durumları, mod seçimi, deadman’li manuel pan/tilt niyeti, FireIntent, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware mock geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi, adapter/TBD bakım çekmecesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri
@@ -152,8 +152,8 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 
 | Kaynak → Hedef | Mesaj örnekleri | İlk protokol önerisi | Not |
 | --- | --- | --- | --- |
-| Operatör Paneli → Backend | `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP + WebSocket | Komutlar niyettir; yetki backend’dedir |
-| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
+| Operatör Paneli → Backend | `StageRequest`, `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP + WebSocket | Komutlar niyettir; yetki backend’dedir |
+| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | Python içi queue, ZeroMQ/WebSocket veya REST adapter; seçim entegrasyona göre | Saha gecikmesi ölçülmeden kesin protokol dayatılmamalı |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
 | Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | UART/RS422/CAN/Ethernet TBD | Elektronik seçim netleşince sabitlenir |
@@ -178,9 +178,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 Şartname belirli bir programlama dili veya yapay zekâ modeli zorunlu kılmaz. Bu repo için teknik yön şu şekilde güncellenmiştir:
 
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
-- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
+- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi aşama/tur seçimi, radar/LiDAR biçimli `SensorFrame` replay görünümü, hedef tipi + dost/düşman + menzil yorumu, mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
 - **Backend / görev çekirdeği:** Python 3.x.
-- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
+- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /stage`, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.

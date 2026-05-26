@@ -16,10 +16,12 @@ Endpoint’ler:
 
 - `GET /health`
 - `GET /state`
+- `GET /sensor-frames` — radar/LiDAR biçimli dry-run `SensorFrame` replay paketi döner; gerçek sensör bağlı iddiası taşımaz.
 - `GET /readiness` — final fazı arayüz hazırlığı, TBD/kilitli boşluklar ve sıradaki kritik adımları döner; resmi uygunluk skoru değildir.
 - `GET /events`
 - `GET /telemetry/export` — KTR/debug için tek JSON kanıt paketi döner.
 - `GET /replay` — JSONL kayıtlarından replay-only olay/komut/donanım sonucu paketi döner.
+- `POST /stage` — aşama/tur görev bağlamını ve beklenen modu günceller; geçersiz aşama/tur fiziksel çıkışsız bloklanır.
 - `POST /mode`
 - `POST /manual-aim`
 - `POST /fire-intent`

@@ -95,10 +95,12 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
 | Arayüz | Yön | Örnek alanlar | İlk uygulanacak biçim | Gelecek iyileştirme |
 | --- | --- | --- | --- | --- |
 | `ModeRequest` | UI → Backend | `requestedMode`, `operatorId`, `timestamp`, `reason` | JSON/HTTP | imzalı/oturumlu komut |
+| `StageRequest` | UI → Backend | `stage`, `round`, `operatorId`, `timestamp`, `reason` | JSON/HTTP | resmi aşama/tur ve mode expectation validasyonu |
 | `ManualAimCommand` | UI → Backend | `panDelta`, `tiltDelta`, `rateLimit`, `deadmanActive` | JSON/WebSocket | joystick input stream |
 | `FireIntent` | UI → Backend | `targetId`, `stage`, `round`, `operatorConfirm`, `dryRun` | JSON/HTTP veya WebSocket command | iki aşamalı arming protokolü |
 | `SafetyState` | Backend → UI | `estop`, `motionZoneOk`, `fireZoneOk`, `modeOk`, `targetGate`, `blockReason` | WebSocket state stream | kod + Türkçe açıklama sözlüğü |
 | `TrackState` | Perception/Sensor → Backend/UI | `trackId`, `x`, `y`, `rangeM`, `bearingDeg`, `type`, `friendFoe`, `confidence` | JSON stream | binary/protobuf yalnız ihtiyaç olursa |
+| `SensorFrame` | Sensor Adapter → Backend/UI | `sensor`, `rangeM`, `bearingDeg`, `radialVelocity`, `rcs/snr`, `pointCount`, `quality`, `timestamp`, `trackId` | JSON replay/stream | gerçek radar/LiDAR seçilince adapter doldurur; fixture canlı veri iddiası taşımaz |
 | `HardwareCommand` | Backend → Adapter | `commandId`, `kind`, `panTilt`, `fireEnable`, `timeoutMs` | Python adapter interface | MCU protokolüne çeviri |
 | `CommandResult` | Adapter → Backend/UI | `commandId`, `accepted`, `completed`, `faultCode`, `latencyMs` | JSON event | gerçek zaman ölçümü |
 | `TelemetryEvent` | Tüm katmanlar → Log | `timestamp`, `stage`, `mode`, `eventType`, `payload` | JSONL | replay/rapor export |
@@ -166,10 +168,12 @@ Uygulanan endpoint’ler:
 | --- | --- | --- | --- |
 | `GET /health` | UI → Backend | API sağlığı, dry-run ve fiziksel çıkış durumunu okur | `physicalOutputEnabled=false` döner |
 | `GET /state` | UI → Backend | mod, aşama, izler, `SafetyState`, `CommandResult` ve olay akışını alır | varsayılan izler dry-run kaynaktır |
+| `GET /sensor-frames` | UI → Backend | radar/LiDAR biçimli `SensorFrame` replay paketini ve sağlık özetini alır | `replayOnly=true`; gerçek sensör bağlı iddiası taşımaz |
 | `GET /readiness` | UI/KTR → Backend | final fazı entegrasyon hazırlığı, arayüz durumu ve kritik sonraki adımları alır | resmi yarışma uygunluk skoru değildir; TBD değerleri açık bırakır |
 | `GET /events` | UI → Backend | telemetri/komut olay listesini alır | rapor ve KTR kanıtı için JSON olaylar |
 | `GET /telemetry/export` | UI/Debug → Backend | JSONL log, state, command result ve event kayıtlarını tek kanıt paketinde dışa aktarır | replay/export fiziksel çıkış üretmez |
 | `GET /replay` | UI/Debug → Backend | JSONL kayıtlarından replay-only olay/komut/donanım sonucu üretir | hardware adapter çağırmaz; yalnız kayıt okur |
+| `POST /stage` | UI → Backend | `StageRequest` gönderir; aşama/tur bağlamını ve beklenen modu günceller | geçersiz aşama/tur `BLOCKED_INVALID_COMMAND` olur; fiziksel çıkış yok |
 | `POST /mode` | UI → Backend | `ModeRequest` gönderir | geçersiz modlar `BLOCKED_MODE` olur |
 | `POST /manual-aim` | UI → Backend | `ManualAimCommand` gönderir | manuel mod + deadman koşulu yoksa engellenir |
 | `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
@@ -181,8 +185,10 @@ Uygulanan endpoint’ler:
 
 Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen operatör paneli yüzeyi tamamlanmıştır:
 
-- üst durum şeridi: backend, perception placeholder, Radar/LiDAR TBD, Safety Gate ve API kaynağı,
+- üst durum şeridi: aşama/tur, backend, perception placeholder, Radar/LiDAR replay/TBD, Safety Gate ve API kaynağı,
 - `Finale Hazırlık`: hazır/kısmi/TBD/kilitli arayüz kartları; resmi uygunluk skoru değildir,
+- `Aşama / Tur kontrolü`: Aşama 1 manuel, Aşama 2 otonom 4 resmi tur ve sınıflandırmasız takip, Aşama 3 otonom 8 tur + dost/düşman + menzil kapısı bağlamını gösterir,
+- `Radar/LiDAR realtime katmanı`: ham menzil/açı/hız/SNR/nokta/kalite verisini yazılımsal hedef tipi, dost/düşman, güven, range gate ve angajman önerisiyle birlikte gösterir,
 - hedef iz ekranı: dry-run `TrackState`, seçili hedef ayrıntısı, dost/düşman, menzil, açı, güven, kaynak ve timestamp,
 - komut paneli: Safe/Manuel/Otonom/Bakım modları, deadman’li `ManualAimCommand`, hız limiti, `FireIntent`, blok gerekçesi,
 - güvenlik matrisi: Acil Durdur, hareket alanı, atış alanı, hedef kapısı, mod kapısı ve backend bağlantısı,
@@ -191,6 +197,8 @@ Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen 
 - `Kanıt / Replay`: JSONL export, replay-only özet, command/hardware kayıtları ve fiziksel çıkışsız kanıt.
 
 Backend tarafında `ManualAimCommand` artık manuel mod + deadman yanında sayı/bounds doğrulamasından geçer. Bu bounds yazılım guardrail’idir; gerçek servo limitleri ve hızları mekanik/elektronik ekip kararından sonra güncellenecektir.
+
+`SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Public radar/LiDAR veri kaynakları offline test için değerlendirilebilir; örneğin Oxford Radar RobotCar Dataset Navtech FMCW radar ve Velodyne LiDAR verisi sağlar, nuScenes ise kamera/radar/LiDAR sensör süitiyle örneklenebilir. Bu repo şu an büyük dış dataset veya model dosyası commit etmez; gerçek adapter seçilene kadar fixture yalnız arayüz ve KTR kanıtı üretir.
 
 ## 6. Karar önerisi
 

@@ -1,4 +1,14 @@
-import type { CommandResult, FireIntent, ManualAimCommand, ModeRequest, OperatorSafetyState, OperatorTrackState } from './operatorContracts';
+import type {
+  CommandResult,
+  FireIntent,
+  ManualAimCommand,
+  ModeRequest,
+  OperatorSafetyState,
+  OperatorSensorFrame,
+  OperatorSensorHealth,
+  OperatorTrackState,
+  StageRequest,
+} from './operatorContracts';
 import type { Mode, Stage } from './types';
 
 export interface OperatorTelemetryMetadata {
@@ -35,6 +45,8 @@ export interface OperatorApiSnapshot {
   dryRun: boolean;
   liveArmEnabled: boolean;
   tracks: OperatorTrackState[];
+  sensorFrames?: OperatorSensorFrame[];
+  sensorHealth?: OperatorSensorHealth;
   safety: OperatorSafetyState;
   commandResults: CommandResult[];
   events: OperatorTelemetryEvent[];
@@ -78,10 +90,23 @@ export interface OperatorReadinessReport {
   nextCriticalActions: string[];
 }
 
+export interface OperatorSensorFrameBundle {
+  schemaVersion: number;
+  generatedAt: string;
+  stage: Stage;
+  round: number;
+  sensorHealth: OperatorSensorHealth;
+  frames: OperatorSensorFrame[];
+  physicalOutputEnabled: boolean;
+  replayOnly: true;
+}
+
 export interface OperatorTelemetryExport {
   schemaVersion: number;
   generatedAt: string;
   physicalOutputEnabled: boolean;
+  unsafeReplayEvidence?: boolean;
+  evidenceWarning?: string;
   telemetry: OperatorTelemetryMetadata;
   state: OperatorApiSnapshot;
   events: OperatorTelemetryEvent[];
@@ -94,6 +119,8 @@ export interface OperatorReplayBundle {
   generatedAt: string;
   sourceLogPath: string;
   physicalOutputEnabled: boolean;
+  unsafeReplayEvidence?: boolean;
+  evidenceWarning?: string;
   replayOnly: true;
   entries: OperatorTelemetryLogRecord[];
   events: Record<string, unknown>[];
@@ -127,8 +154,16 @@ export async function fetchOperatorReadiness(baseUrl: string): Promise<OperatorR
   return requestJson<OperatorReadinessReport>(`${normalizeOperatorApiBaseUrl(baseUrl)}/readiness`);
 }
 
+export async function fetchOperatorSensorFrames(baseUrl: string): Promise<OperatorSensorFrameBundle> {
+  return requestJson<OperatorSensorFrameBundle>(`${normalizeOperatorApiBaseUrl(baseUrl)}/sensor-frames`);
+}
+
 export async function sendOperatorModeRequest(baseUrl: string, request: ModeRequest): Promise<OperatorApiCommandResponse> {
   return requestJson<OperatorApiCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/mode`, request);
+}
+
+export async function sendOperatorStageRequest(baseUrl: string, request: StageRequest): Promise<OperatorApiCommandResponse> {
+  return requestJson<OperatorApiCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/stage`, request);
 }
 
 export async function sendOperatorManualAimCommand(baseUrl: string, request: ManualAimCommand): Promise<OperatorApiCommandResponse> {

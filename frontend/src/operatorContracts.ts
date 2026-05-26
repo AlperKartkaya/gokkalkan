@@ -1,8 +1,9 @@
 import type { BlockReason, FriendFoe, Mode, Stage, TargetType } from './types';
 
 export type OperatorConnectionState = 'offline' | 'dry-run' | 'live';
-export type OperatorCommandKind = 'ModeRequest' | 'ManualAimCommand' | 'FireIntent';
+export type OperatorCommandKind = 'ModeRequest' | 'StageRequest' | 'ManualAimCommand' | 'FireIntent';
 export type OperatorBlockReason = BlockReason | 'BLOCKED_ARMING' | 'BLOCKED_BACKEND' | 'BLOCKED_SENSOR' | 'BLOCKED_INVALID_COMMAND';
+export type OperatorSensorSource = 'radar' | 'lidar' | 'camera' | 'fusion' | 'dry-run';
 
 export const MANUAL_AIM_STEP_DEG = 2;
 export const MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 12;
@@ -19,6 +20,16 @@ export interface OperatorPanelConfig {
 export interface ModeRequest {
   kind: 'ModeRequest';
   requestedMode: Mode;
+  operatorId: string;
+  timestamp: string;
+  reason: string;
+  dryRun: boolean;
+}
+
+export interface StageRequest {
+  kind: 'StageRequest';
+  stage: Stage;
+  round: number;
   operatorId: string;
   timestamp: string;
   reason: string;
@@ -55,6 +66,43 @@ export interface OperatorTrackState {
   confidence: number;
   source: 'perception' | 'radar-lidar' | 'fused' | 'dry-run';
   updatedAt: string;
+}
+
+export interface OperatorSensorFrame {
+  frameId: string;
+  stage: Stage;
+  round: number;
+  trackId: string;
+  sensor: OperatorSensorSource;
+  timestamp: string;
+  rangeM: number;
+  bearingDeg: number;
+  elevationDeg: number;
+  radialVelocityMps: number;
+  rcsDbsm: number | null;
+  snrDb: number | null;
+  pointCount: number;
+  quality: number;
+  targetType: TargetType;
+  friendFoe: FriendFoe;
+  classificationConfidence: number;
+  rangeGate: string;
+  recommendation: string;
+  sourceDataset: string;
+  replayOnly: boolean;
+  rawSampleRef: string;
+}
+
+export interface OperatorSensorHealth {
+  schemaVersion: number;
+  status: 'offline' | 'replay' | 'live' | 'empty';
+  adapterConnected: boolean;
+  perceptionConnected: boolean;
+  replayOnly: boolean;
+  sourceDataset: string;
+  latestFrameAt: string;
+  frameCount: number;
+  physicalOutputEnabled: boolean;
 }
 
 export interface OperatorSafetyState {
@@ -98,6 +146,22 @@ export const operatorBlockCopy: Record<OperatorBlockReason, string> = {
   BLOCKED_INVALID_COMMAND: 'Komut alanları güvenli sınırlar içinde değil.',
 };
 
+export function stageRoundLimit(stage: Stage): number {
+  if (stage === 1) return 4;
+  if (stage === 2) return 4;
+  return 8;
+}
+
+export function stageExpectedMode(stage: Stage): Mode {
+  return stage === 1 ? 'manual' : 'autonomous';
+}
+
+export function stageMissionCopy(stage: Stage): string {
+  if (stage === 1) return 'Aşama 1 · Manuel Mod zorunlu · 5/10/15 m durağan hedef sırası';
+  if (stage === 2) return 'Aşama 2 · Otonom takip/imha · 4 resmi tur · sınıflandırma zorunlu değil';
+  return 'Aşama 3 · Otonom dost/düşman ayrımı · 8 tur · hedef tipine göre menzil kapısı';
+}
+
 export function evaluateOperatorSafety(input: Omit<OperatorSafetyState, 'blockReason' | 'explanation'>): OperatorSafetyState {
   let blockReason: OperatorBlockReason = 'ALLOWED';
 
@@ -121,8 +185,8 @@ export function canSendFireIntent(safety: OperatorSafetyState, selectedTargetId:
   return Boolean(selectedTargetId) && safety.blockReason === 'ALLOWED' && (safety.dryRun || safety.liveArmEnabled);
 }
 
-export function canSendManualAim(params: { mode: Mode; deadmanActive: boolean; dryRun: boolean; liveArmEnabled: boolean; backendConnected: boolean }): boolean {
-  return params.mode === 'manual' && params.deadmanActive && params.backendConnected && (params.dryRun || params.liveArmEnabled);
+export function canSendManualAim(params: { stage: Stage; mode: Mode; deadmanActive: boolean; dryRun: boolean; liveArmEnabled: boolean; backendConnected: boolean }): boolean {
+  return params.stage === 1 && params.mode === 'manual' && params.deadmanActive && params.backendConnected && (params.dryRun || params.liveArmEnabled);
 }
 
 export function isManualAimPayloadSafe(command: ManualAimCommand): boolean {
@@ -150,6 +214,25 @@ export function makeManualAimCommand(params: {
     tiltDeltaDeg: params.tiltDeltaDeg,
     rateLimitDegPerSec: params.rateLimitDegPerSec ?? MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC,
     deadmanActive: params.deadmanActive,
+    dryRun: params.dryRun,
+  };
+}
+
+export function makeStageRequest(params: { stage: Stage; round: number; dryRun: boolean; operatorId?: string; reason?: string; now?: Date }): StageRequest {
+  if (!Number.isInteger(params.stage) || !Number.isInteger(params.round)) {
+    throw new Error('StageRequest stage and round must be exact integers.');
+  }
+  if (params.round < 1 || params.round > stageRoundLimit(params.stage)) {
+    throw new Error(`StageRequest round ${params.round} is outside Aşama ${params.stage} bounds.`);
+  }
+
+  return {
+    kind: 'StageRequest',
+    stage: params.stage,
+    round: params.round,
+    operatorId: params.operatorId ?? 'OP-UI-1',
+    timestamp: (params.now ?? new Date()).toISOString(),
+    reason: params.reason ?? 'operator-stage-control',
     dryRun: params.dryRun,
   };
 }

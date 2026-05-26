@@ -7,6 +7,10 @@ import {
   makeCommandResult,
   makeFireIntent,
   makeManualAimCommand,
+  makeStageRequest,
+  stageExpectedMode,
+  stageMissionCopy,
+  stageRoundLimit,
 } from './operatorContracts';
 import type { OperatorSafetyState } from './operatorContracts';
 
@@ -86,8 +90,25 @@ describe('operator panel safety contracts', () => {
     expect(command).toMatchObject({ kind: 'ManualAimCommand', rateLimitDegPerSec: 12, deadmanActive: true });
     expect(isManualAimPayloadSafe(command)).toBe(true);
     expect(isManualAimPayloadSafe({ ...command, panDeltaDeg: 99 })).toBe(false);
-    expect(canSendManualAim({ mode: 'manual', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(true);
-    expect(canSendManualAim({ mode: 'safe', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
-    expect(canSendManualAim({ mode: 'manual', deadmanActive: false, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
+    expect(canSendManualAim({ stage: 1, mode: 'manual', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(true);
+    expect(canSendManualAim({ stage: 3, mode: 'manual', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
+    expect(canSendManualAim({ stage: 1, mode: 'safe', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
+    expect(canSendManualAim({ stage: 1, mode: 'manual', deadmanActive: false, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
+  });
+
+  it('creates stage requests with şartname-aligned round limits and mode expectations', () => {
+    const stage3 = makeStageRequest({ stage: 3, round: 8, dryRun: true, now: new Date('2026-05-25T20:00:03Z') });
+    const stage2 = makeStageRequest({ stage: 2, round: 4, dryRun: true, now: new Date('2026-05-25T20:00:04Z') });
+
+    expect(stage3).toMatchObject({ kind: 'StageRequest', stage: 3, round: 8, dryRun: true });
+    expect(stage2.round).toBe(4);
+    expect(() => makeStageRequest({ stage: 3, round: 8.1, dryRun: true })).toThrow(/exact integers/);
+    expect(() => makeStageRequest({ stage: 2, round: 5, dryRun: true })).toThrow(/outside Aşama 2 bounds/);
+    expect(stageRoundLimit(1)).toBe(4);
+    expect(stageRoundLimit(2)).toBe(4);
+    expect(stageRoundLimit(3)).toBe(8);
+    expect(stageExpectedMode(1)).toBe('manual');
+    expect(stageExpectedMode(3)).toBe('autonomous');
+    expect(stageMissionCopy(2)).toContain('sınıflandırma zorunlu değil');
   });
 });

@@ -261,16 +261,188 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
 });
 
+test('operator panel changes final-phase stage and renders radar LiDAR software interpretation', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/final-phase-api';
+  const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
+  const safety = {
+    estop: false,
+    motionZoneOk: true,
+    fireZoneOk: true,
+    targetGateOk: true,
+    modeOk: true,
+    backendConnected: true,
+    perceptionConnected: false,
+    sensorAdapterConnected: false,
+    dryRun: true,
+    liveArmEnabled: false,
+    blockReason: 'ALLOWED',
+    explanation: 'Dry-run güvenli.',
+  };
+  const stageTracks = {
+    1: [
+      { trackId: 'S1-ORDER-FUZE-01', stage: 1, round: 1, targetType: 'Balistik Füze', friendFoe: 'Düşman', rangeM: 15, bearingDeg: -24, confidence: 0.86, source: 'dry-run', updatedAt: '2026-05-25T20:20:00Z' },
+    ],
+    3: [
+      { trackId: 'DRY-RUN-F16-01', stage: 3, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 12.4, bearingDeg: -18, confidence: 0.96, source: 'fused', updatedAt: '2026-05-25T20:20:00Z' },
+      { trackId: 'DRY-RUN-HEL-02', stage: 3, round: 1, targetType: 'Helikopter', friendFoe: 'Dost', rangeM: 8.1, bearingDeg: 4, confidence: 0.91, source: 'fused', updatedAt: '2026-05-25T20:20:00Z' },
+      { trackId: 'DRY-RUN-UAV-03', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Dost', rangeM: 4.2, bearingDeg: 23, confidence: 0.88, source: 'fused', updatedAt: '2026-05-25T20:20:00Z' },
+    ],
+  } as const;
+  const sensorFrames = [
+    {
+      frameId: 'SENS-3-1-F16-FUSION',
+      stage: 3,
+      round: 1,
+      trackId: 'DRY-RUN-F16-01',
+      sensor: 'fusion',
+      timestamp: '2026-05-25T20:20:00Z',
+      rangeM: 12.4,
+      bearingDeg: -18,
+      elevationDeg: 0.5,
+      radialVelocityMps: -4.6,
+      rcsDbsm: 12.4,
+      snrDb: 22.1,
+      pointCount: 118,
+      quality: 0.96,
+      targetType: 'F16',
+      friendFoe: 'Düşman',
+      classificationConfidence: 0.96,
+      rangeGate: 'Uygun',
+      recommendation: 'Aşama 3: düşman ve menzil uygun; Safety Gate beklenir.',
+      sourceDataset: 'Gökkalkan recorded-style radar/LiDAR replay fixture.',
+      replayOnly: true,
+      rawSampleRef: 'fixture/fusion/f16',
+    },
+    {
+      frameId: 'SENS-3-1-HEL-FUSION',
+      stage: 3,
+      round: 1,
+      trackId: 'DRY-RUN-HEL-02',
+      sensor: 'fusion',
+      timestamp: '2026-05-25T20:20:00Z',
+      rangeM: 8.1,
+      bearingDeg: 4,
+      elevationDeg: 0.3,
+      radialVelocityMps: -2.1,
+      rcsDbsm: 5,
+      snrDb: 18.2,
+      pointCount: 160,
+      quality: 0.91,
+      targetType: 'Helikopter',
+      friendFoe: 'Dost',
+      classificationConfidence: 0.91,
+      rangeGate: 'Kilitli',
+      recommendation: 'Dost unsur korunur; FireIntent kilitli.',
+      sourceDataset: 'Gökkalkan recorded-style radar/LiDAR replay fixture.',
+      replayOnly: true,
+      rawSampleRef: 'fixture/fusion/hel',
+    },
+  ];
+  let statePayload = {
+    app: 'gokkalkan-operator-api',
+    version: 1,
+    mode: 'manual',
+    stage: 1,
+    round: 1,
+    dryRun: true,
+    liveArmEnabled: false,
+    tracks: [...stageTracks[1]],
+    sensorFrames: [],
+    sensorHealth: {
+      schemaVersion: 1,
+      status: 'replay',
+      adapterConnected: false,
+      perceptionConnected: false,
+      replayOnly: true,
+      sourceDataset: 'Gökkalkan recorded-style dry-run fixture.',
+      latestFrameAt: '2026-05-25T20:20:00Z',
+      frameCount: 0,
+      physicalOutputEnabled: false,
+    },
+    safety,
+    commandResults: [],
+    events: [],
+    physicalOutputEnabled: false,
+    telemetry,
+  };
+
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
+  await page.route(`${apiBase}/readiness`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-05-25T20:21:00Z',
+      summary: 'Operatör UI hazır; canlı sensör/donanım entegrasyonu bekliyor.',
+      scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+      readinessPercent: 55,
+      physicalOutputEnabled: false,
+      mode: statePayload.mode,
+      dryRun: true,
+      items: [
+        { id: 'operator_panel_ui', label: 'Operatör Paneli UI', status: 'ready', owner: 'Frontend', evidence: 'Aşama/tur ve sensor replay yüzeyleri hazır.', nextStep: 'Canlı kiosk doğrula.', ktrInterface: 'StageRequest, SensorFrame' },
+        { id: 'radar_lidar_adapter', label: 'Radar/LiDAR Adapter', status: 'tbd', owner: 'Sensör', evidence: 'SensorFrame replay var; gerçek protokol seçilmedi.', nextStep: 'Seçilen sensörün güç/veri arayüzünü doldur.', ktrInterface: 'SensorFrame' },
+        { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'Interlock doğrula.', ktrInterface: 'ArmingState' },
+      ],
+      nextCriticalActions: ['Seçilen sensörün güç/veri arayüzünü doldur.'],
+    }),
+  }));
+  await page.route(`${apiBase}/stage`, async (route) => {
+    const payload = route.request().postDataJSON();
+    statePayload = {
+      ...statePayload,
+      mode: payload.stage === 1 ? 'manual' : 'autonomous',
+      stage: payload.stage,
+      round: payload.round,
+      tracks: payload.stage === 3 ? [...stageTracks[3]] : [...stageTracks[1]],
+      sensorFrames: payload.stage === 3 ? sensorFrames : [],
+      sensorHealth: {
+        ...statePayload.sensorHealth,
+        frameCount: payload.stage === 3 ? sensorFrames.length : 0,
+        sourceDataset: payload.stage === 3 ? 'Gökkalkan recorded-style radar/LiDAR replay fixture.' : 'Gökkalkan recorded-style dry-run fixture.',
+      },
+    };
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        result: { commandId: 'CMD-STAGE-3', kind: 'StageRequest', accepted: true, completed: true, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi.', physicalOutput: false, createdAt: '2026-05-25T20:20:01Z' },
+        safety,
+        state: statePayload,
+      }),
+    });
+  });
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  const stageControl = page.getByTestId('operator-stage-control');
+  await expect(stageControl).toContainText('Aşama 1');
+  await expect(stageControl).toContainText('Manuel Mod zorunlu');
+  const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
+  await expect(sensorPanel).toContainText('0 frame');
+  await expect(sensorPanel).toContainText('Backend SensorFrame akışı boş');
+  await page.getByRole('button', { name: 'Aşama 3' }).click();
+
+  await expect(stageControl).toContainText('Aşama 3 · Otonom dost/düşman ayrımı');
+  await expect(stageControl).toContainText('8 tur');
+  await expect(sensorPanel).toContainText('Ham ölçüm');
+  await expect(sensorPanel).toContainText('Yazılım katmanı');
+  await expect(sensorPanel).toContainText('F16');
+  await expect(sensorPanel).toContainText('Düşman');
+  await expect(sensorPanel).toContainText('Dost');
+  await expect(sensorPanel).toContainText('12.4 m');
+  await expect(sensorPanel).toContainText('menzil kapısı Uygun');
+  await expect(sensorPanel).toContainText('replayOnly=true');
+  await expect(page.getByText(/physicalOutput=true/)).toHaveCount(0);
+});
+
 test('operator panel sends manual aim only after manual mode and deadman are active', async ({ page }) => {
   const apiBase = 'http://127.0.0.1:5173/manual-aim-api';
   const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
   const track = {
     trackId: 'DRY-RUN-F16-01',
-    stage: 3,
+    stage: 1,
     round: 1,
-    targetType: 'F16',
+    targetType: 'Balistik Füze',
     friendFoe: 'Düşman',
-    rangeM: 12.4,
+    rangeM: 15,
     bearingDeg: -18,
     confidence: 0.96,
     source: 'dry-run',
@@ -294,7 +466,7 @@ test('operator panel sends manual aim only after manual mode and deadman are act
     app: 'gokkalkan-operator-api',
     version: 1,
     mode: 'safe',
-    stage: 3,
+    stage: 1,
     round: 1,
     dryRun: true,
     liveArmEnabled: false,
@@ -362,6 +534,96 @@ test('operator panel sends manual aim only after manual mode and deadman are act
   await expect(page.getByTestId('operator-hardware-result')).toContainText('hardware_mock.dry_run');
   await expect(page.getByTestId('operator-hardware-result')).toContainText('physicalOutput=false');
   await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Mekanik + Elektronik rehberi bekliyor');
+});
+
+test('operator panel keeps manual aim locked outside Aşama 1 even with manual mode and deadman', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/manual-aim-stage-lock-api';
+  const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
+  const safety = {
+    estop: false,
+    motionZoneOk: true,
+    fireZoneOk: true,
+    targetGateOk: true,
+    modeOk: true,
+    backendConnected: true,
+    perceptionConnected: false,
+    sensorAdapterConnected: false,
+    dryRun: true,
+    liveArmEnabled: false,
+    blockReason: 'ALLOWED',
+    explanation: 'Dry-run güvenli.',
+  };
+  let manualAimCalled = false;
+  let statePayload = {
+    app: 'gokkalkan-operator-api',
+    version: 1,
+    mode: 'safe',
+    stage: 3,
+    round: 1,
+    dryRun: true,
+    liveArmEnabled: false,
+    tracks: [
+      { trackId: 'DRY-RUN-F16-01', stage: 3, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 12.4, bearingDeg: -18, confidence: 0.96, source: 'dry-run', updatedAt: '2026-05-25T20:20:00Z' },
+    ],
+    sensorFrames: [],
+    sensorHealth: {
+      schemaVersion: 1,
+      status: 'offline',
+      adapterConnected: false,
+      perceptionConnected: false,
+      replayOnly: false,
+      sourceDataset: 'Backend connected but no SensorFrame returned.',
+      latestFrameAt: 'yok',
+      frameCount: 0,
+      physicalOutputEnabled: false,
+    },
+    safety: { ...safety, modeOk: false, blockReason: 'BLOCKED_MODE', explanation: 'Safe mod.' },
+    commandResults: [],
+    events: [],
+    physicalOutputEnabled: false,
+    telemetry,
+  };
+
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
+  await page.route(`${apiBase}/readiness`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-05-25T20:21:00Z',
+      summary: 'Dry-run operatör UI tamam; adaptörler TBD.',
+      scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+      readinessPercent: 52,
+      physicalOutputEnabled: false,
+      mode: statePayload.mode,
+      dryRun: true,
+      items: [],
+      nextCriticalActions: [],
+    }),
+  }));
+  await page.route(`${apiBase}/mode`, async (route) => {
+    statePayload = { ...statePayload, mode: 'manual', safety };
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        result: { commandId: 'CMD-MODE-MANUAL-STAGE3', kind: 'ModeRequest', accepted: true, completed: true, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi.', physicalOutput: false, createdAt: '2026-05-25T20:20:01Z' },
+        safety,
+        state: statePayload,
+      }),
+    });
+  });
+  await page.route(`${apiBase}/manual-aim`, async (route) => {
+    manualAimCalled = true;
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'manual aim must not be called outside Aşama 1' }) });
+  });
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  const manualControls = page.getByTestId('manual-aim-controls');
+  await page.getByRole('button', { name: 'Manuel' }).click();
+  await manualControls.getByRole('button', { name: 'DEADMAN PASİF' }).click();
+
+  await expect(manualControls).toContainText('Aşama 2-3 final fazında manuel yönlendirme kilitli');
+  await expect(manualControls.getByRole('button', { name: 'SAĞA 2°' })).toBeDisabled();
+  expect(manualAimCalled).toBe(false);
 });
 
 test('operator panel can be opened directly with query parameter and returns to simulator', async ({ page }) => {

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from gokkalkan_backend.operator_api import DryRunHardwareAdapter, OperatorService, manual_aim_payload_ok, target_range_gate
+from gokkalkan_backend.operator_api import DryRunHardwareAdapter, OperatorService, manual_aim_payload_ok, stage_request_payload_ok, target_range_gate
 from gokkalkan_backend.operator_http_server import build_http_server
 from gokkalkan_backend.telemetry_log import JsonlTelemetryStore
 
@@ -40,6 +40,34 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertFalse(snapshot["physicalOutputEnabled"])
         self.assertEqual(snapshot["mode"], "safe")
         self.assertEqual(snapshot["telemetry"]["recordCount"], 1)
+        self.assertGreaterEqual(len(snapshot["sensorFrames"]), 1)
+        self.assertTrue(snapshot["sensorHealth"]["replayOnly"])
+
+    def test_stage_request_updates_authoritative_mission_context_and_sensor_frames(self) -> None:
+        response = self.service.handle_stage_request({"stage": 2, "round": 4, "operatorId": "test", "timestamp": fixed_clock(), "reason": "stage-test", "dryRun": True})
+
+        self.assertTrue(response["result"]["accepted"])
+        self.assertEqual(response["state"]["stage"], 2)
+        self.assertEqual(response["state"]["round"], 4)
+        self.assertEqual(response["state"]["mode"], "autonomous")
+        self.assertFalse(response["result"]["physicalOutput"])
+        self.assertTrue(all(frame["stage"] == 2 and frame["round"] == 4 for frame in response["state"]["sensorFrames"]))
+        self.assertTrue(any("sınıflandırma zorunlu değil" in frame["recommendation"] for frame in response["state"]["sensorFrames"]))
+
+    def test_invalid_stage_request_is_blocked_without_mutating_state(self) -> None:
+        self.assertTrue(stage_request_payload_ok({"stage": 3, "round": 8}))
+        self.assertFalse(stage_request_payload_ok({"stage": 4, "round": 1}))
+        self.assertFalse(stage_request_payload_ok({"stage": 2, "round": 5}))
+        self.assertFalse(stage_request_payload_ok({"stage": 2.9, "round": 4}))
+        self.assertFalse(stage_request_payload_ok({"stage": 2, "round": 4.9}))
+        self.assertFalse(stage_request_payload_ok({"stage": "2", "round": "4"}))
+
+        response = self.service.handle_stage_request({"stage": 4, "round": 1, "operatorId": "test", "timestamp": fixed_clock(), "reason": "bad-stage", "dryRun": True})
+
+        self.assertFalse(response["result"]["accepted"])
+        self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_INVALID_COMMAND")
+        self.assertEqual(response["state"]["stage"], 3)
+        self.assertEqual(response["state"]["round"], 1)
 
     def test_fire_is_blocked_in_safe_mode_before_hardware_adapter(self) -> None:
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
@@ -55,12 +83,22 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertFalse(response["hardwareResult"]["physicalOutput"])
         self.assertEqual(len(self.hardware.commands), 1)
 
+    def test_fire_intent_stage_round_mismatch_is_blocked_before_hardware(self) -> None:
+        self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "mismatch-test", "dryRun": True})
+
+        response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 2, "round": 1, "operatorConfirm": True, "dryRun": True})
+
+        self.assertFalse(response["result"]["accepted"])
+        self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_INVALID_COMMAND")
+        self.assertEqual(self.hardware.commands, [])
+
     def test_manual_aim_requires_manual_mode_deadman_and_safe_payload(self) -> None:
         blocked = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": True, "dryRun": True})
         self.assertFalse(blocked["result"]["accepted"])
         self.assertEqual(blocked["result"]["safetyBlockReason"], "BLOCKED_MODE")
         self.assertEqual(self.hardware.commands, [])
 
+        self.service.handle_stage_request({"stage": 1, "round": 1, "operatorId": "test", "timestamp": fixed_clock(), "reason": "manual-stage", "dryRun": True})
         self.service.handle_mode_request({"requestedMode": "manual", "operatorId": "test", "timestamp": fixed_clock(), "reason": "manual-test", "dryRun": True})
 
         no_deadman = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": False, "dryRun": True})
@@ -79,6 +117,18 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertFalse(accepted["hardwareResult"]["physicalOutput"])
         self.assertEqual(len(self.hardware.commands), 1)
         self.assertEqual(self.hardware.commands[0]["command"]["kind"], "ManualAimCommand")
+
+    def test_manual_aim_is_blocked_outside_stage_one_even_if_manual_mode_is_requested(self) -> None:
+        for stage in (2, 3):
+            with self.subTest(stage=stage):
+                self.service.handle_stage_request({"stage": stage, "round": 1, "operatorId": "test", "timestamp": fixed_clock(), "reason": "manual-stage-block", "dryRun": True})
+                self.service.handle_mode_request({"requestedMode": "manual", "operatorId": "test", "timestamp": fixed_clock(), "reason": "manual-mode-override", "dryRun": True})
+
+                response = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": True, "dryRun": True})
+
+                self.assertFalse(response["result"]["accepted"])
+                self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_MODE")
+                self.assertEqual(self.hardware.commands, [])
 
     def test_manual_aim_payload_guard_rejects_malformed_values(self) -> None:
         self.assertTrue(manual_aim_payload_ok({"panDeltaDeg": 0, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
@@ -107,10 +157,21 @@ class OperatorServiceTest(unittest.TestCase):
         replay = self.service.replay()
         self.assertTrue(replay["replayOnly"])
         self.assertFalse(replay["physicalOutputEnabled"])
+        self.assertFalse(replay["unsafeReplayEvidence"])
         self.assertGreaterEqual(len(replay["events"]), 1)
         self.assertGreaterEqual(len(replay["commandResults"]), 1)
         self.assertGreaterEqual(len(replay["hardwareResults"]), 1)
         self.assertTrue(all(result["physicalOutput"] is False for result in replay["hardwareResults"]))
+
+    def test_replay_flags_tampered_physical_output_evidence(self) -> None:
+        self.telemetry.append("hardware_result", {"commandId": "TAMPERED", "physicalOutput": True})
+
+        exported = self.service.telemetry_export()
+        replay = self.service.replay()
+
+        self.assertTrue(exported["unsafeReplayEvidence"])
+        self.assertTrue(replay["unsafeReplayEvidence"])
+        self.assertIn("physicalOutput=true", replay["evidenceWarning"])
 
     def test_reset_telemetry_keeps_dry_run_no_output_boundary(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "reset-test", "dryRun": True})
@@ -179,10 +240,27 @@ class OperatorHttpServerTest(unittest.TestCase):
                 self.assertFalse(readiness["physicalOutputEnabled"])
                 self.assertTrue(any(item["id"] == "radar_lidar_adapter" and item["status"] == "tbd" for item in readiness["items"]))
 
+                with urlopen(f"{base}/sensor-frames", timeout=2) as response:
+                    sensor_frames = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(sensor_frames["replayOnly"])
+                self.assertFalse(sensor_frames["physicalOutputEnabled"])
+                self.assertGreater(len(sensor_frames["frames"]), 0)
+
+                stage_payload = json.dumps({"stage": 2, "round": 4, "operatorId": "test", "timestamp": fixed_clock(), "reason": "http-stage", "dryRun": True}).encode("utf-8")
+                with urlopen(Request(f"{base}/stage", data=stage_payload, headers={"Content-Type": "application/json"}, method="POST"), timeout=2) as response:
+                    stage = json.loads(response.read().decode("utf-8"))
+                self.assertTrue(stage["result"]["accepted"])
+                self.assertEqual(stage["state"]["stage"], 2)
+                self.assertEqual(stage["state"]["round"], 4)
+
                 mode_payload = json.dumps({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "http-test", "dryRun": True}).encode("utf-8")
                 with urlopen(Request(f"{base}/mode", data=mode_payload, headers={"Content-Type": "application/json"}, method="POST"), timeout=2) as response:
                     mode = json.loads(response.read().decode("utf-8"))
                 self.assertTrue(mode["result"]["accepted"])
+
+                stage3_payload = json.dumps({"stage": 3, "round": 1, "operatorId": "test", "timestamp": fixed_clock(), "reason": "http-stage3", "dryRun": True}).encode("utf-8")
+                with urlopen(Request(f"{base}/stage", data=stage3_payload, headers={"Content-Type": "application/json"}, method="POST"), timeout=2) as response:
+                    json.loads(response.read().decode("utf-8"))
 
                 fire_payload = json.dumps({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True}).encode("utf-8")
                 with urlopen(Request(f"{base}/fire-intent", data=fire_payload, headers={"Content-Type": "application/json"}, method="POST"), timeout=2) as response:
