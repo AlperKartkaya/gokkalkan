@@ -296,8 +296,8 @@ class OperatorService:
     def __init__(self, clock: Clock = utc_now, hardware: DryRunHardwareAdapter | None = None, telemetry: JsonlTelemetryStore | None = None) -> None:
         self._clock = clock
         self._ids = count(1)
-        self.mode: Mode = "safe"
         self.stage: Stage = 3
+        self.mode: Mode = stage_expected_mode(self.stage)
         self.round = 1
         self.estop = False
         self.motion_zone_ok = True
@@ -333,14 +333,16 @@ class OperatorService:
         return [
             DryRunTrack("DRY-RUN-F16-01", 3, round_no, "F16", "Düşman", 12.4, -18, 0.96, "fused", now),
             DryRunTrack("DRY-RUN-HEL-02", 3, round_no, "Helikopter", "Dost", 8.1, 4, 0.91, "fused", now),
-            DryRunTrack("DRY-RUN-UAV-03", 3, round_no, "Mini/Micro İHA", "Dost", 4.2, 23, 0.88, "fused", now),
+            DryRunTrack("DRY-RUN-UAV-03", 3, round_no, "Mini/Micro İHA", "Bilinmeyen", 4.2, 23, 0.42, "radar-lidar", now),
         ]
 
     def _sensor_frames_for_stage(self, stage: Stage, round_no: int, tracks: list[DryRunTrack]) -> list[SensorFrame]:
         now = self._clock()
         frames: list[SensorFrame] = []
         for index, track in enumerate(tracks, start=1):
-            range_gate = self._range_gate_label(track.to_dict())
+            target = track.to_dict()
+            unidentified = self._target_unidentified(target)
+            range_gate = "Kimlik bekleniyor" if unidentified else self._range_gate_label(target)
             stage_note = (
                 "Aşama 2: sınıflandırma zorunlu değil; takip ve imha önceliği gösteriliyor."
                 if stage == 2
@@ -348,7 +350,9 @@ class OperatorService:
                 if stage == 3
                 else "Aşama 1: manuel hedef sırası ve 5/10/15 m bağlamı gösteriliyor."
             )
-            recommendation = self._sensor_recommendation(track.to_dict(), stage_note)
+            recommendation = self._sensor_recommendation(target, stage_note)
+            type_confidence = min(track.confidence, 0.45) if unidentified else (0.52 if stage == 2 else track.confidence)
+            color_confidence = max(0.52, 1 - type_confidence) if unidentified else track.confidence
             frames.extend(
                 [
                     SensorFrame(
@@ -365,10 +369,10 @@ class OperatorService:
                         13.5 - index,
                         23.0 - index,
                         0,
-                        min(0.98, track.confidence + 0.01),
+                        min(0.98, color_confidence + 0.01),
                         track.targetType,
                         track.friendFoe,
-                        track.confidence if stage != 2 else 0.52,
+                        type_confidence,
                         range_gate,
                         recommendation,
                         "Gökkalkan recorded-style dry-run fixture; Oxford Radar RobotCar/nuScenes biçimlerine map edilebilir.",
@@ -389,10 +393,10 @@ class OperatorService:
                         None,
                         None,
                         86 + index * 24,
-                        min(0.99, track.confidence + 0.02),
+                        min(0.99, color_confidence + 0.02),
                         track.targetType,
                         track.friendFoe,
-                        track.confidence if stage != 2 else 0.5,
+                        type_confidence,
                         range_gate,
                         recommendation,
                         "Gökkalkan recorded-style dry-run fixture; gerçek LiDAR nokta bulutu adapterı TBD.",
@@ -413,10 +417,10 @@ class OperatorService:
                         12.0 - index if track.friendFoe == "Düşman" else 5.0,
                         21.0 - index,
                         86 + index * 24,
-                        track.confidence,
+                        color_confidence,
                         track.targetType,
                         track.friendFoe,
-                        track.confidence,
+                        type_confidence,
                         range_gate,
                         recommendation,
                         "Gökkalkan recorded-style dry-run fixture; canlı sensor fusion adapterı TBD.",
@@ -427,6 +431,13 @@ class OperatorService:
             )
         return frames
 
+    def _target_unidentified(self, target: dict[str, Any]) -> bool:
+        try:
+            confidence = float(target.get("confidence", 0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        return target.get("friendFoe") == "Bilinmeyen" or confidence < 0.6
+
     def _range_gate_label(self, target: dict[str, Any]) -> str:
         if self.stage == 2:
             return "Takip önceliği"
@@ -435,6 +446,8 @@ class OperatorService:
         return "Kilitli"
 
     def _sensor_recommendation(self, target: dict[str, Any], stage_note: str) -> str:
+        if self._target_unidentified(target):
+            return f"Kimlik kesinleşmeden FireIntent kilitli; iz takipte tutulur. {stage_note}"
         if target.get("friendFoe") == "Dost":
             return f"Dost unsur korunur; FireIntent kilitli. {stage_note}"
         if self._target_gate_ok_for_stage(target):
@@ -522,9 +535,9 @@ class OperatorService:
                 "Backend Operatör API",
                 "ready" if self.backend_connected else "blocked",
                 "Backend",
-                "GET /state, GET /sensor-frames, GET /readiness, POST /stage, POST /mode, POST /manual-aim, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
+                "GET /state, GET /sensor-frames, GET /readiness, POST /stage, POST /mode, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
                 "API hata toleransı ve oturum/imza katmanı saha entegrasyonu öncesi eklenecek.",
-                "StageRequest, ModeRequest, SensorFrame, ManualAimCommand, FireIntent, CommandResult",
+                "StageRequest, ModeRequest, SensorFrame, FireIntent, CommandResult",
             ),
             self._readiness_item(
                 "safety_gate",
@@ -549,9 +562,9 @@ class OperatorService:
                 "Operatör Paneli UI",
                 "ready",
                 "Frontend",
-                "React panel aşama/tur seçimi, mod seçimi, radar/LiDAR replay katmanı, sınıflandırma/dost-düşman yorumları, manuel yönlendirme, FireIntent, Safety Gate, hardware mock sonucu, readiness ve kanıt/replay yüzeylerini gösteriyor.",
+                "React panel aşama/tur seçimi, radar/LiDAR replay katmanı, sınıflandırma/dost-düşman güveni, FireIntent, DURDUR, bakım/diagnostik ve kanıt/replay yüzeylerini gösteriyor.",
                 "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla ayrıca denenmeli.",
-                "Kullanıcı Arayüzü, StageRequest, SensorFrame, TrackState, ManualAimCommand",
+                "Kullanıcı Arayüzü, StageRequest, SensorFrame, TrackState, FireIntent",
             ),
             self._readiness_item(
                 "perception_adapter",

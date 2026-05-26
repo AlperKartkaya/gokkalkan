@@ -2,21 +2,16 @@ import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useM
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
 import { COMPETITION_COURSE } from './competitionCourse';
 import {
-  MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC,
-  MANUAL_AIM_STEP_DEG,
-  canSendManualAim,
   canSendFireIntent,
   evaluateOperatorSafety,
   makeCommandResult,
   makeFireIntent,
-  makeManualAimCommand,
   makeStageRequest,
   operatorBlockCopy,
   stageExpectedMode,
   stageRoundLimit,
   type CommandResult,
   type FireIntent,
-  type ManualAimCommand,
   type OperatorPanelConfig,
   type OperatorSensorFrame,
   type OperatorSensorHealth,
@@ -29,7 +24,6 @@ import {
   fetchOperatorTelemetryExport,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
-  sendOperatorManualAimCommand,
   sendOperatorModeRequest,
   sendOperatorStageRequest,
   type HardwareResult,
@@ -50,13 +44,6 @@ const targetLabel: Record<TargetType, string> = {
   'Mini/Micro İHA': 'Mini/Micro İHA',
 };
 
-const targetShortLabel: Record<TargetType, string> = {
-  F16: 'F16',
-  Helikopter: 'Helikopter',
-  'Balistik Füze': 'Balistik',
-  'Mini/Micro İHA': 'İHA',
-};
-
 const dryRunTracksByStage: Record<Stage, OperatorTrackState[]> = {
   1: [
     { trackId: 'S1-ORDER-FUZE-01', stage: 1, round: 1, targetType: 'Balistik Füze', friendFoe: 'Düşman', rangeM: 15, bearingDeg: -24, confidence: 0.86, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
@@ -72,7 +59,7 @@ const dryRunTracksByStage: Record<Stage, OperatorTrackState[]> = {
   3: [
     { trackId: 'DRY-RUN-F16-01', stage: 3, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 12.4, bearingDeg: -18, confidence: 0.96, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
     { trackId: 'DRY-RUN-HEL-02', stage: 3, round: 1, targetType: 'Helikopter', friendFoe: 'Dost', rangeM: 8.1, bearingDeg: 4, confidence: 0.91, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'DRY-RUN-UAV-03', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Dost', rangeM: 4.2, bearingDeg: 23, confidence: 0.88, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
+    { trackId: 'DRY-RUN-UAV-03', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Bilinmeyen', rangeM: 4.2, bearingDeg: 23, confidence: 0.42, source: 'radar-lidar', updatedAt: '2026-05-25T20:00:00.000Z' },
   ],
 };
 
@@ -99,8 +86,27 @@ function sensorSourceLabel(sensorHealth: OperatorSensorHealth, safetySensorConne
   return 'Beklemede';
 }
 
+function affiliationClass(friendFoe: OperatorTrackState['friendFoe']) {
+  if (friendFoe === 'Düşman') return 'enemy';
+  if (friendFoe === 'Dost') return 'friend';
+  return 'unknown';
+}
+
+function isTrackUnidentified(track: Pick<OperatorTrackState, 'friendFoe' | 'confidence'>) {
+  return track.friendFoe === 'Bilinmeyen' || track.confidence < 0.6;
+}
+
+function isFrameUnidentified(frame: Pick<OperatorSensorFrame, 'friendFoe' | 'classificationConfidence'>) {
+  return frame.friendFoe === 'Bilinmeyen' || frame.classificationConfidence < 0.6;
+}
+
+function hostilityConfidence(frame: OperatorSensorFrame) {
+  return isFrameUnidentified(frame) ? Math.max(0.52, 1 - frame.classificationConfidence) : frame.quality;
+}
+
 function sensorRecommendation(track: OperatorTrackState, stage: Stage) {
   if (track.friendFoe === 'Dost') return 'Dost unsur korunur; FireIntent kilitli.';
+  if (track.friendFoe === 'Bilinmeyen') return 'Kimlik kesinleşmeden FireIntent kilitli; yazılım katmanı sınıf/dost-düşman güvenini izler.';
   if (stage === 2) return 'Aşama 2: sınıflandırma zorunlu değil; takip/imha önceliği.';
   if (stage === 1) return 'Aşama 1: operatör manuel yönlendirme ve ateş niyetiyle ilerler.';
   return targetRangeGateOk(track) ? 'Aşama 3: düşman ve menzil uygun; Safety Gate beklenir.' : 'Aşama 3: hedef izlenir, menzil kapısı beklenir.';
@@ -111,7 +117,10 @@ function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame
     const sourceDataset = stage === 3
       ? 'Gökkalkan recorded-style radar/LiDAR replay; Oxford Radar RobotCar ve nuScenes benzeri offline veriler bu şemaya map edilebilir.'
       : 'Gökkalkan recorded-style dry-run replay; gerçek sensör adapterı TBD.';
-    const rangeGate = stage === 2 ? 'Takip önceliği' : stage === 3 ? (targetRangeGateOk(track) ? 'Uygun' : 'Kilitli') : 'Manuel hedef sırası';
+    const unidentified = isTrackUnidentified(track);
+    const rangeGate = unidentified ? 'Kimlik bekleniyor' : stage === 2 ? 'Takip önceliği' : stage === 3 ? (targetRangeGateOk(track) ? 'Uygun' : 'Kilitli') : 'Manuel hedef sırası';
+    const typeConfidence = unidentified ? Math.min(track.confidence, 0.45) : stage === 2 ? 0.52 : track.confidence;
+    const hostilityConfidence = unidentified ? Math.max(0.52, 1 - typeConfidence) : track.confidence;
     return [
       {
         frameId: `LOCAL-S${stage}-R${round}-${index + 1}-RADAR`,
@@ -127,10 +136,10 @@ function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame
         rcsDbsm: track.friendFoe === 'Düşman' ? 13.5 - index : 5.2,
         snrDb: 23 - index,
         pointCount: 0,
-        quality: Math.min(0.98, track.confidence + 0.01),
+        quality: Math.min(0.98, hostilityConfidence + 0.01),
         targetType: track.targetType,
         friendFoe: track.friendFoe,
-        classificationConfidence: stage === 2 ? 0.52 : track.confidence,
+        classificationConfidence: typeConfidence,
         rangeGate,
         recommendation: sensorRecommendation(track, stage),
         sourceDataset,
@@ -151,10 +160,10 @@ function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame
         rcsDbsm: track.friendFoe === 'Düşman' ? 12 - index : 5,
         snrDb: 21 - index,
         pointCount: 86 + index * 24,
-        quality: track.confidence,
+        quality: hostilityConfidence,
         targetType: track.targetType,
         friendFoe: track.friendFoe,
-        classificationConfidence: track.confidence,
+        classificationConfidence: typeConfidence,
         rangeGate,
         recommendation: sensorRecommendation(track, stage),
         sourceDataset,
@@ -234,7 +243,7 @@ function visualSizeForTarget(type: TargetType) {
 
 function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) {
   const radians = (track.bearingDeg * Math.PI) / 180;
-  const size = visualSizeForTarget(track.targetType);
+  const size = isTrackUnidentified(track) ? { w: 6.2, h: 6.2 } : visualSizeForTarget(track.targetType);
   const x = stage === 1
     ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -2.4 : 2.4), 12, 82)
     : clampPercent(operatorXForRange(track.rangeM) + Math.sin(radians) * 7, 13, 72);
@@ -245,14 +254,6 @@ function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) 
   const candidate = track.friendFoe === 'Düşman' && (stage === 1 || stage === 2 || targetRangeGateOk(track));
   const lane = ((index % 3) + 1) as 1 | 2 | 3;
   return { ...track, x, y, w: size.w, h: size.h, rangeGate, candidate, lane };
-}
-
-function visualTrackStatus(track: ReturnType<typeof visualTrackFor>, stage: Stage) {
-  if (track.friendFoe === 'Dost') return 'DOST KİLİT';
-  if (track.candidate) return 'UYGUN';
-  if (stage === 1) return 'SIRA';
-  if (track.rangeGate === 'Erken') return 'ERKEN';
-  return 'DIŞI';
 }
 
 function visualRangeLabel(track?: ReturnType<typeof visualTrackFor>) {
@@ -314,17 +315,17 @@ type SensorGlResources = {
   matrixLocation: WebGLUniformLocation;
 };
 
-const SENSOR_DOME_POSITION: Vec3 = [6.4, 0, 0];
+const SENSOR_DOME_POSITION: Vec3 = [7.7, 0, 0];
 const SENSOR_DEFAULT_DISTANCE = defaultSensorView.distance;
 
 const sensorPalette = {
   grid: [0.18, 0.52, 0.95] as Vec3,
   ring: [0.22, 0.82, 1] as Vec3,
-  dome: [0.16, 0.9, 0.55] as Vec3,
-  domeDark: [0.04, 0.34, 0.24] as Vec3,
+  dome: [0.18, 0.56, 1] as Vec3,
+  domeDark: [0.03, 0.12, 0.46] as Vec3,
   enemy: [1, 0.34, 0.43] as Vec3,
-  friend: [0.38, 0.72, 1] as Vec3,
-  neutral: [1, 0.74, 0.26] as Vec3,
+  friend: [0.2, 0.93, 0.54] as Vec3,
+  unknown: [0.96, 0.98, 1] as Vec3,
   selected: [1, 0.84, 0.32] as Vec3,
 };
 
@@ -429,7 +430,7 @@ function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number, total:
   const lateral = Math.sin(bearingRadians);
   const rowBias = index - (total - 1) / 2;
   return [
-    clampNumber(SENSOR_DOME_POSITION[0] - normalizedRange * 9.7 + lateral * 2.3, -7.6, 4.4),
+    clampNumber(SENSOR_DOME_POSITION[0] - normalizedRange * 10.7 + lateral * 2.35, -7.9, 5.2),
     0.72 + clampNumber(frame.elevationDeg ?? 0.4, -4, 12) * 0.06 + index * 0.12,
     clampNumber(lateral * 5 + rowBias * 0.78, -5.8, 5.8),
   ];
@@ -439,7 +440,7 @@ function sensorFrameColor(frame: OperatorSensorFrame, selected: boolean): Vec3 {
   if (selected) return sensorPalette.selected;
   if (frame.friendFoe === 'Düşman') return sensorPalette.enemy;
   if (frame.friendFoe === 'Dost') return sensorPalette.friend;
-  return sensorPalette.neutral;
+  return sensorPalette.unknown;
 }
 
 function pushVertex(batch: SensorBatch, point: Vec3, color: Vec3) {
@@ -523,11 +524,37 @@ function pushCylinder(batch: SensorBatch, center: Vec3, radius: number, height: 
   }
 }
 
+function pushSphere(batch: SensorBatch, center: Vec3, radius: number, color: Vec3) {
+  const rings = 7;
+  const segments = 14;
+  for (let ring = 0; ring < rings; ring += 1) {
+    const phi0 = (-Math.PI / 2) + (ring / rings) * Math.PI;
+    const phi1 = (-Math.PI / 2) + ((ring + 1) / rings) * Math.PI;
+    for (let segment = 0; segment < segments; segment += 1) {
+      const theta0 = (segment / segments) * Math.PI * 2;
+      const theta1 = ((segment + 1) / segments) * Math.PI * 2;
+      const point = (phi: number, theta: number): Vec3 => [
+        center[0] + Math.cos(phi) * Math.cos(theta) * radius,
+        center[1] + Math.sin(phi) * radius,
+        center[2] + Math.cos(phi) * Math.sin(theta) * radius,
+      ];
+      const a = point(phi0, theta0);
+      const b = point(phi0, theta1);
+      const c = point(phi1, theta1);
+      const d = point(phi1, theta0);
+      pushTriangle(batch, a, b, c, color);
+      pushTriangle(batch, a, c, d, color);
+    }
+  }
+}
+
 function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: OperatorSensorFrame, point: Vec3, selected: boolean) {
   const color = sensorFrameColor(frame, selected);
   const yaw = ((frame.bearingDeg - 2) * Math.PI) / 180;
   const scale = selected ? 1.16 : 1;
-  if (frame.targetType === 'Helikopter') {
+  if (isFrameUnidentified(frame)) {
+    pushSphere(triangles, point, selected ? 0.44 : 0.36, color);
+  } else if (frame.targetType === 'Helikopter') {
     pushOrientedBox(triangles, point, [0, 0, 0], [0.88 * scale, 0.28 * scale, 0.42 * scale], yaw, color);
     pushOrientedBox(triangles, point, [-0.72 * scale, 0, 0], [0.86 * scale, 0.08 * scale, 0.12 * scale], yaw, color);
     pushOrientedBox(triangles, point, [0, 0.32 * scale, 0], [1.18 * scale, 0.035 * scale, 0.08 * scale], yaw, sensorPalette.selected);
@@ -559,14 +586,14 @@ function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: Ope
     pushLine(lines, [x, 0, -6.2], [x, 0, 6.2], sensorPalette.grid);
   }
   for (let z = -6; z <= 6; z += 2) {
-    pushLine(lines, [-8.2, 0, z], [8.2, 0, z], sensorPalette.grid);
+    pushLine(lines, [-8.2, 0, z], [8.4, 0, z], sensorPalette.grid);
   }
   [5, 10, 15].forEach((range) => {
     const radius = (range / 15) * 9.6;
-    const segments = 80;
+    const segments = 44;
     for (let index = 0; index < segments; index += 1) {
-      const angle = (index / segments) * Math.PI * 2;
-      const nextAngle = ((index + 1) / segments) * Math.PI * 2;
+      const angle = -Math.PI / 2 + (index / segments) * Math.PI;
+      const nextAngle = -Math.PI / 2 + ((index + 1) / segments) * Math.PI;
       pushLine(
         lines,
         [SENSOR_DOME_POSITION[0] - Math.cos(angle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(angle) * radius * 0.64],
@@ -786,15 +813,15 @@ function OperatorTrackScene({
   tracks,
   selectedTrackId,
   lastIntent,
-  lastManualAim,
   onSelect,
+  compact = false,
 }: {
   stage: Stage;
   tracks: OperatorTrackState[];
   selectedTrackId: string;
   lastIntent?: FireIntent;
-  lastManualAim?: ManualAimCommand;
   onSelect: (trackId: string) => void;
+  compact?: boolean;
 }) {
   const visualTracks = tracks.map((track, index) => visualTrackFor(track, index, stage));
   const selectedVisualTrack = visualTracks.find((track) => track.trackId === selectedTrackId) ?? visualTracks[0];
@@ -810,11 +837,11 @@ function OperatorTrackScene({
     top: `${COMPETITION_COURSE.systemPosition.y}%`,
     '--dome-rotation': `${domeAngle}deg`,
   } as CSSProperties;
-  const shotLabel = lastIntent ? 'DRY-RUN' : lastManualAim ? 'NİŞAN' : 'İZ';
+  const shotLabel = lastIntent ? 'DRY-RUN' : 'İZ';
 
   return (
     <section
-      className={`parkour-hero operator-track-scene stage-${stage} relative h-[500px] overflow-hidden rounded-xl border border-[#25d8ff]/18 bg-[#0b1117] shadow-[inset_0_0_54px_rgba(0,0,0,.56)] max-[760px]:h-[430px]`}
+      className={`parkour-hero operator-track-scene ${compact ? 'is-compact' : ''} stage-${stage} relative overflow-hidden rounded-xl border border-[#25d8ff]/18 bg-[#0b1117] shadow-[inset_0_0_54px_rgba(0,0,0,.56)]`}
       data-testid="operator-track-scene"
       aria-label="Operatör iz görüntüsü"
     >
@@ -912,23 +939,22 @@ function OperatorTrackScene({
 
         {visualTracks.map((track) => {
           const selected = selectedVisualTrack?.trackId === track.trackId;
-          const affiliationClass = track.friendFoe === 'Düşman' ? 'enemy' : track.friendFoe === 'Dost' ? 'friend' : 'neutral';
+          const unknown = isTrackUnidentified(track);
+          const statusText = unknown ? 'kimlik bekliyor' : `${targetLabel[track.targetType]} ${track.friendFoe}`;
           return (
             <button
               key={track.trackId}
-              className={`aircraft absolute z-[6] grid min-h-[74px] min-w-[62px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center gap-[3px] rounded-full border-0 bg-transparent p-0.5 text-center text-[#ffd17a] shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
+              className={`aircraft absolute z-[6] grid min-h-[62px] min-w-[58px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center rounded-full border-0 bg-transparent p-0.5 text-center shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass(track.friendFoe)} ${unknown ? 'unknown-object' : ''} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
               style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
               data-testid={`operator-track-${track.trackId}`}
-              aria-label={`${track.trackId} ${targetLabel[track.targetType]} ${track.friendFoe} ${track.rangeM.toFixed(1)} metre`}
+              data-track-id={track.trackId}
+              data-affiliation={track.friendFoe}
+              data-identification={unknown ? 'unknown' : 'identified'}
+              aria-label={`${track.trackId} ${statusText} ${track.rangeM.toFixed(1)} metre`}
               onClick={() => onSelect(track.trackId)}
             >
               <span className="motion-trail" />
-              <span className="target-visual"><OperatorTargetSilhouette type={track.targetType} /></span>
-              <span className="target-label-stack">
-                <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
-                <small>{targetShortLabel[track.targetType]}</small>
-                <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={visualRangeLabel(track)}>{visualTrackStatus(track, stage)}</em>
-              </span>
+              <span className="target-visual">{unknown ? <span className="target-unknown-sphere" aria-hidden="true" /> : <OperatorTargetSilhouette type={track.targetType} />}</span>
             </button>
           );
         })}
@@ -937,6 +963,7 @@ function OperatorTrackScene({
       <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="unknown-dot" />Bilinmeyen</span>
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil</span>
       </div>
     </section>
@@ -967,7 +994,6 @@ function SensorFusion3DView({
   const [overlayPoints, setOverlayPoints] = useState<SensorOverlayPoint[]>([]);
   const [domeOverlayPoint, setDomeOverlayPoint] = useState({ left: 82, top: 58, visible: true });
 
-  const selectedFrame = frames.find((frame) => frame.trackId === selectedTrackId) ?? frames[0];
   const zoomLevel = SENSOR_DEFAULT_DISTANCE / view.distance;
 
   useEffect(() => {
@@ -1119,20 +1145,22 @@ function SensorFusion3DView({
           visible: true,
         };
         const selected = selectedTrackId === frame.trackId;
-        const affiliationClass = frame.friendFoe === 'Düşman' ? 'enemy' : frame.friendFoe === 'Dost' ? 'friend' : 'neutral';
+        const unknown = isFrameUnidentified(frame);
         return (
           <button
             key={frame.frameId}
-            className={`sensor-3d-target ${affiliationClass} ${selected ? 'selected' : ''} ${point.visible ? '' : 'is-off-axis'}`}
+            className={`sensor-3d-target ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${point.visible ? '' : 'is-off-axis'}`}
             data-testid={`operator-sensor-3d-target-${frame.trackId}`}
+            data-track-id={frame.trackId}
+            data-affiliation={frame.friendFoe}
+            data-identification={unknown ? 'unknown' : 'identified'}
+            data-type-confidence={frame.classificationConfidence.toFixed(2)}
+            data-color-confidence={hostilityConfidence(frame).toFixed(2)}
             style={{ left: `${point.left}%`, top: `${point.top}%` }}
-            aria-label={`${frame.trackId} ${targetLabel[frame.targetType]} ${frame.friendFoe} ${frame.rangeM.toFixed(1)} metre`}
+            aria-label={`${frame.trackId} ${unknown ? 'kimlik bekliyor' : targetLabel[frame.targetType]} ${frame.rangeM.toFixed(1)} metre`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => onSelect(frame.trackId)}
-          >
-            <span>{targetShortLabel[frame.targetType]}</span>
-            <small>{frame.friendFoe}</small>
-          </button>
+          />
         );
       })}
       <span
@@ -1141,16 +1169,7 @@ function SensorFusion3DView({
         style={{ left: `${domeOverlayPoint.left}%`, top: `${domeOverlayPoint.top}%` }}
       >
         <img src={gokkalkanIconUrl} alt="" />
-        <b>Gökkalkan</b>
-        <small>sağ mevzi</small>
       </span>
-      {selectedFrame && (
-        <article className="sensor-3d-selected-card" data-testid="operator-sensor-selected-frame">
-          <p>Menzil · Açı · Sınıf</p>
-          <b>{targetShortLabel[selectedFrame.targetType]} · {selectedFrame.friendFoe}</b>
-          <span>{selectedFrame.rangeM.toFixed(1)} m · {selectedFrame.bearingDeg.toFixed(1)}° · menzil {selectedFrame.rangeGate}</span>
-        </article>
-      )}
       {!webglAvailable && (
         <span className="sensor-3d-empty sensor-3d-webgl-warning">WebGL açılamadı; sensör akışı yazılım katmanında tutuluyor.</span>
       )}
@@ -1158,6 +1177,52 @@ function SensorFusion3DView({
         <span className="sensor-3d-empty" data-testid="operator-sensor-3d-empty">SensorFrame yok</span>
       )}
     </div>
+  );
+}
+
+function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFrame[]; selectedTrackId: string }) {
+  const uniqueFrames = frames.filter((frame, index, all) => all.findIndex((candidate) => candidate.trackId === frame.trackId) === index);
+
+  return (
+    <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman güven yüzdeleri">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Güven</p>
+          <h2 className="m-0 mt-1 text-xl font-black">Renk / Tip</h2>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[.05] px-3 py-1 text-xs font-black text-[#c8d8e2]">Beyaz: kimlik bekliyor</span>
+      </div>
+      <div className="mt-3 grid gap-2 min-[880px]:grid-cols-3">
+        {uniqueFrames.map((frame) => {
+          const unknown = isFrameUnidentified(frame);
+          const colorValue = hostilityConfidence(frame);
+          const selected = frame.trackId === selectedTrackId;
+          return (
+            <article
+              key={frame.trackId}
+              className={`confidence-row rounded-lg border p-3 ${selected ? 'border-[#ffbb42]/35 bg-[#ffbb42]/10' : 'border-white/[.07] bg-white/[.04]'}`}
+              data-testid={`operator-confidence-${frame.trackId}`}
+              data-affiliation={frame.friendFoe}
+              data-identification={unknown ? 'unknown' : 'identified'}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <b className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{frame.trackId}</b>
+                <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-black">
+                <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-2 text-[#d7efff]">
+                  Renk <b className="block text-base text-white">{formatPercent(colorValue)}</b>
+                </span>
+                <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-2 text-[#d7efff]">
+                  Tip <b className="block text-base text-white">{formatPercent(frame.classificationConfidence)}</b>
+                </span>
+              </div>
+              <p className="m-0 mt-2 text-xs font-bold text-[#91a6b7]">{unknown ? 'Nesne küre olarak kalır; yazılım kimlik kesinleşince şekil ve renk günceller.' : 'Kimlik kesinleşti; renk ve tip güveni güncel.'}</p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1169,15 +1234,14 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
   const [dryRun, setDryRun] = useState(true);
-  const [mode, setMode] = useState<Mode>('safe');
+  const [mode, setMode] = useState<Mode>(stageExpectedMode(3));
   const [stage, setStage] = useState<Stage>(3);
   const [round, setRound] = useState(1);
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
-  const [lastManualAim, setLastManualAim] = useState<ManualAimCommand>();
   const [lastHardwareResult, setLastHardwareResult] = useState<HardwareResult>();
-  const [deadmanActive, setDeadmanActive] = useState(false);
-  const [manualAimRate, setManualAimRate] = useState(MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC);
+  const [operatorStopActive, setOperatorStopActive] = useState(false);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
@@ -1272,13 +1336,12 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
   const sensorHealth: OperatorSensorHealth = apiSnapshot?.sensorHealth ?? { ...localSensorHealth, frameCount: sensorFrames.length, latestFrameAt: sensorFrames[0]?.timestamp ?? localSensorHealth.latestFrameAt };
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
-  const missionMode = stageExpectedMode(displayStage);
   const safety = evaluateOperatorSafety({
-    estop: apiSnapshot?.safety.estop ?? false,
+    estop: operatorStopActive || (apiSnapshot?.safety.estop ?? false),
     motionZoneOk: apiSnapshot?.safety.motionZoneOk ?? true,
     fireZoneOk: apiSnapshot?.safety.fireZoneOk ?? true,
     targetGateOk: selectedTargetGateOk,
-    modeOk: displayStage === 1 ? mode === 'manual' : mode === 'autonomous' || mode === 'engagement',
+    modeOk: !operatorStopActive && (displayStage === 1 ? mode === 'manual' : mode === 'autonomous' || mode === 'engagement'),
     backendConnected: apiSnapshot?.safety.backendConnected ?? config.connectionState !== 'offline',
     perceptionConnected: apiSnapshot?.safety.perceptionConnected ?? config.connectionState === 'live',
     sensorAdapterConnected: apiSnapshot?.safety.sensorAdapterConnected ?? config.connectionState === 'live',
@@ -1287,21 +1350,6 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   });
   const sensorSource = sensorSourceLabel(sensorHealth, safety.sensorAdapterConnected);
   const fireReady = canSendFireIntent(safety, selectedTrack?.trackId);
-  const manualAimReady = canSendManualAim({
-    stage: displayStage,
-    mode,
-    deadmanActive,
-    dryRun: config.dryRun,
-    liveArmEnabled: config.liveArmEnabled,
-    backendConnected: config.connectionState !== 'offline',
-  });
-  const manualAimBlockReason = config.connectionState === 'offline'
-    ? 'BLOCKED_BACKEND'
-    : !config.dryRun && !config.liveArmEnabled
-      ? 'BLOCKED_ARMING'
-      : displayStage !== 1
-        ? 'BLOCKED_MODE'
-      : 'BLOCKED_MODE';
   const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
   const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
@@ -1326,7 +1374,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         label: 'Operatör Paneli UI',
         status: 'ready',
         owner: 'Frontend',
-        evidence: 'Panel aşama/tur kontrolü, radar/LiDAR replay katmanı, sınıflandırma/dost-düşman yorumu, mod, manuel yönlendirme, FireIntent, Safety Gate, readiness ve kanıt/replay yüzeylerini gösterir.',
+        evidence: 'Panel aşama/tur seçimi, radar/LiDAR replay katmanı, sınıf/dost-düşman güveni, FireIntent, Stop, Bakım ve kanıt/replay yüzeylerini gösterir.',
         nextStep: 'Canlı kamera/perception ve saha kiosk düzeni gerçek donanımla ayrıca denenmeli.',
         ktrInterface: 'Kullanıcı Arayüzü, StageRequest, SensorFrame',
       },
@@ -1337,7 +1385,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         owner: 'Backend',
         evidence: apiBaseUrl ? 'API base URL verilmiş; state/readiness yanıtı temel panelde kullanılabilir.' : 'API base URL yok.',
         nextStep: 'Dry-run API sunucusunu başlat ve operatorApi/VITE_GOKKALKAN_OPERATOR_API_BASE ile bağla.',
-        ktrInterface: 'ModeRequest, ManualAimCommand, FireIntent',
+        ktrInterface: 'ModeRequest, StageRequest, FireIntent',
       },
       {
         id: 'perception_adapter',
@@ -1463,7 +1511,6 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
   const recordMode = (nextMode: Mode) => {
     setMode(nextMode);
-    if (nextMode !== 'manual') setDeadmanActive(false);
     if (apiBaseUrl) {
       setApiBusy(true);
       void sendOperatorModeRequest(apiBaseUrl, {
@@ -1510,7 +1557,6 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     setStage(nextStage);
     setRound(boundedRound);
     setMode(expectedMode);
-    setDeadmanActive(false);
     const fallbackTrack = dryRunTracksByStage[nextStage][0];
     if (fallbackTrack) setSelectedTrackId(fallbackTrack.trackId);
 
@@ -1615,80 +1661,42 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     });
   };
 
-  const sendManualAim = (panDeltaDeg: number, tiltDeltaDeg: number) => {
-    const command = makeManualAimCommand({
-      panDeltaDeg,
-      tiltDeltaDeg,
-      deadmanActive,
-      dryRun: config.dryRun,
-      rateLimitDegPerSec: manualAimRate,
-    });
-    setLastManualAim(command);
-
-    if (!manualAimReady) {
-      pushResult(makeCommandResult({
-        commandId: `AIM-BLOCK-${Date.now()}`,
-        kind: 'ManualAimCommand',
-        accepted: false,
-        dryRun: config.dryRun,
-        safetyBlockReason: manualAimBlockReason,
-      }));
-      setLastHardwareResult(undefined);
-      return;
-    }
-
-    if (apiBaseUrl) {
-      setApiBusy(true);
-      void sendOperatorManualAimCommand(apiBaseUrl, command)
-        .then((response) => {
-          pushResult(response.result);
-          setApiSnapshot(response.state);
-          setLastHardwareResult(response.hardwareResult ?? undefined);
-          setApiError('');
-        })
-        .catch((error: unknown) => {
-          pushResult(makeCommandResult({
-            commandId: `AIM-BLOCK-${Date.now()}`,
-            kind: 'ManualAimCommand',
-            accepted: false,
-            dryRun: config.dryRun,
-            safetyBlockReason: 'BLOCKED_BACKEND',
-          }));
-          setLastHardwareResult(undefined);
-          setApiError(error instanceof Error ? error.message : 'Backend API manuel yönlendirme komutunu kabul etmedi.');
-        })
-        .finally(() => setApiBusy(false));
-      return;
-    }
-
+  const triggerOperatorStop = () => {
+    setOperatorStopActive(true);
+    setMode('blocked');
     const result = makeCommandResult({
-      commandId: `AIM-${Date.now()}`,
-      kind: 'ManualAimCommand',
+      commandId: `STOP-${Date.now()}`,
+      kind: 'ModeRequest',
       accepted: true,
-      dryRun: command.dryRun,
+      dryRun: config.dryRun,
       safetyBlockReason: 'ALLOWED',
     });
     pushResult(result);
     setLastHardwareResult({
-      adapter: 'local-ui.dry-run',
+      adapter: 'local-ui.safety-gate',
       commandId: result.commandId,
-      kind: command.kind,
+      kind: 'ModeRequest',
       accepted: true,
       completed: true,
       physicalOutput: false,
-      message: 'Yerel dry-run manuel yönlendirme kaydedildi; pan/tilt çıkışı üretilmedi.',
+      message: 'Operatör stop komutu yerel Safety Gate üzerinde kilidi aktif etti; fiziksel çıkış üretilmedi.',
       createdAt: result.createdAt,
     });
   };
 
+  const openMaintenance = () => {
+    setMaintenanceOpen((value) => !value);
+    recordMode('maintenance');
+  };
+
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
-      <header className="mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[1000px]:grid-cols-[1fr_auto]">
-        <div>
+      <header className="operator-header mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[1000px]:grid-cols-[1fr_auto]">
+        <div className="min-w-0">
           <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Operasyon</p>
           <h1 className="m-0 mt-1 text-3xl font-black tracking-[.04em] text-white min-[760px]:text-4xl">GÖKKALKAN OPERATÖR PANELİ</h1>
         </div>
-        <div className="grid content-start gap-2 min-[560px]:grid-cols-2 min-[1000px]:min-w-[360px]">
+        <div className="grid min-w-0 content-start gap-2 min-[560px]:grid-cols-2 min-[1000px]:min-w-[360px]">
           <button className="rounded-lg border border-white/10 bg-white/[.07] px-3 py-2 text-sm font-black text-[#eaf7ff]" onClick={onBack}>Landing’e dön</button>
           <button className="rounded-lg border border-[#25d8ff]/25 bg-[#25d8ff]/10 px-3 py-2 text-sm font-black text-[#bff2ff]" onClick={onOpenSimulator}>Simülatöre dön</button>
           <button className="col-span-full rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad]" onClick={() => setDryRun((value) => !value)}>
@@ -1697,60 +1705,19 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         </div>
       </header>
 
-      <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        <div className="grid min-w-0 content-start gap-3">
-          <OperatorTrackScene
-            stage={displayStage}
-            tracks={visibleTracks}
+      <section className="operator-primary-grid">
+        <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
+          <SensorFusion3DView
+            frames={interpretedSensorFrames}
             selectedTrackId={selectedTrackId}
-            lastIntent={lastIntent}
-            lastManualAim={lastManualAim}
             onSelect={setSelectedTrackId}
+            sensorHealth={sensorHealth}
+            sensorSource={sensorSource}
+            connectedSensorFramesEmpty={connectedSensorFramesEmpty}
           />
+        </section>
 
-          <section className="rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
-            <SensorFusion3DView
-              frames={interpretedSensorFrames}
-              selectedTrackId={selectedTrackId}
-              onSelect={setSelectedTrackId}
-              sensorHealth={sensorHealth}
-              sensorSource={sensorSource}
-              connectedSensorFramesEmpty={connectedSensorFramesEmpty}
-            />
-          </section>
-
-          <section className="grid gap-3 min-[760px]:grid-cols-3">
-            <InfoCard title="Seçili hedef" value={selectedTrack ? selectedTrack.trackId : 'Yok'} detail={selectedTrack ? `${targetLabel[selectedTrack.targetType]} · ${selectedTrack.friendFoe} · ${selectedTrack.rangeM.toFixed(1)} m` : 'FireIntent kapalı'} />
-            <InfoCard title="Safety açıklaması" value={safety.blockReason} detail={safety.explanation} />
-            <InfoCard title="Son niyet" value={lastManualAim?.kind ?? lastIntent?.kind ?? 'Henüz yok'} detail={lastManualAim ? `pan=${lastManualAim.panDeltaDeg}° · tilt=${lastManualAim.tiltDeltaDeg}° · deadman=${String(lastManualAim.deadmanActive)}` : lastIntent ? `${lastIntent.targetId} · dryRun=${String(lastIntent.dryRun)}` : 'Komut gönderilmedi'} />
-          </section>
-
-          <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-target-detail" aria-label="Seçili hedef ve adapter ayrıntısı">
-            <div className="grid gap-3 min-[760px]:grid-cols-[1fr_1fr]">
-              <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#25d8ff]">Seçili iz ayrıntısı</p>
-                <h2 className="m-0 mt-1 text-xl font-black text-white">{selectedTrack ? targetLabel[selectedTrack.targetType] : 'Hedef seçilmedi'}</h2>
-                <div className="mt-3 grid gap-2 text-sm">
-                  <EvidenceRow label="Track ID" value={selectedTrack?.trackId ?? 'Yok'} />
-                  <EvidenceRow label="Dost/Düşman · Kaynak" value={selectedTrack ? `${selectedTrack.friendFoe} · ${selectedTrack.source}` : 'Yok'} />
-                  <EvidenceRow label="Menzil · Açı · Güven" value={selectedTrack ? `${selectedTrack.rangeM.toFixed(1)} m · ${selectedTrack.bearingDeg.toFixed(1)}° · ${formatPercent(selectedTrack.confidence)}` : 'Yok'} />
-                  <EvidenceRow label="Son güncelleme" value={selectedTrack?.updatedAt ?? 'Yok'} />
-                </div>
-              </div>
-              <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ffbb42]">Sınır</p>
-                <h2 className="m-0 mt-1 text-xl font-black text-white">Adapter</h2>
-                <div className="mt-3 grid gap-2 text-sm">
-                  <EvidenceRow label="Perception" value={safety.perceptionConnected ? 'Canlı' : 'Beklemede'} />
-                  <EvidenceRow label="Radar/LiDAR" value={sensorSource} />
-                  <EvidenceRow label="Çıkış" value={config.liveArmEnabled ? 'Arming açık' : 'Kilitli'} />
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <aside className="grid min-w-0 gap-3 content-start">
+        <aside className="operator-side-rail">
           <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-stage-control" aria-label="Aşama ve tur kontrolü">
             <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görev</p>
             <h2 className="m-0 mt-1 text-2xl font-black">Aşama / Tur</h2>
@@ -1778,166 +1745,161 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 </button>
               ))}
             </div>
-            <div className="mt-3 grid gap-2 text-sm">
-              <EvidenceRow label="Beklenen mod" value={missionMode === 'manual' ? 'Manuel Mod zorunlu' : 'Otonom Mod beklenir'} />
-              <EvidenceRow label="Kural" value={displayStage === 2 ? '4 tur · sınıf beklenmez' : displayStage === 3 ? '8 tur · dost/düşman · menzil' : 'Manuel hedef sırası'} />
-            </div>
           </section>
 
-          <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" aria-label="Komut paneli">
-            <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Kontrol</p>
-            <h2 className="m-0 mt-1 text-2xl font-black">Komutlar</h2>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {(['safe', 'manual', 'autonomous', 'maintenance'] as const).map((item) => (
-                <button key={item} className={`rounded-lg border px-3 py-2 text-sm font-black ${mode === item ? 'border-[#33e68c]/40 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`} onClick={() => recordMode(item)}>
-                  {item === 'safe' ? 'Safe' : item === 'manual' ? 'Manuel' : item === 'autonomous' ? 'Otonom' : 'Bakım'}
-                </button>
-              ))}
-            </div>
-            <section className="mt-4 rounded-xl border border-white/[.08] bg-black/20 p-3" data-testid="manual-aim-controls" aria-label="Manuel yönlendirme kontrolleri">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <b className="text-sm text-white">Manuel pan/tilt yönlendirme</b>
-                  <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">Aşama 1 · deadman gerekli</p>
-                </div>
-                <button
-                  className={`rounded-lg border px-3 py-2 text-xs font-black ${deadmanActive ? 'border-[#33e68c]/35 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]'}`}
-                  onClick={() => setDeadmanActive((value) => !value)}
-                >
-                  {deadmanActive ? 'DEADMAN AKTİF' : 'DEADMAN PASİF'}
-                </button>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, MANUAL_AIM_STEP_DEG)}>YUKARI {MANUAL_AIM_STEP_DEG}°</button>
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, 0)}>DUR / 0°</button>
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, -MANUAL_AIM_STEP_DEG)}>AŞAĞI {MANUAL_AIM_STEP_DEG}°</button>
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(-MANUAL_AIM_STEP_DEG, 0)}>SOLA {MANUAL_AIM_STEP_DEG}°</button>
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(MANUAL_AIM_STEP_DEG, 0)}>SAĞA {MANUAL_AIM_STEP_DEG}°</button>
-                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(MANUAL_AIM_STEP_DEG, -MANUAL_AIM_STEP_DEG)}>SAĞ/AŞAĞI</button>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-[#c8d8e2]">
-                <span className="rounded-full border border-[#48a8ff]/25 bg-[#48a8ff]/10 px-2 py-1 text-[#cbe9ff]">Hız limiti: {manualAimRate}°/s</span>
-                <button className="rounded-full border border-white/10 bg-white/[.06] px-2 py-1 text-[#c8d8e2]" onClick={() => setManualAimRate(6)}>Yavaş 6°/s</button>
-                <button className="rounded-full border border-white/10 bg-white/[.06] px-2 py-1 text-[#c8d8e2]" onClick={() => setManualAimRate(MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC)}>Standart {MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC}°/s</button>
-              </div>
-              <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">
-                {manualAimReady ? 'Manuel hazır.' : displayStage !== 1 ? 'Manuel kilitli.' : operatorBlockCopy[manualAimBlockReason]}
-              </p>
-            </section>
-            <button
-              className={`mt-4 min-h-16 w-full rounded-xl px-4 text-lg font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)]' : 'bg-white/[.08] text-[#91a6b7]'}`}
-              disabled={!fireReady}
-              onClick={sendFireIntent}
-            >
-              {fireReady ? 'FIRE INTENT GÖNDER (DRY-RUN)' : 'FIRE INTENT KİLİTLİ'}
-            </button>
-            <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{fireReady ? 'Hazır · dry-run' : operatorBlockCopy[safety.blockReason]}</p>
-            <div className="mt-4 rounded-xl border border-[#33e68c]/18 bg-[#33e68c]/[.06] p-3" data-testid="operator-hardware-result">
-              <b className="text-sm text-[#bfffe0]">Son hardware/mock sonucu</b>
-              <p className="m-0 mt-1 text-sm text-[#c8d8e2]">{lastHardwareResult ? `${lastHardwareResult.kind} · ${lastHardwareResult.adapter} · physicalOutput=${String(lastHardwareResult.physicalOutput)}` : 'Bekleniyor'}</p>
-              {lastHardwareResult && <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">{lastHardwareResult.message}</p>}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Güvenlik ilkeleri">
-            <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Interlock</h2>
-            <div className="mt-3 grid gap-2 text-sm" data-testid="operator-safety-state">
-              <EvidenceRow label="Acil Durdur" value={safety.estop ? 'AKTİF · komutlar kilitli' : 'Pasif / backend state güvenli'} />
-              <EvidenceRow label="Hareket alanı" value={safety.motionZoneOk ? 'Uygun' : 'Yasak alan · hareket kilitli'} />
-              <EvidenceRow label="Atış alanı" value={safety.fireZoneOk ? 'Uygun' : 'Yasak alan · FireIntent kilitli'} />
-              <EvidenceRow label="Hedef kapısı" value={safety.targetGateOk ? 'Düşman + menzil uygun' : 'Dost, bilinmeyen veya menzil dışı'} />
-              <EvidenceRow label="Mod kapısı" value={safety.modeOk ? 'Komuta uygun' : 'Safe/Bakım/Kilitli mod'} />
-              <EvidenceRow label="Backend bağlantısı" value={safety.backendConnected ? 'State alınıyor veya yerel dry-run' : 'Bağlantı yok'} />
-            </div>
-          </section>
-
-          <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer">
-            <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">Bakım / Diagnostik</summary>
-            <div className="mt-3 grid gap-2">
-              <AdapterRow
-                label="Perception Adapter"
-                item={readinessById.perception_adapter}
-                fallback="Kamera/model çıktısı TrackState sözleşmesine bağlanacak; canlı sınıflandırma adapterı TBD."
-              />
-              <AdapterRow
-                label="Radar/LiDAR Adapter"
-                item={readinessById.radar_lidar_adapter}
-                fallback="Menzil/açı/kalite protokolü seçilen sensöre göre TBD."
-              />
-              <AdapterRow
-                label="MCU / Hardware Protocol"
-                item={readinessById.hardware_adapter}
-                fallback="UART/RS422/CAN/Ethernet ve mesaj çerçevesi elektronik ekibiyle netleşecek."
-              />
-              <AdapterRow
-                label="Canlı Arming / Interlock"
-                item={readinessById.live_arming}
-                fallback="İki aşamalı arming, hakem/operatör kilidi ve fiziksel interlock tamamlanmadan kapalı."
-              />
-            </div>
-            <div className="mt-3 grid gap-2 text-sm">
-              <EvidenceRow label="API base" value={config.apiBaseUrl} />
-              <EvidenceRow label="Komut endpointleri" value="POST /stage · POST /mode · POST /manual-aim · POST /fire-intent" />
-              <EvidenceRow label="Kanıt endpointleri" value="GET /sensor-frames · GET /readiness · GET /telemetry/export · GET /replay" />
-              <EvidenceRow label="Canlı çıkış" value={config.liveArmEnabled ? 'Arming env açık olsa bile backend interlock zorunlu' : 'Kilitli / TBD'} />
-            </div>
-            <div className="mt-3 grid gap-2 text-sm" data-testid="operator-lidar-diagnostics">
-              <EvidenceRow label="LiDAR viewer" value="Dış diagnostic / görev UI değil" />
-              <EvidenceRow label="RPLIDAR / Livox" value="Kalibrasyon · firmware · ham point cloud" />
-              <EvidenceRow label="Operasyon verisi" value="SDK/driver → SensorFrame → Backend" />
-            </div>
-          </details>
-
-          <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
-            <h2 className="m-0 text-xl font-black">Olay akışı</h2>
-            <div className="mt-3 grid gap-2">
-              {commandResults.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz komut sonucu yok.</p>}
-              {commandResults.map((result) => (
-                <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
-                  <b className={result.accepted ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{commandLabel(result)} · {result.accepted ? 'Kabul' : 'Blok'}</b>
-                  <p className="m-0 mt-1 text-[#c8d8e2]">{result.message}</p>
-                  <small className="mt-1 block text-[#91a6b7]">{result.createdAt}</small>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <details className="rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
-            <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">
-              Kayıt / Replay
-              <span className="ml-2 rounded-full border border-[#48a8ff]/25 bg-[#48a8ff]/10 px-2 py-1 align-middle text-xs text-[#bfe7ff]">Log</span>
-            </summary>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={refreshTelemetryEvidence}>
-                {evidenceBusy ? 'Kanıt alınıyor' : 'Kanıtı Yenile'}
-              </button>
-              <button className="rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={resetTelemetryEvidence}>
-                Telemetriyi Sıfırla
-              </button>
-            </div>
-            {!apiBaseUrl && <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">Backend API yok: panel yerel dry-run modunda. Export/replay için `operatorApi` veya VITE_GOKKALKAN_OPERATOR_API_BASE gerekir.</p>}
-            {evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#ff4757]/25 bg-[#ff4757]/10 p-3 text-sm font-bold text-[#ffbdc4]">{evidenceError}</p>}
-            {evidenceNotice && !evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#33e68c]/25 bg-[#33e68c]/10 p-3 text-sm font-bold text-[#bfffe0]">{evidenceNotice}</p>}
-            {unsafeReplayEvidence && <p className="m-0 mt-3 rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/10 p-3 text-sm font-black text-[#ffbdc4]">{replayEvidenceWarning || 'Replay kanıtı güvenli değil: physicalOutput=true kaydı görüldü.'}</p>}
-            <div className="mt-3 grid gap-2 text-sm">
-              <EvidenceRow label="JSONL kayıt yolu" value={telemetryMetadata?.path ?? 'Henüz backend kanıtı alınmadı'} />
-              <EvidenceRow label="Kayıt sayısı" value={String(telemetryMetadata?.recordCount ?? evidenceEntries.length)} />
-              <EvidenceRow label="Replay özeti" value={`${replayEventCount} olay · ${replayCommandCount} komut · ${replayHardwareCount} dry-run hardware sonucu`} />
-              <EvidenceRow label="Fiziksel çıkış" value={(telemetryExport?.physicalOutputEnabled ?? replayBundle?.physicalOutputEnabled ?? apiSnapshot?.physicalOutputEnabled) ? 'AÇIK' : 'KAPALI / YOK'} />
-            </div>
-            <div className="mt-3 grid max-h-64 gap-2 overflow-auto pr-1" aria-label="Replay kayıtları">
-              {evidenceEntries.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz export/replay kaydı alınmadı.</p>}
-              {evidenceEntries.slice(0, 8).map((record, index) => (
-                <article key={`${record.recordId ?? index}-${record.timestamp ?? 'no-time'}`} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-xs">
-                  <b className="text-[#d7efff]">{record.recordType}</b>
-                  <small className="ml-2 text-[#91a6b7]">{record.timestamp ?? 'timestamp yok'}</small>
-                  <p className="m-0 mt-1 break-words text-[#c8d8e2]">{shortRecordPayload(record)}</p>
-                </article>
-              ))}
-            </div>
-          </details>
+          <OperatorTrackScene
+            compact
+            stage={displayStage}
+            tracks={visibleTracks}
+            selectedTrackId={selectedTrackId}
+            lastIntent={lastIntent}
+            onSelect={setSelectedTrackId}
+          />
         </aside>
       </section>
+
+      <section className="operator-action-strip mt-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
+        <div className="grid gap-3 min-[820px]:grid-cols-[minmax(220px,.9fr)_minmax(150px,.45fr)_minmax(150px,.45fr)_minmax(0,1fr)]">
+          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3" data-testid="fire-cluster">
+            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ffbb42]">Ateş</p>
+            <button
+              className={`mt-2 min-h-16 w-full rounded-xl px-4 text-lg font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)] fire-ready-pulse' : 'bg-white/[.08] text-[#91a6b7]'}`}
+              disabled={!fireReady || apiBusy}
+              data-testid="operator-fire-button"
+              onClick={sendFireIntent}
+            >
+              {fireReady ? 'ATEŞLE' : 'ATEŞ KİLİTLİ'}
+            </button>
+            <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{fireReady ? `${selectedTrack?.trackId ?? 'Hedef'} · dry-run` : operatorBlockCopy[safety.blockReason]}</p>
+          </div>
+
+          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3">
+            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ff4757]">Stop</p>
+            <button
+              className="mt-2 min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-4 text-lg font-black text-[#ffd3d7]"
+              data-testid="operator-stop-button"
+              onClick={triggerOperatorStop}
+            >
+              {operatorStopActive ? 'STOP AKTİF' : 'DURDUR'}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3">
+            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#25d8ff]">Bakım</p>
+            <button
+              className="mt-2 min-h-16 w-full rounded-xl border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-4 text-lg font-black text-[#d7efff]"
+              data-testid="operator-maintenance-button"
+              onClick={openMaintenance}
+            >
+              BAKIM
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-[#33e68c]/18 bg-[#33e68c]/[.06] p-3" data-testid="operator-hardware-result">
+            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#bfffe0]">Sonuç</p>
+            <b className="mt-2 block text-sm text-white">{lastHardwareResult ? `${lastHardwareResult.kind} · physicalOutput=${String(lastHardwareResult.physicalOutput)}` : 'Bekleniyor'}</b>
+            <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">{lastHardwareResult?.message ?? 'Niyetler dry-run Safety Gate üzerinden kayda alınır.'}</p>
+          </div>
+        </div>
+      </section>
+
+      <ConfidencePanel frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />
+
+      <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
+        <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Emniyet kilitleri">
+          <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Emniyet</h2>
+          <div className="mt-3 grid gap-2 text-sm" data-testid="operator-safety-state">
+            <EvidenceRow label="Acil Durdur" value={safety.estop ? 'AKTİF' : 'Pasif'} />
+            <EvidenceRow label="Atış alanı" value={safety.fireZoneOk ? 'Uygun' : 'Kilitli'} />
+            <EvidenceRow label="Hedef kapısı" value={safety.targetGateOk ? 'Uygun' : 'Dost/bilinmeyen/menzil dışı'} />
+          </div>
+        </section>
+
+        <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer" open={maintenanceOpen} onToggle={(event) => setMaintenanceOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">Bakım / Diagnostik</summary>
+          <div className="mt-3 grid gap-2">
+            <AdapterRow
+              label="Perception Adapter"
+              item={readinessById.perception_adapter}
+              fallback="Kamera/model çıktısı TrackState sözleşmesine bağlanacak; canlı sınıflandırma adapterı TBD."
+            />
+            <AdapterRow
+              label="Radar/LiDAR Adapter"
+              item={readinessById.radar_lidar_adapter}
+              fallback="Menzil/açı/kalite protokolü seçilen sensöre göre TBD."
+            />
+            <AdapterRow
+              label="MCU / Hardware Protocol"
+              item={readinessById.hardware_adapter}
+              fallback="UART/RS422/CAN/Ethernet ve mesaj çerçevesi elektronik ekibiyle netleşecek."
+            />
+            <AdapterRow
+              label="Canlı Arming / Interlock"
+              item={readinessById.live_arming}
+              fallback="İki aşamalı arming, hakem/operatör kilidi ve fiziksel interlock tamamlanmadan kapalı."
+            />
+          </div>
+          <div className="mt-3 grid gap-2 text-sm">
+            <EvidenceRow label="API base" value={config.apiBaseUrl} />
+            <EvidenceRow label="Komut endpointleri" value="POST /stage · POST /mode · POST /fire-intent" />
+            <EvidenceRow label="Kanıt endpointleri" value="GET /sensor-frames · GET /readiness · GET /telemetry/export · GET /replay" />
+          </div>
+          <div className="mt-3 grid gap-2 text-sm" data-testid="operator-lidar-diagnostics">
+            <EvidenceRow label="LiDAR viewer" value="Dış diagnostic / görev UI değil" />
+            <EvidenceRow label="RPLIDAR / Livox" value="Kalibrasyon · firmware · ham point cloud" />
+            <EvidenceRow label="Operasyon verisi" value="SDK/driver → SensorFrame → Backend" />
+          </div>
+        </details>
+
+        <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
+          <h2 className="m-0 text-xl font-black">Olay akışı</h2>
+          <div className="mt-3 grid max-h-80 gap-2 overflow-auto pr-1">
+            {commandResults.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz komut sonucu yok.</p>}
+            {commandResults.map((result) => (
+              <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
+                <b className={result.accepted ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{commandLabel(result)} · {result.accepted ? 'Kabul' : 'Blok'}</b>
+                <p className="m-0 mt-1 text-[#c8d8e2]">{result.message}</p>
+                <small className="mt-1 block text-[#91a6b7]">{result.createdAt}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+      </section>
+
+      <details className="mt-3 rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
+        <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">
+          Kayıt / Replay
+          <span className="ml-2 rounded-full border border-[#48a8ff]/25 bg-[#48a8ff]/10 px-2 py-1 align-middle text-xs text-[#bfe7ff]">Log</span>
+        </summary>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={refreshTelemetryEvidence}>
+            {evidenceBusy ? 'Kanıt alınıyor' : 'Kanıtı Yenile'}
+          </button>
+          <button className="rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:cursor-not-allowed disabled:opacity-45" disabled={!apiBaseUrl || evidenceBusy} onClick={resetTelemetryEvidence}>
+            Telemetriyi Sıfırla
+          </button>
+        </div>
+        {!apiBaseUrl && <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">Backend API yok: panel yerel dry-run modunda. Export/replay için `operatorApi` veya VITE_GOKKALKAN_OPERATOR_API_BASE gerekir.</p>}
+        {evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#ff4757]/25 bg-[#ff4757]/10 p-3 text-sm font-bold text-[#ffbdc4]">{evidenceError}</p>}
+        {evidenceNotice && !evidenceError && <p className="m-0 mt-3 rounded-lg border border-[#33e68c]/25 bg-[#33e68c]/10 p-3 text-sm font-bold text-[#bfffe0]">{evidenceNotice}</p>}
+        {unsafeReplayEvidence && <p className="m-0 mt-3 rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/10 p-3 text-sm font-black text-[#ffbdc4]">{replayEvidenceWarning || 'Replay kanıtı güvenli değil: physicalOutput=true kaydı görüldü.'}</p>}
+        <div className="mt-3 grid gap-2 text-sm min-[760px]:grid-cols-2">
+          <EvidenceRow label="JSONL kayıt yolu" value={telemetryMetadata?.path ?? 'Henüz backend kanıtı alınmadı'} />
+          <EvidenceRow label="Kayıt sayısı" value={String(telemetryMetadata?.recordCount ?? evidenceEntries.length)} />
+          <EvidenceRow label="Replay özeti" value={`${replayEventCount} olay · ${replayCommandCount} komut · ${replayHardwareCount} dry-run hardware sonucu`} />
+          <EvidenceRow label="Fiziksel çıkış" value={(telemetryExport?.physicalOutputEnabled ?? replayBundle?.physicalOutputEnabled ?? apiSnapshot?.physicalOutputEnabled) ? 'AÇIK' : 'KAPALI / YOK'} />
+        </div>
+        <div className="mt-3 grid max-h-64 gap-2 overflow-auto pr-1" aria-label="Replay kayıtları">
+          {evidenceEntries.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz export/replay kaydı alınmadı.</p>}
+          {evidenceEntries.slice(0, 8).map((record, index) => (
+            <article key={`${record.recordId ?? index}-${record.timestamp ?? 'no-time'}`} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-xs">
+              <b className="text-[#d7efff]">{record.recordType}</b>
+              <small className="ml-2 text-[#91a6b7]">{record.timestamp ?? 'timestamp yok'}</small>
+              <p className="m-0 mt-1 break-words text-[#c8d8e2]">{shortRecordPayload(record)}</p>
+            </article>
+          ))}
+        </div>
+      </details>
     </main>
   );
 }
@@ -1962,15 +1924,5 @@ function AdapterRow({ label, item }: { label: string; item: OperatorReadinessIte
         </span>
       </div>
     </article>
-  );
-}
-
-function InfoCard({ title, value, detail }: { title: string; value: string; detail: string }) {
-  return (
-    <section className="min-w-0 rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4">
-      <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#91a6b7]">{title}</p>
-      <b className="mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-lg text-white">{value}</b>
-      <p className="m-0 mt-1 text-sm leading-snug text-[#b7c9d5]">{detail}</p>
-    </section>
   );
 }

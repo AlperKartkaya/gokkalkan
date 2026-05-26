@@ -23,7 +23,7 @@ export const COMPETITION_COURSE = {
   },
   assumptionNotice:
     'Şartname A/B noktası, üç kol ve 5/10/15 m işaretlerini verir; kesin koordinat/radar-LiDAR modeli vermediği için bu görünüm Şekil 4/5 üzerinden normalize edilmiş eğitim parkurudur.',
-  systemPosition: { x: 82, y: 62 } satisfies CoursePoint,
+  systemPosition: { x: 88, y: 62 } satisfies CoursePoint,
   aPoint: { x: 8, y: 17 } satisfies CoursePoint,
   bPoint: { x: 80, y: 17 } satisfies CoursePoint,
   rangeMarkers: [

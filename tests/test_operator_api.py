@@ -38,10 +38,16 @@ class OperatorServiceTest(unittest.TestCase):
         snapshot = self.service.snapshot()
         self.assertTrue(snapshot["dryRun"])
         self.assertFalse(snapshot["physicalOutputEnabled"])
-        self.assertEqual(snapshot["mode"], "safe")
+        self.assertEqual(snapshot["mode"], "autonomous")
         self.assertEqual(snapshot["telemetry"]["recordCount"], 1)
         self.assertGreaterEqual(len(snapshot["sensorFrames"]), 1)
         self.assertTrue(snapshot["sensorHealth"]["replayOnly"])
+        unknown_track = next(track for track in snapshot["tracks"] if track["trackId"] == "DRY-RUN-UAV-03")
+        self.assertEqual(unknown_track["friendFoe"], "Bilinmeyen")
+        unknown_frame = next(frame for frame in snapshot["sensorFrames"] if frame["trackId"] == "DRY-RUN-UAV-03" and frame["sensor"] == "fusion")
+        self.assertEqual(unknown_frame["rangeGate"], "Kimlik bekleniyor")
+        self.assertLess(unknown_frame["classificationConfidence"], 0.6)
+        self.assertIn("Kimlik kesinleşmeden", unknown_frame["recommendation"])
 
     def test_stage_request_updates_authoritative_mission_context_and_sensor_frames(self) -> None:
         response = self.service.handle_stage_request({"stage": 2, "round": 4, "operatorId": "test", "timestamp": fixed_clock(), "reason": "stage-test", "dryRun": True})
@@ -70,6 +76,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(response["state"]["round"], 1)
 
     def test_fire_is_blocked_in_safe_mode_before_hardware_adapter(self) -> None:
+        self.service.handle_mode_request({"requestedMode": "safe", "operatorId": "test", "timestamp": fixed_clock(), "reason": "safe-mode-test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertFalse(response["result"]["accepted"])
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_MODE")
@@ -198,7 +205,8 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(items["backend_api"]["status"], "ready")
         self.assertEqual(items["telemetry_replay"]["status"], "ready")
         self.assertEqual(items["operator_panel_ui"]["status"], "ready")
-        self.assertIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
+        self.assertNotIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
+        self.assertIn("FireIntent", items["operator_panel_ui"]["ktrInterface"])
         self.assertEqual(items["perception_adapter"]["status"], "tbd")
         self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")
         self.assertEqual(items["live_arming"]["status"], "blocked")
@@ -207,6 +215,12 @@ class OperatorServiceTest(unittest.TestCase):
     def test_friendly_target_fire_is_blocked(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-HEL-02", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
+        self.assertFalse(response["result"]["accepted"])
+        self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_TARGET_GATE")
+        self.assertEqual(len(self.hardware.commands), 0)
+
+    def test_unidentified_target_fire_is_blocked_until_classification_is_resolved(self) -> None:
+        response = self.service.handle_fire_intent({"targetId": "DRY-RUN-UAV-03", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertFalse(response["result"]["accepted"])
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_TARGET_GATE")
         self.assertEqual(len(self.hardware.commands), 0)
