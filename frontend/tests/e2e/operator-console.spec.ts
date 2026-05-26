@@ -248,16 +248,19 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
   await expect(page.getByText('DRY-RUN AÇIK · fiziksel çıkış yok')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Interlock' })).toBeVisible();
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Sistem Durumu');
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Hazırlık');
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Radar/LiDAR Adapter');
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Canlı Arming / Fiziksel Çıkış');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toHaveCount(0);
+  await expect(page.getByText('Sistem Durumu')).toHaveCount(0);
+  await expect(page.getByTestId('operator-track-scene')).toBeVisible();
+  await expect(page.getByTestId('operator-steel-dome')).toBeVisible();
+  await expect(page.getByTestId('operator-aim-line')).toBeVisible();
+  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
   await expect(page.getByText(/Puan/)).toHaveCount(0);
 
   await expect(page.getByRole('button', { name: 'FIRE INTENT KİLİTLİ' })).toBeDisabled();
   await page.getByRole('button', { name: 'Otonom' }).click();
   await expect(page.getByRole('button', { name: 'FIRE INTENT GÖNDER (DRY-RUN)' })).toBeEnabled();
   await page.getByRole('button', { name: 'FIRE INTENT GÖNDER (DRY-RUN)' }).click();
+  await expect(page.getByTestId('operator-shot-trace')).toBeVisible();
   await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
 });
 
@@ -418,6 +421,7 @@ test('operator panel changes final-phase stage and renders radar LiDAR software 
   const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
   await expect(sensorPanel).toContainText('0 frame');
   await expect(sensorPanel).toContainText('SensorFrame yok');
+  const sensorTopBefore = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
   await page.getByRole('button', { name: 'Aşama 3' }).click();
 
   await expect(stageControl).toContainText('dost/düşman · menzil');
@@ -429,6 +433,14 @@ test('operator panel changes final-phase stage and renders radar LiDAR software 
   await expect(sensorPanel).toContainText('12.4 m');
   await expect(sensorPanel).toContainText('menzil Uygun');
   await expect(sensorPanel).toContainText('replayOnly=true');
+  await expect(page.getByTestId('operator-track-scene')).toContainText('Düşman');
+  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
+  await expect(page.getByTestId('operator-steel-dome')).toHaveAttribute('data-rotation', /-?\d+\.\d/);
+  const sensorTopAfterStage = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
+  expect(Math.abs(sensorTopAfterStage - sensorTopBefore)).toBeLessThanOrEqual(1);
+  await page.getByTestId('operator-track-DRY-RUN-HEL-02').click();
+  const sensorTopAfterTrackSelect = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
+  expect(Math.abs(sensorTopAfterTrackSelect - sensorTopBefore)).toBeLessThanOrEqual(1);
   await expect(page.getByText(/physicalOutput=true/)).toHaveCount(0);
 });
 
@@ -532,7 +544,7 @@ test('operator panel sends manual aim only after manual mode and deadman are act
   await expect(page.locator('article').filter({ hasText: 'ManualAimCommand · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
   await expect(page.getByTestId('operator-hardware-result')).toContainText('hardware_mock.dry_run');
   await expect(page.getByTestId('operator-hardware-result')).toContainText('physicalOutput=false');
-  await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Entegrasyon');
+  await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Bakım / Diagnostik');
 });
 
 test('operator panel keeps manual aim locked outside Aşama 1 even with manual mode and deadman', async ({ page }) => {
@@ -618,7 +630,7 @@ test('operator panel keeps manual aim locked outside Aşama 1 even with manual m
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
   const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
   await expect(sensorPanel).toContainText('offline · replayOnly=false');
-  await expect(sensorPanel).toContainText('TBD');
+  await expect(sensorPanel).toContainText('Beklemede');
   await expect(sensorPanel.getByText('Canlı')).toHaveCount(0);
   const manualControls = page.getByTestId('manual-aim-controls');
   await page.getByRole('button', { name: 'Manuel' }).click();
@@ -655,7 +667,7 @@ test('desktop operator shell keeps LiDAR vendor tools diagnostic-only', async ({
   await expect(page.getByText('RPLIDAR Viewer').or(page.getByText('Livox Viewer'))).toHaveCount(0);
 });
 
-test('operator panel readiness dashboard reads backend final-phase gap report', async ({ page }) => {
+test('operator panel keeps backend readiness diagnostic-only outside the operator view', async ({ page }) => {
   const apiBase = 'http://127.0.0.1:5173/readiness-api';
   await page.route(`${apiBase}/state`, async (route) => route.fulfill({
     contentType: 'application/json',
@@ -711,14 +723,13 @@ test('operator panel readiness dashboard reads backend final-phase gap report', 
 
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
 
-  const dashboard = page.getByTestId('operator-readiness-dashboard');
-  await expect(dashboard).toContainText('Hazırlık %43');
-  await expect(dashboard).toContainText('Radar/LiDAR Adapter');
-  await expect(dashboard).toContainText('TBD');
-  await expect(dashboard).toContainText('Canlı Arming / Fiziksel Çıkış');
-  await expect(dashboard).toContainText('Kilitli');
-  await expect(dashboard).toContainText('Sonraki iş');
-  await expect(dashboard).toContainText('Seçilen sensörün güç/veri arayüzünü doldur.');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toHaveCount(0);
+  await expect(page.getByText('Sistem Durumu')).toHaveCount(0);
+  await expect(page.getByText('Hazırlık %43')).toHaveCount(0);
+  await expect(page.getByText('Sonraki iş')).toHaveCount(0);
+  await expect(page.getByText('Seçilen sensörün güç/veri arayüzünü doldur.')).toBeHidden();
+  await expect(page.getByTestId('operator-track-scene')).toBeVisible();
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toBeVisible();
   await expect(page.getByText('tamamen hazır')).toHaveCount(0);
 });
 

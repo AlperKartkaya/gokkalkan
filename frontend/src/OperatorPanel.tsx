@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
+import { COMPETITION_COURSE } from './competitionCourse';
 import {
   MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC,
   MANUAL_AIM_STEP_DEG,
@@ -48,6 +50,13 @@ const targetLabel: Record<TargetType, string> = {
   'Mini/Micro İHA': 'Mini/Micro İHA',
 };
 
+const targetShortLabel: Record<TargetType, string> = {
+  F16: 'F16',
+  Helikopter: 'Helikopter',
+  'Balistik Füze': 'Balistik',
+  'Mini/Micro İHA': 'İHA',
+};
+
 const dryRunTracksByStage: Record<Stage, OperatorTrackState[]> = {
   1: [
     { trackId: 'S1-ORDER-FUZE-01', stage: 1, round: 1, targetType: 'Balistik Füze', friendFoe: 'Düşman', rangeM: 15, bearingDeg: -24, confidence: 0.86, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
@@ -87,7 +96,7 @@ function sensorSourceLabel(sensorHealth: OperatorSensorHealth, safetySensorConne
   }
   if (sensorHealth.replayOnly || sensorHealth.status === 'replay') return 'Replay';
   if (sensorHealth.status === 'empty') return 'Veri yok';
-  return 'TBD';
+  return 'Beklemede';
 }
 
 function sensorRecommendation(track: OperatorTrackState, stage: Stage) {
@@ -178,6 +187,65 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function operatorXForRange(range: number) {
+  return 88 - range * 5;
+}
+
+function clampPercent(value: number, min = 7, max = 93) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function visualSizeForTarget(type: TargetType) {
+  const base = {
+    F16: { w: 11.8, h: 7.6 },
+    Helikopter: { w: 8.7, h: 8.7 },
+    'Balistik Füze': { w: 7.2, h: 11.5 },
+    'Mini/Micro İHA': { w: 7.5, h: 7.5 },
+  } satisfies Record<TargetType, { w: number; h: number }>;
+  return base[type];
+}
+
+function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) {
+  const radians = (track.bearingDeg * Math.PI) / 180;
+  const distance = Math.min(15, Math.max(2.5, track.rangeM)) * 3.9;
+  const size = visualSizeForTarget(track.targetType);
+  const x = stage === 1
+    ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -3 : 3), 10, 86)
+    : clampPercent(COMPETITION_COURSE.systemPosition.x + Math.sin(radians) * distance, 9, 90);
+  const y = stage === 1
+    ? clampPercent(36 + index * 9, 22, 76)
+    : clampPercent(COMPETITION_COURSE.systemPosition.y - Math.cos(radians) * distance + index * 2.5, 24, 86);
+  const rangeGate = targetRangeGateOk(track) ? 'Uygun' : track.rangeM > 15 ? 'Erken' : 'Geçersiz';
+  const candidate = track.friendFoe === 'Düşman' && (stage === 1 || stage === 2 || targetRangeGateOk(track));
+  const lane = ((index % 3) + 1) as 1 | 2 | 3;
+  return { ...track, x, y, w: size.w, h: size.h, rangeGate, candidate, lane };
+}
+
+function visualTrackStatus(track: ReturnType<typeof visualTrackFor>, stage: Stage) {
+  if (track.friendFoe === 'Dost') return 'DOST KİLİT';
+  if (track.candidate) return 'UYGUN';
+  if (stage === 1) return 'SIRA';
+  if (track.rangeGate === 'Erken') return 'ERKEN';
+  return 'DIŞI';
+}
+
+function visualRangeLabel(track?: ReturnType<typeof visualTrackFor>) {
+  if (!track) return 'Hedef yok';
+  if (track.friendFoe === 'Dost') return 'Dost unsur';
+  if (track.rangeGate === 'Uygun') return 'MENZİL UYGUN';
+  if (track.rangeGate === 'Erken') return 'ÇOK ERKEN';
+  return 'MENZİL DIŞI';
+}
+
+const DOME_SOURCE_NOSE_SCREEN_DEG = 135;
+const DOME_DEFAULT_ROTATION_DEG = 45;
+
+function domeRotationForVisualTrack(track?: ReturnType<typeof visualTrackFor>) {
+  if (!track) return DOME_DEFAULT_ROTATION_DEG;
+  const targetAngle = (Math.atan2(track.y - COMPETITION_COURSE.systemPosition.y, track.x - COMPETITION_COURSE.systemPosition.x) * 180) / Math.PI;
+  return targetAngle - DOME_SOURCE_NOSE_SCREEN_DEG;
+}
+
 function targetRangeGateOk(track: OperatorTrackState | undefined) {
   if (!track) return false;
   if (track.targetType === 'F16') return track.rangeM >= 10 && track.rangeM <= 15;
@@ -204,6 +272,209 @@ function shortRecordPayload(record: OperatorTelemetryLogRecord) {
   return value.length > 120 ? `${value.slice(0, 120)}…` : value;
 }
 
+function OperatorTargetSilhouette({ type, className = '' }: { type: TargetType; className?: string }) {
+  return (
+    <svg className={`target-silhouette ${className}`} viewBox="0 0 64 64" aria-hidden="true">
+      {type === 'Balistik Füze' && (
+        <g>
+          <path d="M32 5 C26 13 24 19 24 31 L24 47 L40 47 L40 31 C40 19 38 13 32 5 Z" />
+          <path d="M24 42 L12 55 L24 52 Z M40 42 L52 55 L40 52 Z" />
+          <path d="M29 47 L25 61 L32 56 L39 61 L35 47 Z" />
+          <circle cx="32" cy="25" r="4" />
+        </g>
+      )}
+      {type === 'Helikopter' && (
+        <g>
+          <path d="M16 33 C20 24 42 24 49 33 C44 43 23 44 16 33 Z" />
+          <path d="M44 32 L59 25 L61 29 L49 38 Z" />
+          <path d="M24 41 L20 51 L28 51 L31 43 Z M39 41 L43 51 L51 51 L47 41 Z" />
+          <path d="M13 20 H51 M29 14 H35 V26 H29 Z" />
+          <path d="M8 18 L21 22 M56 18 L43 22" />
+        </g>
+      )}
+      {type === 'F16' && (
+        <g>
+          <path d="M3 32 L25 25 L43 11 L53 15 L43 29 L62 32 L43 35 L53 49 L43 53 L25 39 Z" />
+          <path d="M23 25 L14 15 L30 23 Z M23 39 L14 49 L30 41 Z" />
+          <path d="M36 28 L45 24 L43 32 L45 40 L36 36 Z" />
+          <circle cx="47" cy="32" r="2.2" />
+        </g>
+      )}
+      {type === 'Mini/Micro İHA' && (
+        <g>
+          <circle cx="32" cy="32" r="8" />
+          <path d="M24 24 L12 12 M40 24 L52 12 M24 40 L12 52 M40 40 L52 52" />
+          <circle cx="11" cy="11" r="7" />
+          <circle cx="53" cy="11" r="7" />
+          <circle cx="11" cy="53" r="7" />
+          <circle cx="53" cy="53" r="7" />
+          <path d="M26 32 H38 M32 26 V38" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function OperatorTrackScene({
+  stage,
+  tracks,
+  selectedTrackId,
+  lastIntent,
+  lastManualAim,
+  onSelect,
+}: {
+  stage: Stage;
+  tracks: OperatorTrackState[];
+  selectedTrackId: string;
+  lastIntent?: FireIntent;
+  lastManualAim?: ManualAimCommand;
+  onSelect: (trackId: string) => void;
+}) {
+  const visualTracks = tracks.map((track, index) => visualTrackFor(track, index, stage));
+  const selectedVisualTrack = visualTracks.find((track) => track.trackId === selectedTrackId) ?? visualTracks[0];
+  const firedVisualTrack = visualTracks.find((track) => track.trackId === lastIntent?.targetId);
+  const ruleWindow = selectedVisualTrack && stage !== 1
+    ? { start: Math.min(operatorXForRange(15), operatorXForRange(5)), width: Math.abs(operatorXForRange(5) - operatorXForRange(15)) }
+    : selectedVisualTrack
+      ? { start: operatorXForRange(selectedVisualTrack.rangeM) - 6, width: 12 }
+      : { start: operatorXForRange(15), width: Math.abs(operatorXForRange(5) - operatorXForRange(15)) };
+  const domeAngle = domeRotationForVisualTrack(selectedVisualTrack);
+  const domeStyle = {
+    left: `${COMPETITION_COURSE.systemPosition.x}%`,
+    top: `${COMPETITION_COURSE.systemPosition.y}%`,
+    '--dome-rotation': `${domeAngle}deg`,
+  } as CSSProperties;
+  const shotLabel = lastIntent ? 'DRY-RUN' : lastManualAim ? 'NİŞAN' : 'İZ';
+
+  return (
+    <section
+      className={`parkour-hero operator-track-scene stage-${stage} relative h-[500px] overflow-hidden rounded-xl border border-[#25d8ff]/18 bg-[#0b1117] shadow-[inset_0_0_54px_rgba(0,0,0,.56)] max-[760px]:h-[430px]`}
+      data-testid="operator-track-scene"
+      aria-label="Operatör iz görüntüsü"
+    >
+      <div className="relative z-[2] flex flex-wrap items-start justify-between gap-3 p-4">
+        <div>
+          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görüntü</p>
+          <h2 className="m-0 mt-1 text-2xl font-black">İzler</h2>
+        </div>
+        <span className="rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-1 text-xs font-black text-[#ffe4ad]">DRY-RUN · fiziksel çıkış yok</span>
+      </div>
+
+      <svg className="parkour-overlay" viewBox="0 0 100 100" aria-label={`Aşama ${stage} iz şeması`}>
+        <defs>
+          <pattern id={`operator-grid-${stage}`} width="5" height="5" patternUnits="userSpaceOnUse">
+            <path d="M 5 0 L 0 0 0 5" fill="none" stroke="rgba(174,225,255,.10)" strokeWidth=".25" />
+          </pattern>
+          <marker id={`operator-arrow-${stage}`} markerWidth="5" markerHeight="5" refX="4.2" refY="2.5" orient="auto">
+            <path d="M0,0 L5,2.5 L0,5 Z" fill="#ffbb42" opacity=".78" />
+          </marker>
+        </defs>
+        <rect className="schematic-grid" x="3" y="6" width="94" height="88" rx="4" fill={`url(#operator-grid-${stage})`} />
+
+        {stage === 1 ? (
+          <g className="stage1-practice-field">
+            {[15, 10, 5].map((range) => (
+              <g key={range} className={`stage1-zone zone-${range} ${selectedVisualTrack && Math.abs(selectedVisualTrack.rangeM - range) < 2.6 ? 'active' : ''}`} data-testid={`operator-range-${range}m`}>
+                <rect x={range === 15 ? 9 : range === 10 ? 36 : 63} y="15" width="25" height="66" rx="4" />
+                <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="22">{range} m</text>
+                <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="76">DURAĞAN</text>
+              </g>
+            ))}
+            <text className="stage1-title" x="9" y="10">A1 · MANUEL ATIŞ</text>
+          </g>
+        ) : (
+          <g className="moving-course-field">
+            {selectedVisualTrack && (
+              <>
+                <rect className={`valid-window ${selectedVisualTrack.candidate ? 'active' : ''}`} x={ruleWindow.start} y="15" width={ruleWindow.width} height="77" />
+                <text className={`window-label ${selectedVisualTrack.candidate ? 'active' : ''}`} x={Math.min(84, Math.max(16, ruleWindow.start + ruleWindow.width / 2))} y="18.2" textAnchor="middle">
+                  {visualRangeLabel(selectedVisualTrack)}
+                </text>
+              </>
+            )}
+            {[15, 10, 5].map((range) => (
+              <g key={range} className={`range-line ${selectedVisualTrack?.candidate && Math.abs(selectedVisualTrack.rangeM - range) <= 2.5 ? 'active' : ''}`} data-testid={`operator-range-${range}m`}>
+                <line x1={operatorXForRange(range)} y1="10" x2={operatorXForRange(range)} y2="93" />
+                <text x={operatorXForRange(range) + 0.7} y="12">{range} m</text>
+              </g>
+            ))}
+            <text className="point-label" x="7" y="12">A</text>
+            <text className="point-label" x="78" y="12">B</text>
+            <text className="escape-label" x="70" y="91">B KAÇIŞ</text>
+            {COMPETITION_COURSE.lanes.map((lane) => (
+              <g key={lane.lane} className={`lane-path lane-${lane.lane}`}>
+                <polyline points={lane.points.map((point) => `${point.x},${point.y}`).join(' ')} markerEnd={`url(#operator-arrow-${stage})`} />
+                <text x="8" y={lane.points[0].y - 2}>KOL {lane.lane}</text>
+              </g>
+            ))}
+          </g>
+        )}
+
+        <g className="system-anchor">
+          <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.4" />
+          <text x={COMPETITION_COURSE.systemPosition.x - 8} y={COMPETITION_COURSE.systemPosition.y + 9}>Gökkalkan</text>
+        </g>
+        {selectedVisualTrack && (
+          <g className="target-link" data-testid="operator-aim-line">
+            <line x1={selectedVisualTrack.x} y1={selectedVisualTrack.y} x2={COMPETITION_COURSE.systemPosition.x} y2={COMPETITION_COURSE.systemPosition.y} />
+            <text x={Math.min(88, selectedVisualTrack.x + 2)} y={Math.max(10, selectedVisualTrack.y - 3)}>{shotLabel}</text>
+          </g>
+        )}
+        {firedVisualTrack && (
+          <g className="strike hit" data-testid="operator-shot-trace">
+            <line className="shot-trail" x1={COMPETITION_COURSE.systemPosition.x} y1={COMPETITION_COURSE.systemPosition.y} x2={firedVisualTrack.x} y2={firedVisualTrack.y} />
+            <circle className="shot-bullet" cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.05">
+              <animate attributeName="cx" from={COMPETITION_COURSE.systemPosition.x} to={firedVisualTrack.x} dur="0.26s" fill="freeze" />
+              <animate attributeName="cy" from={COMPETITION_COURSE.systemPosition.y} to={firedVisualTrack.y} dur="0.26s" fill="freeze" />
+            </circle>
+            <circle className="impact-ring" cx={firedVisualTrack.x} cy={firedVisualTrack.y} r="2.8" />
+            <text x={Math.min(88, firedVisualTrack.x + 2)} y={Math.max(9, firedVisualTrack.y - 2)}>KAYIT</text>
+          </g>
+        )}
+      </svg>
+
+      <div
+        className="steel-dome pointer-events-none absolute z-[5] grid h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_20px_rgba(51,230,140,.26))_drop-shadow(0_12px_24px_rgba(0,0,0,.5))]"
+        style={domeStyle}
+        data-testid="operator-steel-dome"
+        data-rotation={domeAngle.toFixed(1)}
+        aria-hidden="true"
+      >
+        <img className="h-[68px] w-[68px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
+      </div>
+
+      {visualTracks.map((track) => {
+        const selected = selectedVisualTrack?.trackId === track.trackId;
+        const affiliationClass = track.friendFoe === 'Düşman' ? 'enemy' : track.friendFoe === 'Dost' ? 'friend' : 'neutral';
+        return (
+          <button
+            key={track.trackId}
+            className={`aircraft absolute z-[6] grid min-h-24 min-w-[78px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center gap-[3px] rounded-full border-0 bg-transparent p-0.5 text-center text-[#ffd17a] shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
+            style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
+            data-testid={`operator-track-${track.trackId}`}
+            aria-label={`${track.trackId} ${targetLabel[track.targetType]} ${track.friendFoe} ${track.rangeM.toFixed(1)} metre`}
+            onClick={() => onSelect(track.trackId)}
+          >
+            <span className="motion-trail" />
+            <span className="target-visual"><OperatorTargetSilhouette type={track.targetType} /></span>
+            <span className="target-label-stack">
+              <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
+              <small>{targetShortLabel[track.targetType]}</small>
+              <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={visualRangeLabel(track)}>{visualTrackStatus(track, stage)}</em>
+            </span>
+          </button>
+        );
+      })}
+
+      <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil</span>
+      </div>
+    </section>
+  );
+}
+
 export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () => void; onOpenSimulator: () => void }) {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
@@ -225,7 +496,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
   const [readinessReport, setReadinessReport] = useState<OperatorReadinessReport>();
-  const [readinessError, setReadinessError] = useState('');
+  const [, setReadinessError] = useState('');
   const [telemetryExport, setTelemetryExport] = useState<OperatorTelemetryExport>();
   const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
   const [evidenceBusy, setEvidenceBusy] = useState(false);
@@ -425,7 +696,6 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     ],
   };
   const displayReadiness = readinessReport ?? fallbackReadiness;
-  const topReadinessItems = displayReadiness.items.slice(0, 6);
   const readinessById = Object.fromEntries(displayReadiness.items.map((item) => [item.id, item])) as Record<string, OperatorReadinessItem | undefined>;
 
   const pushResult = (result: CommandResult) => {
@@ -743,67 +1013,26 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
       <section className="mb-3 grid gap-2 min-[900px]:grid-cols-6" aria-label="Canlı bağlantı durumları">
         <span className="rounded-lg border border-[#25d8ff]/30 bg-[#25d8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">Aşama {displayStage} · Tur {displayRound}/{stageRoundLimit(displayStage)}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(config.connectionState !== 'offline')}`}>Backend: {apiBusy ? 'kontrol ediliyor' : config.connectionState === 'offline' ? 'bağlantı yok' : config.connectionState === 'dry-run' ? 'dry-run adapter' : 'canlı API'}</span>
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : 'placeholder'}</span>
+        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : config.connectionState === 'dry-run' ? 'replay' : 'beklemede'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(sensorSource === 'Canlı')}`}>Radar/LiDAR: {sensorSource === 'Canlı' ? 'canlı' : sensorSource === 'Replay' ? 'replay fixture' : sensorSource}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
         {isDesktopShell && <span className="rounded-lg border border-[#33e68c]/30 bg-[#33e68c]/10 px-3 py-2 text-sm font-black text-[#bfffe0]" data-testid="operator-desktop-shell">Kabuk: Desktop</span>}
         <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {apiError || config.apiBaseUrl}</span>
       </section>
 
-      <section className="mb-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-readiness-dashboard" aria-label="Finale hazırlık göstergesi">
-        <div className="grid gap-4 min-[1000px]:grid-cols-[minmax(260px,.42fr)_1fr]">
-          <div>
-            <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Sistem Durumu</p>
-            <h2 className="m-0 mt-1 text-2xl font-black text-white">Hazırlık %{displayReadiness.readinessPercent}</h2>
-            <div className="mt-3 h-3 overflow-hidden rounded-full border border-white/[.08] bg-white/[.06]" aria-label="Readiness progress">
-              <div className="h-full rounded-full bg-gradient-to-r from-[#ffbb42] via-[#25d8ff] to-[#33e68c]" style={{ width: `${Math.max(4, Math.min(100, displayReadiness.readinessPercent))}%` }} />
-            </div>
-            {readinessError && <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">Hazırlık API uyarısı: {readinessError}</p>}
-            <div className="mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3">
-              <b className="block text-sm text-[#ffe4ad]">Sonraki iş</b>
-              <p className="m-0 mt-1 text-sm leading-relaxed text-[#f4e4bf]">{displayReadiness.nextCriticalActions[0] ?? 'Entegrasyon adımı bekleniyor.'}</p>
-            </div>
-          </div>
-          <div className="grid gap-2 min-[760px]:grid-cols-2 min-[1300px]:grid-cols-3">
-            {topReadinessItems.map((item) => (
-              <ReadinessCard key={item.id} item={item} />
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1.25fr)_minmax(330px,.75fr)]">
-        <div className="grid gap-3">
-          <section className="relative min-h-[420px] overflow-hidden rounded-xl border border-[#25d8ff]/18 bg-[radial-gradient(circle_at_50%_45%,rgba(37,216,255,.12),rgba(4,7,10,.96)_58%)] p-4" aria-label="Canlı görüntü ve sensör füzyonu">
-            <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.035)_1px,transparent_1px)] [background-size:34px_34px]" />
-            <div className="relative z-[1] flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görüntü</p>
-                <h2 className="m-0 mt-1 text-2xl font-black">İzler</h2>
-              </div>
-              <span className="rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-1 text-xs font-black text-[#ffe4ad]">Fiziksel çıkış yok</span>
-            </div>
-            <div className="relative z-[1] mt-8 h-[290px] rounded-lg border border-white/[.08] bg-black/25">
-              <div className="absolute left-[12%] top-[18%] text-xs font-black text-[#91a6b7]">15 m</div>
-              <div className="absolute left-[42%] top-[18%] text-xs font-black text-[#91a6b7]">10 m</div>
-              <div className="absolute left-[68%] top-[18%] text-xs font-black text-[#91a6b7]">5 m</div>
-              <div className="absolute bottom-6 right-6 grid h-20 w-20 place-items-center rounded-full border border-[#33e68c]/40 bg-[#33e68c]/10 text-xs font-black text-[#ccffe2]">Gökkalkan</div>
-              {visibleTracks.map((track, index) => (
-                <button
-                  key={track.trackId}
-                  className={`absolute min-w-[132px] rounded-lg border px-3 py-2 text-left text-xs shadow-[0_12px_24px_rgba(0,0,0,.28)] ${track.trackId === selectedTrackId ? 'border-[#ffbb42] bg-[#ffbb42]/20 text-white' : track.friendFoe === 'Düşman' ? 'border-[#ff4757]/45 bg-[#ff4757]/12 text-[#ffd6da]' : 'border-[#48a8ff]/45 bg-[#48a8ff]/12 text-[#d7efff]'}`}
-                  style={{ left: `${18 + index * 25}%`, top: `${38 + index * 13}%` }}
-                  onClick={() => setSelectedTrackId(track.trackId)}
-                >
-                  <b className="block text-sm">{targetLabel[track.targetType]}</b>
-                  <span>{track.friendFoe} · {track.rangeM.toFixed(1)} m · {formatPercent(track.confidence)}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+        <div className="grid content-start gap-3">
+          <OperatorTrackScene
+            stage={displayStage}
+            tracks={visibleTracks}
+            selectedTrackId={selectedTrackId}
+            lastIntent={lastIntent}
+            lastManualAim={lastManualAim}
+            onSelect={setSelectedTrackId}
+          />
 
-          <section className="rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
-            <div className="grid gap-4 min-[1100px]:grid-cols-[minmax(260px,.38fr)_1fr]">
+          <section className="min-h-[420px] rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
+            <div className="grid min-h-[388px] gap-4 min-[1100px]:grid-cols-[minmax(260px,.38fr)_1fr]">
               <div>
                 <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#48a8ff]">Radar / LiDAR</p>
                 <h2 className="m-0 mt-1 text-2xl font-black text-white">Menzil · Açı · Sınıf</h2>
@@ -820,7 +1049,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 )}
               </div>
               <div className="grid gap-3 min-[900px]:grid-cols-[220px_1fr]">
-                <div className="relative h-[220px] overflow-hidden rounded-xl border border-[#48a8ff]/18 bg-[radial-gradient(circle_at_50%_100%,rgba(72,168,255,.20),rgba(0,0,0,.08)_36%,rgba(0,0,0,.32)_80%)]" aria-label="Radar range rings">
+                <div className="relative h-[250px] overflow-hidden rounded-xl border border-[#48a8ff]/18 bg-[radial-gradient(circle_at_50%_100%,rgba(72,168,255,.20),rgba(0,0,0,.08)_36%,rgba(0,0,0,.32)_80%)]" aria-label="Radar range rings">
                   {[5, 10, 15].map((rangeMeters) => (
                     <span
                       key={rangeMeters}
@@ -844,7 +1073,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                     />
                   ))}
                 </div>
-                <div className="grid max-h-[320px] gap-2 overflow-auto pr-1">
+                <div className="grid h-[320px] content-start gap-2 overflow-auto pr-1">
                   {fusedSensorFrames.length === 0 && (
                     <article className="rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm text-[#ffe4ad]">
                       <b>SensorFrame yok</b>
@@ -998,10 +1227,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
           </section>
 
           <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer">
-            <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">
-              Entegrasyon
-              <span className="ml-2 rounded-full border border-[#ffbb42]/25 bg-[#ffbb42]/10 px-2 py-1 align-middle text-xs text-[#ffe4ad]">TBD</span>
-            </summary>
+            <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">Bakım / Diagnostik</summary>
             <div className="mt-3 grid gap-2">
               <AdapterRow
                 label="Perception Adapter"
@@ -1097,20 +1323,6 @@ function EvidenceRow({ label, value }: { label: string; value: string }) {
       <span className="block text-xs font-black uppercase tracking-[.12em] text-[#91a6b7]">{label}</span>
       <b className="mt-1 block break-words text-[#eaf7ff]">{value}</b>
     </div>
-  );
-}
-
-function ReadinessCard({ item }: { item: OperatorReadinessItem }) {
-  return (
-    <article className="rounded-lg border border-white/[.07] bg-white/[.04] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <b className="text-sm text-white">{item.label}</b>
-        <span className={`rounded-full border px-2 py-1 text-[11px] font-black uppercase tracking-[.08em] ${readinessTone(item.status)}`}>
-          {readinessCopy[item.status]}
-        </span>
-      </div>
-      <p className="m-0 mt-2 text-xs font-bold uppercase tracking-[.12em] text-[#91a6b7]">{item.owner}</p>
-    </article>
   );
 }
 
