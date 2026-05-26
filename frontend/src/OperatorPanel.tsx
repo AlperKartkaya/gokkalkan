@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC,
+  MANUAL_AIM_STEP_DEG,
+  canSendManualAim,
   canSendFireIntent,
   evaluateOperatorSafety,
   makeCommandResult,
   makeFireIntent,
+  makeManualAimCommand,
   operatorBlockCopy,
   type CommandResult,
   type FireIntent,
+  type ManualAimCommand,
   type OperatorPanelConfig,
   type OperatorTrackState,
 } from './operatorContracts';
@@ -17,7 +22,9 @@ import {
   fetchOperatorTelemetryExport,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
+  sendOperatorManualAimCommand,
   sendOperatorModeRequest,
+  type HardwareResult,
   type OperatorApiSnapshot,
   type OperatorReplayBundle,
   type OperatorReadinessItem,
@@ -96,6 +103,14 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function targetRangeGateOk(track: OperatorTrackState | undefined) {
+  if (!track) return false;
+  if (track.targetType === 'F16') return track.rangeM >= 10 && track.rangeM <= 15;
+  if (track.targetType === 'Helikopter' || track.targetType === 'Balistik Füze') return track.rangeM >= 5 && track.rangeM <= 15;
+  if (track.targetType === 'Mini/Micro İHA') return track.rangeM >= 0 && track.rangeM <= 15;
+  return false;
+}
+
 function commandLabel(result: CommandResult) {
   if (result.kind === 'FireIntent') return 'FireIntent';
   if (result.kind === 'ManualAimCommand') return 'ManualAimCommand';
@@ -116,6 +131,10 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [mode, setMode] = useState<Mode>('safe');
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
+  const [lastManualAim, setLastManualAim] = useState<ManualAimCommand>();
+  const [lastHardwareResult, setLastHardwareResult] = useState<HardwareResult>();
+  const [deadmanActive, setDeadmanActive] = useState(false);
+  const [manualAimRate, setManualAimRate] = useState(MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC);
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
@@ -199,19 +218,32 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
   const visibleTracks = apiSnapshot?.tracks.length ? apiSnapshot.tracks : dryRunTracks;
   const selectedTrack = visibleTracks.find((track) => track.trackId === selectedTrackId);
+  const selectedTargetGateOk = Boolean(selectedTrack && selectedTrack.friendFoe === 'Düşman' && targetRangeGateOk(selectedTrack));
   const safety = evaluateOperatorSafety({
-    estop: false,
-    motionZoneOk: true,
-    fireZoneOk: true,
-    targetGateOk: selectedTrack?.friendFoe === 'Düşman',
+    estop: apiSnapshot?.safety.estop ?? false,
+    motionZoneOk: apiSnapshot?.safety.motionZoneOk ?? true,
+    fireZoneOk: apiSnapshot?.safety.fireZoneOk ?? true,
+    targetGateOk: selectedTargetGateOk,
     modeOk: mode === 'manual' || mode === 'autonomous',
-    backendConnected: config.connectionState !== 'offline',
+    backendConnected: apiSnapshot?.safety.backendConnected ?? config.connectionState !== 'offline',
     perceptionConnected: apiSnapshot?.safety.perceptionConnected ?? config.connectionState === 'live',
     sensorAdapterConnected: apiSnapshot?.safety.sensorAdapterConnected ?? config.connectionState === 'live',
     dryRun: config.dryRun,
     liveArmEnabled: config.liveArmEnabled,
   });
   const fireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+  const manualAimReady = canSendManualAim({
+    mode,
+    deadmanActive,
+    dryRun: config.dryRun,
+    liveArmEnabled: config.liveArmEnabled,
+    backendConnected: config.connectionState !== 'offline',
+  });
+  const manualAimBlockReason = config.connectionState === 'offline'
+    ? 'BLOCKED_BACKEND'
+    : !config.dryRun && !config.liveArmEnabled
+      ? 'BLOCKED_ARMING'
+      : 'BLOCKED_MODE';
   const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
   const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
@@ -232,20 +264,29 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
       {
         id: 'operator_panel_ui',
         label: 'Operatör Paneli UI',
-        status: 'partial',
+        status: 'ready',
         owner: 'Frontend',
-        evidence: 'Panel komut niyeti, hedef izi, güvenlik özeti ve kanıt çekmecesini gösterebiliyor.',
-        nextStep: 'Canlı backend readiness raporunu ve gerçek sensör akışını bağla.',
-        ktrInterface: 'Kullanıcı Arayüzü',
+        evidence: 'Panel mod, manuel yönlendirme, FireIntent, hedef detayı, Safety Gate, readiness ve kanıt/replay yüzeylerini gösterir.',
+        nextStep: 'Canlı kamera/perception ve saha kiosk düzeni gerçek donanımla ayrıca denenmeli.',
+        ktrInterface: 'Kullanıcı Arayüzü, ManualAimCommand',
       },
       {
         id: 'backend_api',
         label: 'Backend Operatör API',
         status: apiBaseUrl && !apiError ? 'partial' : 'tbd',
         owner: 'Backend',
-        evidence: apiBaseUrl ? 'API base URL verilmiş; readiness endpoint yanıtı henüz doğrulanmadı.' : 'API base URL yok.',
+        evidence: apiBaseUrl ? 'API base URL verilmiş; state/readiness yanıtı temel panelde kullanılabilir.' : 'API base URL yok.',
         nextStep: 'Dry-run API sunucusunu başlat ve operatorApi/VITE_GOKKALKAN_OPERATOR_API_BASE ile bağla.',
-        ktrInterface: 'ModeRequest, FireIntent, CommandResult',
+        ktrInterface: 'ModeRequest, ManualAimCommand, FireIntent',
+      },
+      {
+        id: 'perception_adapter',
+        label: 'Perception Adapter',
+        status: 'tbd',
+        owner: 'Perception',
+        evidence: 'Canlı sınıflandırma akışı bağlanmadı; UI TrackState sözleşmesini bekliyor.',
+        nextStep: 'Kamera/model çıktısını TrackState olarak backend/UI akışına bağla.',
+        ktrInterface: 'TrackState',
       },
       {
         id: 'radar_lidar_adapter',
@@ -255,6 +296,15 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         evidence: 'Gerçek menzil/açı/kalite akışı henüz bağlı değil.',
         nextStep: 'Seçilen sensörün güç, veri, timestamp ve sağlık mesajı sözleşmesini doldur.',
         ktrInterface: 'SensorFrame',
+      },
+      {
+        id: 'hardware_adapter',
+        label: 'Hardware Adapter',
+        status: 'partial',
+        owner: 'Backend + Elektronik',
+        evidence: 'Mock hardware sonucu fiziksel çıkışsız gösterilir; gerçek MCU protokolü seçilmedi.',
+        nextStep: 'MCU mesaj çerçevesi ve pan/tilt limitlerini elektronik/mekanik ekiple netleştir.',
+        ktrInterface: 'HardwareResult',
       },
       {
         id: 'live_arming',
@@ -274,6 +324,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   };
   const displayReadiness = readinessReport ?? fallbackReadiness;
   const topReadinessItems = displayReadiness.items.slice(0, 6);
+  const readinessById = Object.fromEntries(displayReadiness.items.map((item) => [item.id, item])) as Record<string, OperatorReadinessItem | undefined>;
 
   const pushResult = (result: CommandResult) => {
     setCommandResults((previous) => [result, ...previous].slice(0, 8));
@@ -353,6 +404,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
 
   const recordMode = (nextMode: Mode) => {
     setMode(nextMode);
+    if (nextMode !== 'manual') setDeadmanActive(false);
     if (apiBaseUrl) {
       setApiBusy(true);
       void sendOperatorModeRequest(apiBaseUrl, {
@@ -366,6 +418,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         .then((response) => {
           pushResult(response.result);
           setApiSnapshot(response.state);
+          setLastHardwareResult(response.hardwareResult ?? undefined);
           setApiError('');
         })
         .catch((error: unknown) => {
@@ -422,19 +475,97 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
             dryRun: config.dryRun,
             safetyBlockReason: 'BLOCKED_BACKEND',
           }));
+          setLastHardwareResult(undefined);
           setApiError(error instanceof Error ? error.message : 'Backend API fire intent komutunu kabul etmedi.');
         })
         .finally(() => setApiBusy(false));
       return;
     }
 
-    pushResult(makeCommandResult({
+    const result = makeCommandResult({
       commandId: intent.requestedAt,
       kind: intent.kind,
       accepted: true,
       dryRun: intent.dryRun,
       safetyBlockReason: 'ALLOWED',
-    }));
+    });
+    pushResult(result);
+    setLastHardwareResult({
+      adapter: 'local-ui.dry-run',
+      commandId: result.commandId,
+      kind: intent.kind,
+      accepted: true,
+      completed: true,
+      physicalOutput: false,
+      message: 'Yerel dry-run panel komutu kaydetti; fiziksel çıkış üretilmedi.',
+      createdAt: result.createdAt,
+    });
+  };
+
+  const sendManualAim = (panDeltaDeg: number, tiltDeltaDeg: number) => {
+    const command = makeManualAimCommand({
+      panDeltaDeg,
+      tiltDeltaDeg,
+      deadmanActive,
+      dryRun: config.dryRun,
+      rateLimitDegPerSec: manualAimRate,
+    });
+    setLastManualAim(command);
+
+    if (!manualAimReady) {
+      pushResult(makeCommandResult({
+        commandId: `AIM-BLOCK-${Date.now()}`,
+        kind: 'ManualAimCommand',
+        accepted: false,
+        dryRun: config.dryRun,
+        safetyBlockReason: manualAimBlockReason,
+      }));
+      setLastHardwareResult(undefined);
+      return;
+    }
+
+    if (apiBaseUrl) {
+      setApiBusy(true);
+      void sendOperatorManualAimCommand(apiBaseUrl, command)
+        .then((response) => {
+          pushResult(response.result);
+          setApiSnapshot(response.state);
+          setLastHardwareResult(response.hardwareResult ?? undefined);
+          setApiError('');
+        })
+        .catch((error: unknown) => {
+          pushResult(makeCommandResult({
+            commandId: `AIM-BLOCK-${Date.now()}`,
+            kind: 'ManualAimCommand',
+            accepted: false,
+            dryRun: config.dryRun,
+            safetyBlockReason: 'BLOCKED_BACKEND',
+          }));
+          setLastHardwareResult(undefined);
+          setApiError(error instanceof Error ? error.message : 'Backend API manuel yönlendirme komutunu kabul etmedi.');
+        })
+        .finally(() => setApiBusy(false));
+      return;
+    }
+
+    const result = makeCommandResult({
+      commandId: `AIM-${Date.now()}`,
+      kind: 'ManualAimCommand',
+      accepted: true,
+      dryRun: command.dryRun,
+      safetyBlockReason: 'ALLOWED',
+    });
+    pushResult(result);
+    setLastHardwareResult({
+      adapter: 'local-ui.dry-run',
+      commandId: result.commandId,
+      kind: command.kind,
+      accepted: true,
+      completed: true,
+      physicalOutput: false,
+      message: 'Yerel dry-run manuel yönlendirme kaydedildi; pan/tilt çıkışı üretilmedi.',
+      createdAt: result.createdAt,
+    });
   };
 
   return (
@@ -522,7 +653,31 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
           <section className="grid gap-3 min-[760px]:grid-cols-3">
             <InfoCard title="Seçili hedef" value={selectedTrack ? selectedTrack.trackId : 'Yok'} detail={selectedTrack ? `${targetLabel[selectedTrack.targetType]} · ${selectedTrack.friendFoe} · ${selectedTrack.rangeM.toFixed(1)} m` : 'FireIntent kapalı'} />
             <InfoCard title="Safety açıklaması" value={safety.blockReason} detail={safety.explanation} />
-            <InfoCard title="Son niyet" value={lastIntent?.kind ?? 'Henüz yok'} detail={lastIntent ? `${lastIntent.targetId} · dryRun=${String(lastIntent.dryRun)}` : 'Komut gönderilmedi'} />
+            <InfoCard title="Son niyet" value={lastManualAim?.kind ?? lastIntent?.kind ?? 'Henüz yok'} detail={lastManualAim ? `pan=${lastManualAim.panDeltaDeg}° · tilt=${lastManualAim.tiltDeltaDeg}° · deadman=${String(lastManualAim.deadmanActive)}` : lastIntent ? `${lastIntent.targetId} · dryRun=${String(lastIntent.dryRun)}` : 'Komut gönderilmedi'} />
+          </section>
+
+          <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-target-detail" aria-label="Seçili hedef ve adapter ayrıntısı">
+            <div className="grid gap-3 min-[760px]:grid-cols-[1fr_1fr]">
+              <div>
+                <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#25d8ff]">Seçili iz ayrıntısı</p>
+                <h2 className="m-0 mt-1 text-xl font-black text-white">{selectedTrack ? targetLabel[selectedTrack.targetType] : 'Hedef seçilmedi'}</h2>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <EvidenceRow label="Track ID" value={selectedTrack?.trackId ?? 'Yok'} />
+                  <EvidenceRow label="Dost/Düşman · Kaynak" value={selectedTrack ? `${selectedTrack.friendFoe} · ${selectedTrack.source}` : 'Yok'} />
+                  <EvidenceRow label="Menzil · Açı · Güven" value={selectedTrack ? `${selectedTrack.rangeM.toFixed(1)} m · ${selectedTrack.bearingDeg.toFixed(1)}° · ${formatPercent(selectedTrack.confidence)}` : 'Yok'} />
+                  <EvidenceRow label="Son güncelleme" value={selectedTrack?.updatedAt ?? 'Yok'} />
+                </div>
+              </div>
+              <div>
+                <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ffbb42]">Adapter sınırı</p>
+                <h2 className="m-0 mt-1 text-xl font-black text-white">Dry-run sözleşme görünümü</h2>
+                <ul className="mt-3 grid gap-2 pl-5 text-sm leading-relaxed text-[#c8d8e2]">
+                  <li>`TrackState` görüntülenir; gerçek perception adapter henüz TBD.</li>
+                  <li>`SensorFrame`/Radar-LiDAR ölçümü için donanım protokolü henüz TBD.</li>
+                  <li>`ManualAimCommand` ve `FireIntent` backend Safety Gate’e gider; UI doğrudan motor/imha hattı sürmez.</li>
+                </ul>
+              </div>
+            </div>
           </section>
         </div>
 
@@ -538,6 +693,34 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 </button>
               ))}
             </div>
+            <section className="mt-4 rounded-xl border border-white/[.08] bg-black/20 p-3" data-testid="manual-aim-controls" aria-label="Manuel yönlendirme kontrolleri">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <b className="text-sm text-white">Manuel pan/tilt yönlendirme</b>
+                  <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">WP-01 için `ManualAimCommand`; manuel mod + deadman olmadan kilitli.</p>
+                </div>
+                <button
+                  className={`rounded-lg border px-3 py-2 text-xs font-black ${deadmanActive ? 'border-[#33e68c]/35 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]'}`}
+                  onClick={() => setDeadmanActive((value) => !value)}
+                >
+                  {deadmanActive ? 'DEADMAN AKTİF' : 'DEADMAN PASİF'}
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, MANUAL_AIM_STEP_DEG)}>YUKARI {MANUAL_AIM_STEP_DEG}°</button>
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, 0)}>DUR / 0°</button>
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(0, -MANUAL_AIM_STEP_DEG)}>AŞAĞI {MANUAL_AIM_STEP_DEG}°</button>
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(-MANUAL_AIM_STEP_DEG, 0)}>SOLA {MANUAL_AIM_STEP_DEG}°</button>
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(MANUAL_AIM_STEP_DEG, 0)}>SAĞA {MANUAL_AIM_STEP_DEG}°</button>
+                <button className="rounded-lg border border-white/10 bg-white/[.06] px-2 py-2 text-xs font-black text-[#c8d8e2] disabled:opacity-45" disabled={!manualAimReady || apiBusy} onClick={() => sendManualAim(MANUAL_AIM_STEP_DEG, -MANUAL_AIM_STEP_DEG)}>SAĞ/AŞAĞI</button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-[#c8d8e2]">
+                <span className="rounded-full border border-[#48a8ff]/25 bg-[#48a8ff]/10 px-2 py-1 text-[#cbe9ff]">Hız limiti: {manualAimRate}°/s</span>
+                <button className="rounded-full border border-white/10 bg-white/[.06] px-2 py-1 text-[#c8d8e2]" onClick={() => setManualAimRate(6)}>Yavaş 6°/s</button>
+                <button className="rounded-full border border-white/10 bg-white/[.06] px-2 py-1 text-[#c8d8e2]" onClick={() => setManualAimRate(MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC)}>Standart {MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC}°/s</button>
+              </div>
+              <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{manualAimReady ? 'Manuel yönlendirme dry-run komutu gönderilebilir; fiziksel pan/tilt çıkışı yok.' : operatorBlockCopy[manualAimBlockReason]}</p>
+            </section>
             <button
               className={`mt-4 min-h-16 w-full rounded-xl px-4 text-lg font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)]' : 'bg-white/[.08] text-[#91a6b7]'}`}
               disabled={!fireReady}
@@ -546,6 +729,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
               {fireReady ? 'FIRE INTENT GÖNDER (DRY-RUN)' : 'FIRE INTENT KİLİTLİ'}
             </button>
             <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{fireReady ? 'Puan veya fiziksel çıkış yok; yalnız CommandResult loglanır.' : operatorBlockCopy[safety.blockReason]}</p>
+            <div className="mt-4 rounded-xl border border-[#33e68c]/18 bg-[#33e68c]/[.06] p-3" data-testid="operator-hardware-result">
+              <b className="text-sm text-[#bfffe0]">Son hardware/mock sonucu</b>
+              <p className="m-0 mt-1 text-sm text-[#c8d8e2]">{lastHardwareResult ? `${lastHardwareResult.kind} · ${lastHardwareResult.adapter} · physicalOutput=${String(lastHardwareResult.physicalOutput)}` : 'Henüz hardware adapter sonucu yok; backend kabul ederse dry-run sonuç burada görünür.'}</p>
+              {lastHardwareResult && <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">{lastHardwareResult.message}</p>}
+            </div>
           </section>
 
           <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Güvenlik ilkeleri">
@@ -555,7 +743,53 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
               <li>Acil Durdur ve yasak alan kontrolleri backend/hardware katmanında uygulanır.</li>
               <li>Canlı kullanım için radar/LiDAR, perception ve MCU adapter kararları ayrıca bağlanmalıdır.</li>
             </ul>
+            <div className="mt-3 grid gap-2 text-sm" data-testid="operator-safety-state">
+              <EvidenceRow label="Acil Durdur" value={safety.estop ? 'AKTİF · komutlar kilitli' : 'Pasif / backend state güvenli'} />
+              <EvidenceRow label="Hareket alanı" value={safety.motionZoneOk ? 'Uygun' : 'Yasak alan · hareket kilitli'} />
+              <EvidenceRow label="Atış alanı" value={safety.fireZoneOk ? 'Uygun' : 'Yasak alan · FireIntent kilitli'} />
+              <EvidenceRow label="Hedef kapısı" value={safety.targetGateOk ? 'Düşman + menzil uygun' : 'Dost, bilinmeyen veya menzil dışı'} />
+              <EvidenceRow label="Mod kapısı" value={safety.modeOk ? 'Komuta uygun' : 'Safe/Bakım/Kilitli mod'} />
+              <EvidenceRow label="Backend bağlantısı" value={safety.backendConnected ? 'State alınıyor veya yerel dry-run' : 'Bağlantı yok'} />
+            </div>
           </section>
+
+          <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer">
+            <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">
+              Bakım / Adapter TBD
+              <span className="ml-2 rounded-full border border-[#ffbb42]/25 bg-[#ffbb42]/10 px-2 py-1 align-middle text-xs text-[#ffe4ad]">Mekanik + Elektronik rehberi bekliyor</span>
+            </summary>
+            <p className="mt-3 text-sm leading-relaxed text-[#f4e4bf]">
+              Operatör panelinin yazılım yüzeyi tamamlandı; aşağıdaki satırlar gerçek donanım seçimine bağlı olduğu için bilinçli olarak TBD veya kilitli tutulur.
+            </p>
+            <div className="mt-3 grid gap-2">
+              <AdapterRow
+                label="Perception Adapter"
+                item={readinessById.perception_adapter}
+                fallback="Kamera/model çıktısı TrackState sözleşmesine bağlanacak; canlı sınıflandırma adapterı TBD."
+              />
+              <AdapterRow
+                label="Radar/LiDAR Adapter"
+                item={readinessById.radar_lidar_adapter}
+                fallback="Menzil/açı/kalite protokolü seçilen sensöre göre TBD."
+              />
+              <AdapterRow
+                label="MCU / Hardware Protocol"
+                item={readinessById.hardware_adapter}
+                fallback="UART/RS422/CAN/Ethernet ve mesaj çerçevesi elektronik ekibiyle netleşecek."
+              />
+              <AdapterRow
+                label="Canlı Arming / Interlock"
+                item={readinessById.live_arming}
+                fallback="İki aşamalı arming, hakem/operatör kilidi ve fiziksel interlock tamamlanmadan kapalı."
+              />
+            </div>
+            <div className="mt-3 grid gap-2 text-sm">
+              <EvidenceRow label="API base" value={config.apiBaseUrl} />
+              <EvidenceRow label="Komut endpointleri" value="POST /mode · POST /manual-aim · POST /fire-intent" />
+              <EvidenceRow label="Kanıt endpointleri" value="GET /readiness · GET /telemetry/export · GET /replay" />
+              <EvidenceRow label="Canlı çıkış" value={config.liveArmEnabled ? 'Arming env açık olsa bile backend interlock zorunlu' : 'Kilitli / TBD'} />
+            </div>
+          </details>
 
           <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
             <h2 className="m-0 text-xl font-black">Olay akışı</h2>
@@ -634,6 +868,22 @@ function ReadinessCard({ item }: { item: OperatorReadinessItem }) {
       <p className="m-0 mt-2 text-xs font-bold uppercase tracking-[.12em] text-[#91a6b7]">{item.owner} · {item.ktrInterface}</p>
       <p className="m-0 mt-2 text-sm leading-snug text-[#c8d8e2]">{item.evidence}</p>
       <p className="m-0 mt-2 text-xs leading-snug text-[#ffe4ad]">Sonraki: {item.nextStep}</p>
+    </article>
+  );
+}
+
+function AdapterRow({ label, item, fallback }: { label: string; item: OperatorReadinessItem | undefined; fallback: string }) {
+  const status = item?.status ?? 'tbd';
+  return (
+    <article className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b className="text-white">{label}</b>
+        <span className={`rounded-full border px-2 py-1 text-[11px] font-black uppercase tracking-[.08em] ${readinessTone(status)}`}>
+          {readinessCopy[status]}
+        </span>
+      </div>
+      <p className="m-0 mt-2 text-[#c8d8e2]">{item?.evidence ?? fallback}</p>
+      <p className="m-0 mt-1 text-xs font-bold text-[#ffe4ad]">Sonraki: {item?.nextStep ?? fallback}</p>
     </article>
   );
 }

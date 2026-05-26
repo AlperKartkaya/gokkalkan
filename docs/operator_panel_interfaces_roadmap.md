@@ -177,6 +177,21 @@ Uygulanan endpoint’ler:
 
 İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Finale Hazırlık` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi uygunluk skoru değildir. Kapalı gelen `Kanıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
 
+## 5.2. Uygulanan dry-run operatör paneli yüzeyi
+
+Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen operatör paneli yüzeyi tamamlanmıştır:
+
+- üst durum şeridi: backend, perception placeholder, Radar/LiDAR TBD, Safety Gate ve API kaynağı,
+- `Finale Hazırlık`: hazır/kısmi/TBD/kilitli arayüz kartları; resmi uygunluk skoru değildir,
+- hedef iz ekranı: dry-run `TrackState`, seçili hedef ayrıntısı, dost/düşman, menzil, açı, güven, kaynak ve timestamp,
+- komut paneli: Safe/Manuel/Otonom/Bakım modları, deadman’li `ManualAimCommand`, hız limiti, `FireIntent`, blok gerekçesi,
+- güvenlik matrisi: Acil Durdur, hareket alanı, atış alanı, hedef kapısı, mod kapısı ve backend bağlantısı,
+- hardware sonucu: backend kabulünden dönen `HardwareResult` ve açık `physicalOutput=false` gösterimi,
+- `Bakım / Adapter TBD`: perception adapter, Radar/LiDAR adapter, MCU/hardware protokolü ve canlı arming/interlock durumlarını mekanik/elektronik kararlarına kadar TBD/kilitli tutar,
+- `Kanıt / Replay`: JSONL export, replay-only özet, command/hardware kayıtları ve fiziksel çıkışsız kanıt.
+
+Backend tarafında `ManualAimCommand` artık manuel mod + deadman yanında sayı/bounds doğrulamasından geçer. Bu bounds yazılım guardrail’idir; gerçek servo limitleri ve hızları mekanik/elektronik ekip kararından sonra güncellenecektir.
+
 ## 6. Karar önerisi
 
 Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı sayfa olarak başlatmak en pratik yoldur. Bunun nedeni:
@@ -185,7 +200,7 @@ Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı
 - Backend API ile ayrım korunursa UI teknolojisi safety-kritik karar katmanı olmaz.
 - KTR için hem simülatör hem gerçek panel ekranları aynı tasarım sistemiyle tutarlı görünür.
 
-Ancak canlı saha testi başlamadan önce şu kararlar kapatılmalıdır:
+Ancak canlı saha testi başlamadan önce şu kararlar hâlâ kapatılmalıdır:
 
 - radar/LiDAR donanımı ve mesaj formatı,
 - MCU haberleşme protokolü,

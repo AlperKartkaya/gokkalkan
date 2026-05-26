@@ -120,7 +120,7 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: canlı kamera/sensör, backend durumları, komut niyeti, Safety Gate gerekçesi, hardware geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
+- Gerçek panelde: canlı kamera/sensör alanı, backend durumları, mod seçimi, deadman’li manuel pan/tilt niyeti, FireIntent, seçili hedef detayı, Safety Gate gerekçesi, hardware mock geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi, adapter/TBD bakım çekmecesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri
@@ -145,7 +145,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Arayüz | Rol | Önerilen teknoloji | Güvenlik notu |
 | --- | --- | --- | --- |
 | Eğitim simülatörü | Yarışma provası, onboarding, puan/görev eğitimi | React + Vite + TypeScript | Gerçek donanım komutu göndermez |
-| Gerçek operatör paneli | Mod seçimi, canlı izleme, komut niyeti, blok gerekçesi | İlk öneri: React/Vite içinde ayrı sayfa + backend API | UI doğrudan ateşleme/imha hattını enerjilendirmez |
+| Gerçek operatör paneli | Mod seçimi, canlı izleme, manuel yönlendirme niyeti, ateş niyeti, blok gerekçesi | React/Vite içinde ayrı sayfa + dry-run Backend API | UI doğrudan motor veya ateşleme/imha hattını enerjilendirmez |
 | Debug/kalibrasyon görünümü | Geliştirici/entegrasyon teşhisi | Gelişmiş çekmece veya ayrı bakım ekranı | Operatör ana ekranından ayrı tutulur |
 
 ### 5.2. Yazılımsal mesaj arayüzleri
@@ -178,9 +178,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 Şartname belirli bir programlama dili veya yapay zekâ modeli zorunlu kılmaz. Bu repo için teknik yön şu şekilde güncellenmiştir:
 
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
-- **Gerçek operatör paneli önerisi:** ilk aşamada React/Vite içinde yeni sayfa + backend API; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
+- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır; saha native/kiosk ihtiyacı doğarsa PySide6 tekrar değerlendirilebilir.
 - **Backend / görev çekirdeği:** Python 3.x.
-- **Backend API ilk geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, JSONL telemetri yazar, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
+- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.

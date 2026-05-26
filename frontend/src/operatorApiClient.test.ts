@@ -7,6 +7,7 @@ import {
   normalizeOperatorApiBaseUrl,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
+  sendOperatorManualAimCommand,
   sendOperatorModeRequest,
 } from './operatorApiClient';
 
@@ -58,7 +59,7 @@ describe('operator API client', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith('http://127.0.0.1:8088/readiness', expect.objectContaining({ method: 'GET' }));
   });
 
-  it('posts mode and fire-intent commands as JSON', async () => {
+  it('posts mode, manual-aim, and fire-intent commands as JSON', async () => {
     mockFetch({ result: { accepted: true, physicalOutput: false }, state: { dryRun: true } });
 
     await sendOperatorModeRequest('http://127.0.0.1:8088', {
@@ -67,6 +68,14 @@ describe('operator API client', () => {
       operatorId: 'OP-UI-1',
       timestamp: '2026-05-25T20:20:00Z',
       reason: 'unit-test',
+      dryRun: true,
+    });
+    await sendOperatorManualAimCommand('http://127.0.0.1:8088', {
+      kind: 'ManualAimCommand',
+      panDeltaDeg: 2,
+      tiltDeltaDeg: 0,
+      rateLimitDegPerSec: 12,
+      deadmanActive: true,
       dryRun: true,
     });
     await sendOperatorFireIntent('http://127.0.0.1:8088', {
@@ -80,7 +89,8 @@ describe('operator API client', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8088/mode', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8088/fire-intent', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, 'http://127.0.0.1:8088/manual-aim', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(3, 'http://127.0.0.1:8088/fire-intent', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' } }));
   });
 
   it('fetches telemetry export, replay, and reset endpoints without live output', async () => {

@@ -261,6 +261,109 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
 });
 
+test('operator panel sends manual aim only after manual mode and deadman are active', async ({ page }) => {
+  const apiBase = 'http://127.0.0.1:5173/manual-aim-api';
+  const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
+  const track = {
+    trackId: 'DRY-RUN-F16-01',
+    stage: 3,
+    round: 1,
+    targetType: 'F16',
+    friendFoe: 'Düşman',
+    rangeM: 12.4,
+    bearingDeg: -18,
+    confidence: 0.96,
+    source: 'dry-run',
+    updatedAt: '2026-05-25T20:20:00Z',
+  };
+  const baseSafety = {
+    estop: false,
+    motionZoneOk: true,
+    fireZoneOk: true,
+    targetGateOk: true,
+    modeOk: true,
+    backendConnected: true,
+    perceptionConnected: false,
+    sensorAdapterConnected: false,
+    dryRun: true,
+    liveArmEnabled: false,
+    blockReason: 'ALLOWED',
+    explanation: 'Dry-run güvenli.',
+  };
+  let statePayload = {
+    app: 'gokkalkan-operator-api',
+    version: 1,
+    mode: 'safe',
+    stage: 3,
+    round: 1,
+    dryRun: true,
+    liveArmEnabled: false,
+    tracks: [track],
+    safety: { ...baseSafety, modeOk: false, blockReason: 'BLOCKED_MODE', explanation: 'Safe mod.' },
+    commandResults: [],
+    events: [],
+    physicalOutputEnabled: false,
+    telemetry,
+  };
+  let manualAimPayload: unknown;
+
+  await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
+  await page.route(`${apiBase}/readiness`, async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: '2026-05-25T20:21:00Z',
+      summary: 'Dry-run operatör UI tamam; adaptörler TBD.',
+      scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
+      readinessPercent: 52,
+      physicalOutputEnabled: false,
+      mode: statePayload.mode,
+      dryRun: true,
+      items: [
+        { id: 'operator_panel_ui', label: 'Operatör Paneli UI', status: 'ready', owner: 'Frontend', evidence: 'ManualAimCommand ve FireIntent yüzeyleri hazır.', nextStep: 'Canlı donanımla kiosk doğrula.', ktrInterface: 'Kullanıcı Arayüzü' },
+        { id: 'radar_lidar_adapter', label: 'Radar/LiDAR Adapter', status: 'tbd', owner: 'Sensör', evidence: 'Gerçek sensör protokolü seçilmedi.', nextStep: 'Seçilen sensörün güç/veri arayüzünü doldur.', ktrInterface: 'SensorFrame' },
+        { id: 'hardware_adapter', label: 'Hardware Adapter', status: 'partial', owner: 'Backend + Elektronik', evidence: 'Dry-run adapter physicalOutput=false döndürüyor.', nextStep: 'MCU haberleşme protokolünü bağla.', ktrInterface: 'HardwareCommand' },
+        { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'İki aşamalı arming ve interlock doğrulaması gerekir.', ktrInterface: 'ArmingState' },
+      ],
+      nextCriticalActions: ['Seçilen sensörün güç/veri arayüzünü doldur.'],
+    }),
+  }));
+  await page.route(`${apiBase}/mode`, async (route) => {
+    statePayload = { ...statePayload, mode: 'manual', safety: { ...baseSafety } };
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        result: { commandId: 'CMD-00001', kind: 'ModeRequest', accepted: true, completed: true, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi.', physicalOutput: false, createdAt: '2026-05-25T20:20:01Z' },
+        safety: baseSafety,
+        state: statePayload,
+      }),
+    });
+  });
+  await page.route(`${apiBase}/manual-aim`, async (route) => {
+    manualAimPayload = route.request().postDataJSON();
+    const result = { commandId: 'CMD-00002', kind: 'ManualAimCommand', accepted: true, completed: true, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi.', physicalOutput: false, createdAt: '2026-05-25T20:20:02Z' };
+    const hardwareResult = { adapter: 'hardware_mock.dry_run', commandId: 'CMD-00002', kind: 'ManualAimCommand', accepted: true, completed: true, physicalOutput: false, message: 'Dry-run hardware adapter komutu kaydetti; fiziksel çıkış üretilmedi.', createdAt: '2026-05-25T20:20:02Z' };
+    statePayload = { ...statePayload, commandResults: [result] };
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result, safety: baseSafety, hardwareResult, state: statePayload }) });
+  });
+
+  await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  const manualControls = page.getByTestId('manual-aim-controls');
+  await expect(manualControls).toContainText('Manuel pan/tilt yönlendirme');
+  await expect(manualControls.getByRole('button', { name: 'SAĞA 2°' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Manuel' }).click();
+  await manualControls.getByRole('button', { name: 'DEADMAN PASİF' }).click();
+  await expect(manualControls.getByRole('button', { name: 'SAĞA 2°' })).toBeEnabled();
+  await manualControls.getByRole('button', { name: 'SAĞA 2°' }).click();
+
+  expect(manualAimPayload).toMatchObject({ kind: 'ManualAimCommand', panDeltaDeg: 2, tiltDeltaDeg: 0, deadmanActive: true, dryRun: true });
+  await expect(page.locator('article').filter({ hasText: 'ManualAimCommand · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
+  await expect(page.getByTestId('operator-hardware-result')).toContainText('hardware_mock.dry_run');
+  await expect(page.getByTestId('operator-hardware-result')).toContainText('physicalOutput=false');
+  await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Mekanik + Elektronik rehberi bekliyor');
+});
+
 test('operator panel can be opened directly with query parameter and returns to simulator', async ({ page }) => {
   await page.goto('/?operator=1');
 

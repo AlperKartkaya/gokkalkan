@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { canSendFireIntent, evaluateOperatorSafety, makeCommandResult, makeFireIntent } from './operatorContracts';
+import {
+  canSendFireIntent,
+  canSendManualAim,
+  evaluateOperatorSafety,
+  isManualAimPayloadSafe,
+  makeCommandResult,
+  makeFireIntent,
+  makeManualAimCommand,
+} from './operatorContracts';
 import type { OperatorSafetyState } from './operatorContracts';
 
 const baseSafetyInput: Omit<OperatorSafetyState, 'blockReason' | 'explanation'> = {
@@ -65,5 +73,21 @@ describe('operator panel safety contracts', () => {
 
     expect(result.completed).toBe(false);
     expect(result.message).toBe('Backend bağlantısı yok; gerçek komut gönderilemez.');
+  });
+
+  it('creates manual aim commands only inside bounded dry-run guardrails', () => {
+    const command = makeManualAimCommand({
+      panDeltaDeg: 2,
+      tiltDeltaDeg: 0,
+      deadmanActive: true,
+      dryRun: true,
+    });
+
+    expect(command).toMatchObject({ kind: 'ManualAimCommand', rateLimitDegPerSec: 12, deadmanActive: true });
+    expect(isManualAimPayloadSafe(command)).toBe(true);
+    expect(isManualAimPayloadSafe({ ...command, panDeltaDeg: 99 })).toBe(false);
+    expect(canSendManualAim({ mode: 'manual', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(true);
+    expect(canSendManualAim({ mode: 'safe', deadmanActive: true, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
+    expect(canSendManualAim({ mode: 'manual', deadmanActive: false, dryRun: true, liveArmEnabled: false, backendConnected: true })).toBe(false);
   });
 });

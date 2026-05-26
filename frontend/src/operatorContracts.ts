@@ -2,7 +2,12 @@ import type { BlockReason, FriendFoe, Mode, Stage, TargetType } from './types';
 
 export type OperatorConnectionState = 'offline' | 'dry-run' | 'live';
 export type OperatorCommandKind = 'ModeRequest' | 'ManualAimCommand' | 'FireIntent';
-export type OperatorBlockReason = BlockReason | 'BLOCKED_ARMING' | 'BLOCKED_BACKEND' | 'BLOCKED_SENSOR';
+export type OperatorBlockReason = BlockReason | 'BLOCKED_ARMING' | 'BLOCKED_BACKEND' | 'BLOCKED_SENSOR' | 'BLOCKED_INVALID_COMMAND';
+
+export const MANUAL_AIM_STEP_DEG = 2;
+export const MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 12;
+export const MAX_MANUAL_AIM_DELTA_DEG = 10;
+export const MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30;
 
 export interface OperatorPanelConfig {
   apiBaseUrl: string;
@@ -90,6 +95,7 @@ export const operatorBlockCopy: Record<OperatorBlockReason, string> = {
   BLOCKED_ARMING: 'Canlı arming kapalı; fiziksel çıkış yetkisi yok.',
   BLOCKED_BACKEND: 'Backend bağlantısı yok; gerçek komut gönderilemez.',
   BLOCKED_SENSOR: 'Perception veya sensör adapter sağlığı doğrulanmadı.',
+  BLOCKED_INVALID_COMMAND: 'Komut alanları güvenli sınırlar içinde değil.',
 };
 
 export function evaluateOperatorSafety(input: Omit<OperatorSafetyState, 'blockReason' | 'explanation'>): OperatorSafetyState {
@@ -113,6 +119,39 @@ export function evaluateOperatorSafety(input: Omit<OperatorSafetyState, 'blockRe
 
 export function canSendFireIntent(safety: OperatorSafetyState, selectedTargetId: string | undefined): boolean {
   return Boolean(selectedTargetId) && safety.blockReason === 'ALLOWED' && (safety.dryRun || safety.liveArmEnabled);
+}
+
+export function canSendManualAim(params: { mode: Mode; deadmanActive: boolean; dryRun: boolean; liveArmEnabled: boolean; backendConnected: boolean }): boolean {
+  return params.mode === 'manual' && params.deadmanActive && params.backendConnected && (params.dryRun || params.liveArmEnabled);
+}
+
+export function isManualAimPayloadSafe(command: ManualAimCommand): boolean {
+  return (
+    Number.isFinite(command.panDeltaDeg)
+    && Number.isFinite(command.tiltDeltaDeg)
+    && Number.isFinite(command.rateLimitDegPerSec)
+    && Math.abs(command.panDeltaDeg) <= MAX_MANUAL_AIM_DELTA_DEG
+    && Math.abs(command.tiltDeltaDeg) <= MAX_MANUAL_AIM_DELTA_DEG
+    && command.rateLimitDegPerSec > 0
+    && command.rateLimitDegPerSec <= MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC
+  );
+}
+
+export function makeManualAimCommand(params: {
+  panDeltaDeg: number;
+  tiltDeltaDeg: number;
+  deadmanActive: boolean;
+  dryRun: boolean;
+  rateLimitDegPerSec?: number;
+}): ManualAimCommand {
+  return {
+    kind: 'ManualAimCommand',
+    panDeltaDeg: params.panDeltaDeg,
+    tiltDeltaDeg: params.tiltDeltaDeg,
+    rateLimitDegPerSec: params.rateLimitDegPerSec ?? MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC,
+    deadmanActive: params.deadmanActive,
+    dryRun: params.dryRun,
+  };
 }
 
 export function makeFireIntent(params: { targetId: string; stage: Stage; round: number; dryRun: boolean; now?: Date }): FireIntent {

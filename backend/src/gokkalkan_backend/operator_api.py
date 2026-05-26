@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
+from math import isfinite
 from typing import Any, Callable, Literal
 
 from .telemetry_log import JsonlTelemetryStore
@@ -32,10 +33,13 @@ BlockReason = Literal[
     "BLOCKED_ARMING",
     "BLOCKED_BACKEND",
     "BLOCKED_SENSOR",
+    "BLOCKED_INVALID_COMMAND",
 ]
 
 VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked", "maintenance"}
 ENGAGEMENT_MODES: set[str] = {"manual", "autonomous", "engagement"}
+MAX_MANUAL_AIM_DELTA_DEG = 10.0
+MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30.0
 READINESS_SCORE: dict[ReadinessStatus, float] = {
     "ready": 1.0,
     "partial": 0.55,
@@ -54,6 +58,7 @@ BLOCK_COPY: dict[BlockReason, str] = {
     "BLOCKED_ARMING": "Canlı arming kapalı; fiziksel çıkış yetkisi yok.",
     "BLOCKED_BACKEND": "Backend bağlantısı yok; gerçek komut gönderilemez.",
     "BLOCKED_SENSOR": "Perception veya sensör adapter sağlığı doğrulanmadı.",
+    "BLOCKED_INVALID_COMMAND": "Komut alanları güvenli sınırlar içinde değil.",
 }
 
 
@@ -78,6 +83,39 @@ def target_range_gate(target_type: str, range_m: float) -> bool:
     if target_type == "Mini/Micro İHA":
         return 0 <= range_m <= 15
     return False
+
+
+def _finite_payload_number(payload: dict[str, Any], key: str) -> float | None:
+    if key not in payload:
+        return None
+    if isinstance(payload[key], bool):
+        return None
+    try:
+        value = float(payload[key])
+    except (TypeError, ValueError):
+        return None
+    return value if isfinite(value) else None
+
+
+def manual_aim_payload_ok(payload: dict[str, Any]) -> bool:
+    """Validate a high-level manual aim intent before any hardware boundary.
+
+    These are conservative software guardrails for the dry-run command surface,
+    not final mechanical limits. Real servo travel/rate limits remain owned by
+    the mechanics/electronics integration pass.
+    """
+
+    pan_delta = _finite_payload_number(payload, "panDeltaDeg")
+    tilt_delta = _finite_payload_number(payload, "tiltDeltaDeg")
+    rate_limit = _finite_payload_number(payload, "rateLimitDegPerSec")
+    return (
+        pan_delta is not None
+        and tilt_delta is not None
+        and rate_limit is not None
+        and abs(pan_delta) <= MAX_MANUAL_AIM_DELTA_DEG
+        and abs(tilt_delta) <= MAX_MANUAL_AIM_DELTA_DEG
+        and 0 < rate_limit <= MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC
+    )
 
 
 @dataclass(frozen=True)
@@ -237,9 +275,9 @@ class OperatorService:
                 "Backend Operatör API",
                 "ready" if self.backend_connected else "blocked",
                 "Backend",
-                "GET /state, GET /readiness, POST /mode, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
+                "GET /state, GET /readiness, POST /mode, POST /manual-aim, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
                 "API hata toleransı ve oturum/imza katmanı saha entegrasyonu öncesi eklenecek.",
-                "ModeRequest, FireIntent, CommandResult",
+                "ModeRequest, ManualAimCommand, FireIntent, CommandResult",
             ),
             self._readiness_item(
                 "safety_gate",
@@ -262,11 +300,11 @@ class OperatorService:
             self._readiness_item(
                 "operator_panel_ui",
                 "Operatör Paneli UI",
-                "partial",
+                "ready",
                 "Frontend",
-                "React panel backend state, komut niyeti, blok gerekçesi ve kanıt çekmecesini gösteriyor.",
-                "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla denenmeli.",
-                "Kullanıcı Arayüzü, TrackState",
+                "React panel mod seçimi, manuel yönlendirme, FireIntent, hedef detayı, Safety Gate, hardware mock sonucu, readiness ve kanıt/replay yüzeylerini gösteriyor.",
+                "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla ayrıca denenmeli.",
+                "Kullanıcı Arayüzü, TrackState, ManualAimCommand",
             ),
             self._readiness_item(
                 "perception_adapter",
@@ -324,7 +362,7 @@ class OperatorService:
         return {
             "schemaVersion": 1,
             "generatedAt": self._clock(),
-            "summary": "Dry-run operatör zinciri çalışıyor; final fazı için perception, radar/LiDAR, MCU ve canlı arming arayüzleri hâlâ TBD/entegrasyon bekliyor.",
+            "summary": "Dry-run operatör UI ve backend zinciri çalışıyor; final fazı için perception, radar/LiDAR, MCU ve canlı arming arayüzleri hâlâ TBD/entegrasyon bekliyor.",
             "scoreBasis": "Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.",
             "readinessPercent": percent,
             "physicalOutputEnabled": False,
@@ -401,6 +439,7 @@ class OperatorService:
         live_arm_enabled = self.live_arm_enabled and not dry_run
         target_gate_ok = True
         mode_ok = True
+        command_payload_ok = True
 
         if kind == "FireIntent":
             mode_ok = self.mode in ENGAGEMENT_MODES
@@ -411,6 +450,7 @@ class OperatorService:
             )
         elif kind == "ManualAimCommand":
             mode_ok = self.mode == "manual" and bool(payload.get("deadmanActive"))
+            command_payload_ok = manual_aim_payload_ok(payload)
         elif kind == "ModeRequest":
             mode_ok = payload.get("requestedMode") in VALID_MODES
 
@@ -427,6 +467,8 @@ class OperatorService:
             block = "BLOCKED_FIRE_ZONE"
         elif not mode_ok:
             block = "BLOCKED_MODE"
+        elif kind == "ManualAimCommand" and not command_payload_ok:
+            block = "BLOCKED_INVALID_COMMAND"
         elif not target_gate_ok:
             block = "BLOCKED_TARGET_GATE"
         elif not dry_run and (not self.perception_connected or not self.sensor_adapter_connected):

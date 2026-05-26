@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from gokkalkan_backend.operator_api import DryRunHardwareAdapter, OperatorService, target_range_gate
+from gokkalkan_backend.operator_api import DryRunHardwareAdapter, OperatorService, manual_aim_payload_ok, target_range_gate
 from gokkalkan_backend.operator_http_server import build_http_server
 from gokkalkan_backend.telemetry_log import JsonlTelemetryStore
 
@@ -54,6 +54,38 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertFalse(response["result"]["physicalOutput"])
         self.assertFalse(response["hardwareResult"]["physicalOutput"])
         self.assertEqual(len(self.hardware.commands), 1)
+
+    def test_manual_aim_requires_manual_mode_deadman_and_safe_payload(self) -> None:
+        blocked = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": True, "dryRun": True})
+        self.assertFalse(blocked["result"]["accepted"])
+        self.assertEqual(blocked["result"]["safetyBlockReason"], "BLOCKED_MODE")
+        self.assertEqual(self.hardware.commands, [])
+
+        self.service.handle_mode_request({"requestedMode": "manual", "operatorId": "test", "timestamp": fixed_clock(), "reason": "manual-test", "dryRun": True})
+
+        no_deadman = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": False, "dryRun": True})
+        self.assertFalse(no_deadman["result"]["accepted"])
+        self.assertEqual(no_deadman["result"]["safetyBlockReason"], "BLOCKED_MODE")
+        self.assertEqual(self.hardware.commands, [])
+
+        oversized = self.service.handle_manual_aim({"panDeltaDeg": 99, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": True, "dryRun": True})
+        self.assertFalse(oversized["result"]["accepted"])
+        self.assertEqual(oversized["result"]["safetyBlockReason"], "BLOCKED_INVALID_COMMAND")
+        self.assertEqual(self.hardware.commands, [])
+
+        accepted = self.service.handle_manual_aim({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12, "deadmanActive": True, "dryRun": True})
+        self.assertTrue(accepted["result"]["accepted"])
+        self.assertFalse(accepted["result"]["physicalOutput"])
+        self.assertFalse(accepted["hardwareResult"]["physicalOutput"])
+        self.assertEqual(len(self.hardware.commands), 1)
+        self.assertEqual(self.hardware.commands[0]["command"]["kind"], "ManualAimCommand")
+
+    def test_manual_aim_payload_guard_rejects_malformed_values(self) -> None:
+        self.assertTrue(manual_aim_payload_ok({"panDeltaDeg": 0, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
+        self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": "nan", "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
+        self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": True, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
+        self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": 2, "tiltDeltaDeg": 0}))
+        self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 0}))
 
     def test_telemetry_jsonl_export_and_replay_are_persistent_and_no_output(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "telemetry-test", "dryRun": True})
@@ -104,6 +136,8 @@ class OperatorServiceTest(unittest.TestCase):
         items = {item["id"]: item for item in report["items"]}
         self.assertEqual(items["backend_api"]["status"], "ready")
         self.assertEqual(items["telemetry_replay"]["status"], "ready")
+        self.assertEqual(items["operator_panel_ui"]["status"], "ready")
+        self.assertIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
         self.assertEqual(items["perception_adapter"]["status"], "tbd")
         self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")
         self.assertEqual(items["live_arming"]["status"], "blocked")
