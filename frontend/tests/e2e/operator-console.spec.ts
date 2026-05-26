@@ -247,9 +247,9 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-panel')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
   await expect(page.getByText('DRY-RUN AÇIK · fiziksel çıkış yok')).toBeVisible();
-  await expect(page.getByText('UI doğrudan ateşleme/imha hattını enerjilendirmez.')).toBeVisible();
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Finale Hazırlık');
-  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Gerçek sisteme yakınlık');
+  await expect(page.getByRole('heading', { name: 'Interlock' })).toBeVisible();
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Sistem Durumu');
+  await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Hazırlık');
   await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Radar/LiDAR Adapter');
   await expect(page.getByTestId('operator-readiness-dashboard')).toContainText('Canlı Arming / Fiziksel Çıkış');
   await expect(page.getByText(/Puan/)).toHaveCount(0);
@@ -417,18 +417,17 @@ test('operator panel changes final-phase stage and renders radar LiDAR software 
   await expect(stageControl).toContainText('Manuel Mod zorunlu');
   const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
   await expect(sensorPanel).toContainText('0 frame');
-  await expect(sensorPanel).toContainText('Backend SensorFrame akışı boş');
+  await expect(sensorPanel).toContainText('SensorFrame yok');
   await page.getByRole('button', { name: 'Aşama 3' }).click();
 
-  await expect(stageControl).toContainText('Aşama 3 · Otonom dost/düşman ayrımı');
+  await expect(stageControl).toContainText('dost/düşman · menzil');
   await expect(stageControl).toContainText('8 tur');
-  await expect(sensorPanel).toContainText('Ham ölçüm');
-  await expect(sensorPanel).toContainText('Yazılım katmanı');
+  await expect(sensorPanel).toContainText('Menzil · Açı · Sınıf');
   await expect(sensorPanel).toContainText('F16');
   await expect(sensorPanel).toContainText('Düşman');
   await expect(sensorPanel).toContainText('Dost');
   await expect(sensorPanel).toContainText('12.4 m');
-  await expect(sensorPanel).toContainText('menzil kapısı Uygun');
+  await expect(sensorPanel).toContainText('menzil Uygun');
   await expect(sensorPanel).toContainText('replayOnly=true');
   await expect(page.getByText(/physicalOutput=true/)).toHaveCount(0);
 });
@@ -533,7 +532,7 @@ test('operator panel sends manual aim only after manual mode and deadman are act
   await expect(page.locator('article').filter({ hasText: 'ManualAimCommand · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
   await expect(page.getByTestId('operator-hardware-result')).toContainText('hardware_mock.dry_run');
   await expect(page.getByTestId('operator-hardware-result')).toContainText('physicalOutput=false');
-  await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Mekanik + Elektronik rehberi bekliyor');
+  await expect(page.getByTestId('operator-maintenance-drawer')).toContainText('Entegrasyon');
 });
 
 test('operator panel keeps manual aim locked outside Aşama 1 even with manual mode and deadman', async ({ page }) => {
@@ -617,11 +616,15 @@ test('operator panel keeps manual aim locked outside Aşama 1 even with manual m
   });
 
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
+  const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
+  await expect(sensorPanel).toContainText('offline · replayOnly=false');
+  await expect(sensorPanel).toContainText('TBD');
+  await expect(sensorPanel.getByText('Canlı')).toHaveCount(0);
   const manualControls = page.getByTestId('manual-aim-controls');
   await page.getByRole('button', { name: 'Manuel' }).click();
   await manualControls.getByRole('button', { name: 'DEADMAN PASİF' }).click();
 
-  await expect(manualControls).toContainText('Aşama 2-3 final fazında manuel yönlendirme kilitli');
+  await expect(manualControls).toContainText('Manuel kilitli');
   await expect(manualControls.getByRole('button', { name: 'SAĞA 2°' })).toBeDisabled();
   expect(manualAimCalled).toBe(false);
 });
@@ -692,13 +695,12 @@ test('operator panel readiness dashboard reads backend final-phase gap report', 
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
 
   const dashboard = page.getByTestId('operator-readiness-dashboard');
-  await expect(dashboard).toContainText('Gerçek sisteme yakınlık: %43');
-  await expect(dashboard).toContainText('resmi yarışma uygunluk skoru değildir');
+  await expect(dashboard).toContainText('Hazırlık %43');
   await expect(dashboard).toContainText('Radar/LiDAR Adapter');
   await expect(dashboard).toContainText('TBD');
   await expect(dashboard).toContainText('Canlı Arming / Fiziksel Çıkış');
   await expect(dashboard).toContainText('Kilitli');
-  await expect(dashboard).toContainText('Sıradaki kritik adım');
+  await expect(dashboard).toContainText('Sonraki iş');
   await expect(dashboard).toContainText('Seçilen sensörün güç/veri arayüzünü doldur.');
   await expect(page.getByText('tamamen hazır')).toHaveCount(0);
 });
@@ -816,7 +818,7 @@ test('operator panel evidence drawer reads backend telemetry export and replay s
 
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
   await expect(page.getByTestId('operator-panel')).toBeVisible();
-  await page.getByText('Kanıt / Replay').click();
+  await page.getByTestId('operator-evidence-drawer').locator('summary').click();
   await expect(page.getByText('JSONL kayıt yolu')).toBeVisible();
   await page.getByRole('button', { name: 'Kanıtı Yenile' }).click();
   await expect(page.getByText('Kanıt paketi güncellendi; replay yalnız kayıt okur.')).toBeVisible();
@@ -869,7 +871,7 @@ test('operator panel evidence drawer surfaces backend telemetry failures without
 
   await page.goto(`/?operator=1&operatorApi=${encodeURIComponent(apiBase)}`);
   await expect(page.getByTestId('operator-panel')).toBeVisible();
-  await page.getByText('Kanıt / Replay').click();
+  await page.getByTestId('operator-evidence-drawer').locator('summary').click();
   await page.getByRole('button', { name: 'Kanıtı Yenile' }).click();
 
   await expect(page.getByText('Operator API 503: Service Unavailable')).toBeVisible();

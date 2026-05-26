@@ -63,18 +63,18 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
    - FireIntent butonu ve blok gerekçesi.
 4. **Güvenlik ve olay akışı**
    - `SafetyState`, `CommandResult`, `TelemetryEvent`, `HardwareFault`.
-5. **Bakım/kalibrasyon çekmecesi**
+5. **Entegrasyon / bakım çekmecesi**
    - sensör kalibrasyonu,
    - servo limitleri,
    - dry-run/live ayrımı,
    - ham mesajlar.
-6. **Finale Hazırlık göstergesi**
+6. **Sistem Durumu göstergesi**
    - `/readiness` raporu,
    - repo içi entegrasyon yüzdesi,
    - hazır/kısmi/TBD/kilitli arayüz kartları,
    - sıradaki kritik radar/LiDAR, perception, MCU ve arming adımları.
    - Bu gösterge resmi yarışma uygunluk skoru değildir; yalnız uygulanmış yazılım arayüzlerinin durumunu dürüstçe gösterir.
-7. **Kanıt / Replay çekmecesi**
+7. **Kayıt / Replay çekmecesi**
    - JSONL telemetri yolu ve kayıt sayısı,
    - `/telemetry/export` kanıt paketi,
    - replay-only olay/komut/hardware sonucu özeti,
@@ -179,30 +179,52 @@ Uygulanan endpoint’ler:
 | `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
 | `POST /telemetry/reset` | UI/Debug → Backend | dry-run state ve JSONL kanıtını sıfırlar | safe moda döner; fiziksel çıkış üretmez |
 
-İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Finale Hazırlık` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi uygunluk skoru değildir. Kapalı gelen `Kanıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
+İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Sistem Durumu` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi yarışma uygunluk skoru değildir. Kapalı gelen `Kayıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
 
 ## 5.2. Uygulanan dry-run operatör paneli yüzeyi
 
 Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen operatör paneli yüzeyi tamamlanmıştır:
 
-- üst durum şeridi: aşama/tur, backend, perception placeholder, Radar/LiDAR replay/TBD, Safety Gate ve API kaynağı,
-- `Finale Hazırlık`: hazır/kısmi/TBD/kilitli arayüz kartları; resmi uygunluk skoru değildir,
+- üst durum şeridi: aşama/tur, backend, perception placeholder, Radar/LiDAR replay/TBD/canlı, Safety Gate ve API kaynağı,
+- `Sistem Durumu`: hazır/kısmi/TBD/kilitli arayüz kartları; resmi uygunluk skoru değildir,
 - `Aşama / Tur kontrolü`: Aşama 1 manuel, Aşama 2 otonom 4 resmi tur ve sınıflandırmasız takip, Aşama 3 otonom 8 tur + dost/düşman + menzil kapısı bağlamını gösterir,
-- `Radar/LiDAR realtime katmanı`: ham menzil/açı/hız/SNR/nokta/kalite verisini yazılımsal hedef tipi, dost/düşman, güven, range gate ve angajman önerisiyle birlikte gösterir,
+- `Radar / LiDAR`: ham menzil/açı/hız/SNR/nokta/kalite verisini yazılımsal hedef tipi, dost/düşman, güven ve range gate ile birlikte gösterir,
 - hedef iz ekranı: dry-run `TrackState`, seçili hedef ayrıntısı, dost/düşman, menzil, açı, güven, kaynak ve timestamp,
 - komut paneli: Safe/Manuel/Otonom/Bakım modları, deadman’li `ManualAimCommand`, hız limiti, `FireIntent`, blok gerekçesi,
-- güvenlik matrisi: Acil Durdur, hareket alanı, atış alanı, hedef kapısı, mod kapısı ve backend bağlantısı,
+- `Interlock`: Acil Durdur, hareket alanı, atış alanı, hedef kapısı, mod kapısı ve backend bağlantısı,
 - hardware sonucu: backend kabulünden dönen `HardwareResult` ve açık `physicalOutput=false` gösterimi,
-- `Bakım / Adapter TBD`: perception adapter, Radar/LiDAR adapter, MCU/hardware protokolü ve canlı arming/interlock durumlarını mekanik/elektronik kararlarına kadar TBD/kilitli tutar,
-- `Kanıt / Replay`: JSONL export, replay-only özet, command/hardware kayıtları ve fiziksel çıkışsız kanıt.
+- `Entegrasyon`: perception adapter, Radar/LiDAR adapter, MCU/hardware protokolü ve canlı arming/interlock durumlarını mekanik/elektronik kararlarına kadar TBD/kilitli tutar,
+- `Kayıt / Replay / Log`: JSONL export, replay-only özet, command/hardware kayıtları ve fiziksel çıkışsız kanıt.
 
 Backend tarafında `ManualAimCommand` artık manuel mod + deadman yanında sayı/bounds doğrulamasından geçer. Bu bounds yazılım guardrail’idir; gerçek servo limitleri ve hızları mekanik/elektronik ekip kararından sonra güncellenecektir.
 
 `SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Public radar/LiDAR veri kaynakları offline test için değerlendirilebilir; örneğin Oxford Radar RobotCar Dataset Navtech FMCW radar ve Velodyne LiDAR verisi sağlar, nuScenes ise kamera/radar/LiDAR sensör süitiyle örneklenebilir. Bu repo şu an büyük dış dataset veya model dosyası commit etmez; gerçek adapter seçilene kadar fixture yalnız arayüz ve KTR kanıtı üretir.
 
+## 5.3. Vendor LiDAR yazılımı stratejisi
+
+RPLIDAR Viewer, Livox Viewer veya benzeri üretici yazılımları yarışma günü operatör arayüzü olmamalıdır. Bu araçlar laboratuvarda cihazın görüldüğünü, seri/Ethernet ayarlarını, firmware/kalibrasyon durumunu ve ham point cloud kalitesini doğrulamak için değerlidir; fakat `Aşama`, `Tur`, `Safety Gate`, dost/düşman, menzil kapısı, `FireIntent`, MCU interlock ve KTR/replay kanıtı bağlamını bilmezler.
+
+Final saha hedefi tek Gökkalkan Operator Panel programıdır:
+
+```text
+Radar/LiDAR SDK veya driver
+  -> Sensor Adapter servisi
+  -> ortak SensorFrame akışı
+  -> Backend füzyon / görev / safety gate
+  -> Gökkalkan Operator Panel
+```
+
+Bu nedenle vendor viewer sadece bakım/diagnostic modunda, operatör panelinden ayrı açılabilecek yardımcı araç olarak tutulmalıdır. Ana panel, üretici viewer penceresini embed etmeye veya ekran kazımaya çalışmamalıdır; canlı görevde sensör verisini SDK/driver üzerinden `SensorFrame` sözleşmesine çevirip kendi sade polar görünümünü ve hedef kartlarını göstermelidir. `Matplotlib` canlı panel için değil, offline log analizi ve rapor grafikleri için uygundur.
+
+Paketleme hedefi:
+
+- saha bilgisayarı Linux ise: backend + adapter servisleri + operatör UI tek launcher altında, tercihen AppImage veya systemd servisleri + kiosk shell,
+- Windows demo gerekiyorsa: aynı launcher mantığının `.exe` çıktısı,
+- her iki durumda da canlı fiziksel çıkış, `dry-run` yerine iki aşamalı arming + fiziksel interlock + hakem/operatör prosedürü tamamlanmadan açılamaz.
+
 ## 6. Karar önerisi
 
-Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı sayfa olarak başlatmak en pratik yoldur. Bunun nedeni:
+Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı sayfa olarak başlatmak ve Python backend/API servisleriyle paketlemek en pratik yoldur. Bunun nedeni:
 
 - Mevcut simülatörde yarışma dili, stage UI, hedef silüetleri ve safety summary zaten oluştu.
 - Backend API ile ayrım korunursa UI teknolojisi safety-kritik karar katmanı olmaz.
