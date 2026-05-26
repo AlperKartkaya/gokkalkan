@@ -1,0 +1,17 @@
+{
+  "name": "gokkalkan-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "desktop": "npm --prefix frontend run desktop --",
+    "desktop:dev": "npm --prefix frontend run desktop:dev --",
+    "desktop:check": "npm --prefix frontend run desktop:check --",
+    "desktop:preview": "npm --prefix frontend run desktop:preview --",
+    "test:desktop": "npm --prefix frontend run test:desktop --",
+    "test:competition": "npm --prefix frontend run test:competition --",
+    "build": "npm --prefix frontend run build --",
+    "typecheck": "npm --prefix frontend run typecheck --",
+    "test:unit": "npm --prefix frontend run test:unit --"
+  }
+}

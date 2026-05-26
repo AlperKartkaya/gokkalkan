@@ -638,6 +638,23 @@ test('operator panel can be opened directly with query parameter and returns to 
   await expect(page.getByTestId('parkour-hero')).toBeVisible();
 });
 
+test('desktop operator shell keeps LiDAR vendor tools diagnostic-only', async ({ page }) => {
+  await page.goto('/?operator=1&desktop=1');
+
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await expect(page.getByTestId('operator-desktop-shell')).toContainText('Kabuk: Desktop');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Radar / LiDAR');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('SensorFrame');
+
+  await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
+  const lidarDiagnostics = page.getByTestId('operator-lidar-diagnostics');
+  await expect(lidarDiagnostics).toContainText('LiDAR viewer');
+  await expect(lidarDiagnostics).toContainText('Dış diagnostic / görev UI değil');
+  await expect(lidarDiagnostics).toContainText('RPLIDAR / Livox');
+  await expect(lidarDiagnostics).toContainText('SDK/driver → SensorFrame → Backend');
+  await expect(page.getByText('RPLIDAR Viewer').or(page.getByText('Livox Viewer'))).toHaveCount(0);
+});
+
 test('operator panel readiness dashboard reads backend final-phase gap report', async ({ page }) => {
   const apiBase = 'http://127.0.0.1:5173/readiness-api';
   await page.route(`${apiBase}/state`, async (route) => route.fulfill({

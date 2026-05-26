@@ -98,7 +98,7 @@ For report/documentation work:
 
 ## Commands and verification
 
-There is currently no root-level `package.json`, `pyproject.toml`, `requirements.txt`, `Makefile`, `Dockerfile`, or committed test runner configuration. Do not claim a standard command exists until one is added.
+There is now a root-level `package.json` only for lightweight npm script proxies into `frontend/` (for example `npm run desktop`, `npm run desktop:check`, `npm run test:competition`, `npm run build`). Python packaging, root dependency installation, `pyproject.toml`, `requirements.txt`, `Makefile`, `Dockerfile`, and a root test-runner configuration are still not present. Do not claim additional standard commands exist until they are added.
 
 When code is added later, prefer verification in this order:
 1. Run the narrowest relevant test first.

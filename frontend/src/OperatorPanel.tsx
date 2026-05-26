@@ -205,7 +205,9 @@ function shortRecordPayload(record: OperatorTelemetryLogRecord) {
 }
 
 export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () => void; onOpenSimulator: () => void }) {
-  const queryApiBaseUrl = useMemo(() => new URLSearchParams(window.location.search).get('operatorApi')?.trim() ?? '', []);
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
+  const isDesktopShell = queryParams.get('desktop') === '1';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
@@ -744,6 +746,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : 'placeholder'}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(sensorSource === 'Canlı')}`}>Radar/LiDAR: {sensorSource === 'Canlı' ? 'canlı' : sensorSource === 'Replay' ? 'replay fixture' : sensorSource}</span>
         <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
+        {isDesktopShell && <span className="rounded-lg border border-[#33e68c]/30 bg-[#33e68c]/10 px-3 py-2 text-sm font-black text-[#bfffe0]" data-testid="operator-desktop-shell">Kabuk: Desktop</span>}
         <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {apiError || config.apiBaseUrl}</span>
       </section>
 
@@ -807,6 +810,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 <div className="mt-3 grid gap-2 text-sm">
                   <EvidenceRow label="Akış durumu" value={`${sensorHealth.status} · replayOnly=${String(sensorHealth.replayOnly)}`} />
                   <EvidenceRow label="Kaynak" value={sensorSource} />
+                  <EvidenceRow label="Veri yolu" value="SensorFrame" />
                   <EvidenceRow label="Son frame" value={`${sensorHealth.latestFrameAt} · ${sensorHealth.frameCount} frame`} />
                 </div>
                 {connectedSensorFramesEmpty && (
@@ -1025,6 +1029,11 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
               <EvidenceRow label="Komut endpointleri" value="POST /stage · POST /mode · POST /manual-aim · POST /fire-intent" />
               <EvidenceRow label="Kanıt endpointleri" value="GET /sensor-frames · GET /readiness · GET /telemetry/export · GET /replay" />
               <EvidenceRow label="Canlı çıkış" value={config.liveArmEnabled ? 'Arming env açık olsa bile backend interlock zorunlu' : 'Kilitli / TBD'} />
+            </div>
+            <div className="mt-3 grid gap-2 text-sm" data-testid="operator-lidar-diagnostics">
+              <EvidenceRow label="LiDAR viewer" value="Dış diagnostic / görev UI değil" />
+              <EvidenceRow label="RPLIDAR / Livox" value="Kalibrasyon · firmware · ham point cloud" />
+              <EvidenceRow label="Operasyon verisi" value="SDK/driver → SensorFrame → Backend" />
             </div>
           </details>
 

@@ -218,6 +218,7 @@ Bu nedenle vendor viewer sadece bakım/diagnostic modunda, operatör panelinden 
 
 Paketleme hedefi:
 
+- geliştirme ve demo için: `npm run desktop` backend API + UI + desktop app-window akışını tek komutla başlatır; `npm run desktop:check` aynı hattı browser açmadan smoke-test eder,
 - saha bilgisayarı Linux ise: backend + adapter servisleri + operatör UI tek launcher altında, tercihen AppImage veya systemd servisleri + kiosk shell,
 - Windows demo gerekiyorsa: aynı launcher mantığının `.exe` çıktısı,
 - her iki durumda da canlı fiziksel çıkış, `dry-run` yerine iki aşamalı arming + fiziksel interlock + hakem/operatör prosedürü tamamlanmadan açılamaz.

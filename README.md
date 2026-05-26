@@ -63,3 +63,19 @@ npm run test
 Dry-run operatör API, `POST /stage`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, `/readiness`, `/telemetry/export` ve `/replay` endpoint’leriyle entegrasyon durumu ve komut/olay kanıtı üretir; readiness yüzdesi resmi yarışma uygunluk skoru değildir. `SensorFrame` replay akışı gerçek radar/LiDAR bağlıymış gibi kesinlik iddiası taşımaz, fiziksel çıkış üretmez ve hardware adapter çağırmaz.
 
 Simülatör eğitim amaçlıdır. Gerçek sistemde operatör paneli doğrudan ateşleme/imha hattını tetiklememelidir. Komut akışı `Operatör Paneli → Backend API → Safety Gate → Hardware Adapter → MCU/İmha Hattı` zincirinden geçmeli; Acil Durdur ve yasak alan kontrolleri UI’dan bağımsız olarak uygulanmalıdır.
+
+## Desktop operatör paneli
+
+Tek yarışma programı hedefi Gökkalkan Operator Panel’dir. Geliştirme makinesinde kökten:
+
+```bash
+npm run desktop
+```
+
+komutu dry-run backend API’yi, frontend’i ve `?operator=1&desktop=1` panelini tek akışta başlatır. Linux/macOS/Windows için aynı Node launcher kullanılır; Chromium/Chrome/Edge app-window bulunamazsa varsayılan tarayıcıya düşer. Hızlı doğrulama için:
+
+```bash
+npm run desktop:check
+```
+
+Vendor LiDAR yazılımları (RPLIDAR Viewer, Livox Viewer vb.) görev arayüzü değildir; yalnız bakım/kalibrasyon/ham point cloud doğrulama için dış diagnostic araçtır. Operasyon verisi `SDK/driver → SensorFrame → Backend → Operatör Paneli` hattından gelmelidir.
