@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
 import { COMPETITION_COURSE } from './competitionCourse';
 import {
@@ -165,10 +165,6 @@ function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame
   });
 }
 
-function statusTone(ok: boolean) {
-  return ok ? 'border-[#33e68c]/30 bg-[#33e68c]/10 text-[#bfffe0]' : 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]';
-}
-
 const readinessCopy: Record<OperatorReadinessStatus, string> = {
   ready: 'Hazır',
   partial: 'Kısmi',
@@ -195,26 +191,56 @@ function clampPercent(value: number, min = 7, max = 93) {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+type SensorViewState = {
+  pitch: number;
+  yaw: number;
+  panX: number;
+  panZ: number;
+  distance: number;
+};
+
+type SensorDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  basePitch: number;
+  baseYaw: number;
+  basePanX: number;
+  basePanZ: number;
+  mode: 'orbit' | 'pan';
+};
+
+const defaultSensorView: SensorViewState = {
+  pitch: 54,
+  yaw: -28,
+  panX: 0,
+  panZ: 0,
+  distance: 18,
+};
+
 function visualSizeForTarget(type: TargetType) {
   const base = {
-    F16: { w: 11.8, h: 7.6 },
-    Helikopter: { w: 8.7, h: 8.7 },
-    'Balistik Füze': { w: 7.2, h: 11.5 },
-    'Mini/Micro İHA': { w: 7.5, h: 7.5 },
+    F16: { w: 9.4, h: 6.2 },
+    Helikopter: { w: 7.6, h: 7.6 },
+    'Balistik Füze': { w: 6.4, h: 9.2 },
+    'Mini/Micro İHA': { w: 6.8, h: 6.8 },
   } satisfies Record<TargetType, { w: number; h: number }>;
   return base[type];
 }
 
 function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) {
   const radians = (track.bearingDeg * Math.PI) / 180;
-  const distance = Math.min(15, Math.max(2.5, track.rangeM)) * 3.9;
   const size = visualSizeForTarget(track.targetType);
   const x = stage === 1
-    ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -3 : 3), 10, 86)
-    : clampPercent(COMPETITION_COURSE.systemPosition.x + Math.sin(radians) * distance, 9, 90);
+    ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -2.4 : 2.4), 12, 82)
+    : clampPercent(operatorXForRange(track.rangeM) + Math.sin(radians) * 7, 13, 72);
   const y = stage === 1
-    ? clampPercent(36 + index * 9, 22, 76)
-    : clampPercent(COMPETITION_COURSE.systemPosition.y - Math.cos(radians) * distance + index * 2.5, 24, 86);
+    ? clampPercent(35 + index * 8, 24, 74)
+    : clampPercent(30 + index * 13.5 + Math.sin(radians) * 4, 26, 78);
   const rangeGate = targetRangeGateOk(track) ? 'Uygun' : track.rangeM > 15 ? 'Erken' : 'Geçersiz';
   const candidate = track.friendFoe === 'Düşman' && (stage === 1 || stage === 2 || targetRangeGateOk(track));
   const lane = ((index % 3) + 1) as 1 | 2 | 3;
@@ -258,6 +284,446 @@ function targetGateOkForStage(stage: Stage, track: OperatorTrackState | undefine
   if (!track || track.friendFoe !== 'Düşman') return false;
   if (stage === 1 || stage === 2) return track.rangeM > 0 && track.rangeM <= 15;
   return targetRangeGateOk(track);
+}
+
+function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
+  const bearingRadians = (frame.bearingDeg * Math.PI) / 180;
+  const normalizedRange = clampNumber(frame.rangeM / 15, 0.12, 1);
+  return {
+    x: clampPercent(60 - normalizedRange * 38 + Math.sin(bearingRadians) * 10, 14, 62),
+    y: clampPercent(54 - Math.cos(bearingRadians) * 26 + index * 5, 18, 82),
+    z: 18 + clampNumber(frame.quality, 0.35, 0.98) * 38 + index * 2,
+  };
+}
+
+type Vec3 = [number, number, number];
+type SensorBatch = { positions: number[]; colors: number[] };
+type SensorOverlayPoint = {
+  frameId: string;
+  trackId: string;
+  left: number;
+  top: number;
+  visible: boolean;
+};
+type SensorGlResources = {
+  program: WebGLProgram;
+  positionBuffer: WebGLBuffer;
+  colorBuffer: WebGLBuffer;
+  positionLocation: number;
+  colorLocation: number;
+  matrixLocation: WebGLUniformLocation;
+};
+
+const SENSOR_DOME_POSITION: Vec3 = [6.4, 0, 0];
+const SENSOR_DEFAULT_DISTANCE = defaultSensorView.distance;
+
+const sensorPalette = {
+  grid: [0.18, 0.52, 0.95] as Vec3,
+  ring: [0.22, 0.82, 1] as Vec3,
+  dome: [0.16, 0.9, 0.55] as Vec3,
+  domeDark: [0.04, 0.34, 0.24] as Vec3,
+  enemy: [1, 0.34, 0.43] as Vec3,
+  friend: [0.38, 0.72, 1] as Vec3,
+  neutral: [1, 0.74, 0.26] as Vec3,
+  selected: [1, 0.84, 0.32] as Vec3,
+};
+
+function vecSubtract(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function vecCross(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function vecDot(a: Vec3, b: Vec3) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function vecNormalize(value: Vec3): Vec3 {
+  const length = Math.hypot(value[0], value[1], value[2]) || 1;
+  return [value[0] / length, value[1] / length, value[2] / length];
+}
+
+function multiplyMat4(a: number[], b: number[]) {
+  const output = new Array<number>(16).fill(0);
+  for (let column = 0; column < 4; column += 1) {
+    for (let row = 0; row < 4; row += 1) {
+      output[column * 4 + row] =
+        a[0 * 4 + row] * b[column * 4 + 0] +
+        a[1 * 4 + row] * b[column * 4 + 1] +
+        a[2 * 4 + row] * b[column * 4 + 2] +
+        a[3 * 4 + row] * b[column * 4 + 3];
+    }
+  }
+  return output;
+}
+
+function perspectiveMatrix(fieldOfViewRadians: number, aspect: number, near: number, far: number) {
+  const f = 1 / Math.tan(fieldOfViewRadians / 2);
+  const rangeInverse = 1 / (near - far);
+  return [
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (near + far) * rangeInverse, -1,
+    0, 0, near * far * rangeInverse * 2, 0,
+  ];
+}
+
+function lookAtMatrix(eye: Vec3, center: Vec3, up: Vec3) {
+  const zAxis = vecNormalize(vecSubtract(eye, center));
+  const xAxis = vecNormalize(vecCross(up, zAxis));
+  const yAxis = vecCross(zAxis, xAxis);
+  return [
+    xAxis[0], yAxis[0], zAxis[0], 0,
+    xAxis[1], yAxis[1], zAxis[1], 0,
+    xAxis[2], yAxis[2], zAxis[2], 0,
+    -vecDot(xAxis, eye), -vecDot(yAxis, eye), -vecDot(zAxis, eye), 1,
+  ];
+}
+
+function sensorViewMatrix(view: SensorViewState, aspect: number) {
+  const yaw = (view.yaw * Math.PI) / 180;
+  const pitch = (view.pitch * Math.PI) / 180;
+  const center: Vec3 = [view.panX, 0.2, view.panZ];
+  const groundDistance = Math.cos(pitch) * view.distance;
+  const eye: Vec3 = [
+    center[0] + Math.sin(yaw) * groundDistance,
+    center[1] + Math.sin(pitch) * view.distance,
+    center[2] + Math.cos(yaw) * groundDistance,
+  ];
+  return multiplyMat4(
+    perspectiveMatrix((46 * Math.PI) / 180, Math.max(aspect, 0.5), 0.1, 80),
+    lookAtMatrix(eye, center, [0, 1, 0]),
+  );
+}
+
+function transformPoint(matrix: number[], point: Vec3) {
+  const x = matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12];
+  const y = matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13];
+  const z = matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14];
+  const w = matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15];
+  return { x, y, z, w };
+}
+
+function projectSensorPoint(matrix: number[], point: Vec3) {
+  const projected = transformPoint(matrix, point);
+  if (Math.abs(projected.w) < 0.0001) return { left: 50, top: 50, visible: false };
+  const ndcX = projected.x / projected.w;
+  const ndcY = projected.y / projected.w;
+  const ndcZ = projected.z / projected.w;
+  return {
+    left: clampNumber((ndcX * 0.5 + 0.5) * 100, 3, 97),
+    top: clampNumber((-ndcY * 0.5 + 0.5) * 100, 6, 94),
+    visible: ndcZ >= -1 && ndcZ <= 1 && ndcX > -1.15 && ndcX < 1.15 && ndcY > -1.15 && ndcY < 1.15,
+  };
+}
+
+function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number, total: number): Vec3 {
+  const bearingRadians = (frame.bearingDeg * Math.PI) / 180;
+  const normalizedRange = clampNumber(frame.rangeM / 15, 0.08, 1);
+  const lateral = Math.sin(bearingRadians);
+  const rowBias = index - (total - 1) / 2;
+  return [
+    clampNumber(SENSOR_DOME_POSITION[0] - normalizedRange * 9.7 + lateral * 2.3, -7.6, 4.4),
+    0.72 + clampNumber(frame.elevationDeg ?? 0.4, -4, 12) * 0.06 + index * 0.12,
+    clampNumber(lateral * 5 + rowBias * 0.78, -5.8, 5.8),
+  ];
+}
+
+function sensorFrameColor(frame: OperatorSensorFrame, selected: boolean): Vec3 {
+  if (selected) return sensorPalette.selected;
+  if (frame.friendFoe === 'Düşman') return sensorPalette.enemy;
+  if (frame.friendFoe === 'Dost') return sensorPalette.friend;
+  return sensorPalette.neutral;
+}
+
+function pushVertex(batch: SensorBatch, point: Vec3, color: Vec3) {
+  batch.positions.push(point[0], point[1], point[2]);
+  batch.colors.push(color[0], color[1], color[2]);
+}
+
+function pushTriangle(batch: SensorBatch, a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
+  pushVertex(batch, a, color);
+  pushVertex(batch, b, color);
+  pushVertex(batch, c, color);
+}
+
+function pushLine(batch: SensorBatch, a: Vec3, b: Vec3, color: Vec3) {
+  pushVertex(batch, a, color);
+  pushVertex(batch, b, color);
+}
+
+function orientedPoint(origin: Vec3, local: Vec3, yaw: number): Vec3 {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  return [
+    origin[0] + local[0] * cos + local[2] * sin,
+    origin[1] + local[1],
+    origin[2] - local[0] * sin + local[2] * cos,
+  ];
+}
+
+function pushOrientedBox(batch: SensorBatch, origin: Vec3, localCenter: Vec3, size: Vec3, yaw: number, color: Vec3) {
+  const halfX = size[0] / 2;
+  const halfY = size[1] / 2;
+  const halfZ = size[2] / 2;
+  const center = orientedPoint(origin, localCenter, yaw);
+  const corners = [
+    orientedPoint(center, [-halfX, -halfY, -halfZ], yaw),
+    orientedPoint(center, [halfX, -halfY, -halfZ], yaw),
+    orientedPoint(center, [halfX, halfY, -halfZ], yaw),
+    orientedPoint(center, [-halfX, halfY, -halfZ], yaw),
+    orientedPoint(center, [-halfX, -halfY, halfZ], yaw),
+    orientedPoint(center, [halfX, -halfY, halfZ], yaw),
+    orientedPoint(center, [halfX, halfY, halfZ], yaw),
+    orientedPoint(center, [-halfX, halfY, halfZ], yaw),
+  ];
+  [
+    [0, 1, 2], [0, 2, 3],
+    [4, 6, 5], [4, 7, 6],
+    [0, 4, 5], [0, 5, 1],
+    [3, 2, 6], [3, 6, 7],
+    [1, 5, 6], [1, 6, 2],
+    [0, 3, 7], [0, 7, 4],
+  ].forEach(([a, b, c]) => pushTriangle(batch, corners[a], corners[b], corners[c], color));
+}
+
+function pushPyramidNose(batch: SensorBatch, origin: Vec3, localBase: Vec3, length: number, radius: number, yaw: number, color: Vec3) {
+  const tip = orientedPoint(origin, [localBase[0] + length, localBase[1], localBase[2]], yaw);
+  const base = [
+    orientedPoint(origin, [localBase[0], localBase[1] - radius, localBase[2] - radius], yaw),
+    orientedPoint(origin, [localBase[0], localBase[1] + radius, localBase[2] - radius], yaw),
+    orientedPoint(origin, [localBase[0], localBase[1] + radius, localBase[2] + radius], yaw),
+    orientedPoint(origin, [localBase[0], localBase[1] - radius, localBase[2] + radius], yaw),
+  ];
+  pushTriangle(batch, tip, base[0], base[1], color);
+  pushTriangle(batch, tip, base[1], base[2], color);
+  pushTriangle(batch, tip, base[2], base[3], color);
+  pushTriangle(batch, tip, base[3], base[0], color);
+}
+
+function pushCylinder(batch: SensorBatch, center: Vec3, radius: number, height: number, segments: number, color: Vec3) {
+  const bottomY = center[1] - height / 2;
+  const topY = center[1] + height / 2;
+  for (let index = 0; index < segments; index += 1) {
+    const angle = (index / segments) * Math.PI * 2;
+    const nextAngle = ((index + 1) / segments) * Math.PI * 2;
+    const p0: Vec3 = [center[0] + Math.cos(angle) * radius, bottomY, center[2] + Math.sin(angle) * radius];
+    const p1: Vec3 = [center[0] + Math.cos(nextAngle) * radius, bottomY, center[2] + Math.sin(nextAngle) * radius];
+    const p2: Vec3 = [center[0] + Math.cos(nextAngle) * radius, topY, center[2] + Math.sin(nextAngle) * radius];
+    const p3: Vec3 = [center[0] + Math.cos(angle) * radius, topY, center[2] + Math.sin(angle) * radius];
+    pushTriangle(batch, p0, p1, p2, color);
+    pushTriangle(batch, p0, p2, p3, color);
+    pushTriangle(batch, [center[0], topY, center[2]], p3, p2, color);
+  }
+}
+
+function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: OperatorSensorFrame, point: Vec3, selected: boolean) {
+  const color = sensorFrameColor(frame, selected);
+  const yaw = ((frame.bearingDeg - 2) * Math.PI) / 180;
+  const scale = selected ? 1.16 : 1;
+  if (frame.targetType === 'Helikopter') {
+    pushOrientedBox(triangles, point, [0, 0, 0], [0.88 * scale, 0.28 * scale, 0.42 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.72 * scale, 0, 0], [0.86 * scale, 0.08 * scale, 0.12 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [0, 0.32 * scale, 0], [1.18 * scale, 0.035 * scale, 0.08 * scale], yaw, sensorPalette.selected);
+    pushOrientedBox(triangles, point, [0, 0.33 * scale, 0], [0.08 * scale, 0.035 * scale, 1.18 * scale], yaw, sensorPalette.selected);
+  } else if (frame.targetType === 'Balistik Füze') {
+    pushOrientedBox(triangles, point, [0, 0, 0], [1.15 * scale, 0.2 * scale, 0.2 * scale], yaw, color);
+    pushPyramidNose(triangles, point, [0.58 * scale, 0, 0], 0.38 * scale, 0.13 * scale, yaw, color);
+    pushOrientedBox(triangles, point, [-0.44 * scale, -0.02 * scale, 0.2 * scale], [0.25 * scale, 0.05 * scale, 0.36 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.44 * scale, -0.02 * scale, -0.2 * scale], [0.25 * scale, 0.05 * scale, 0.36 * scale], yaw, color);
+  } else if (frame.targetType === 'Mini/Micro İHA') {
+    pushOrientedBox(triangles, point, [0, 0, 0], [0.34 * scale, 0.18 * scale, 0.34 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [0, 0, 0], [1.05 * scale, 0.045 * scale, 0.09 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [0, 0, 0], [0.09 * scale, 0.045 * scale, 1.05 * scale], yaw, color);
+    [[0.48, 0.48], [0.48, -0.48], [-0.48, 0.48], [-0.48, -0.48]].forEach(([x, z]) => {
+      pushOrientedBox(triangles, point, [x * scale, 0.04 * scale, z * scale], [0.23 * scale, 0.04 * scale, 0.23 * scale], yaw, sensorPalette.selected);
+    });
+  } else {
+    pushOrientedBox(triangles, point, [0, 0, 0], [1.25 * scale, 0.18 * scale, 0.26 * scale], yaw, color);
+    pushPyramidNose(triangles, point, [0.62 * scale, 0, 0], 0.42 * scale, 0.16 * scale, yaw, color);
+    pushOrientedBox(triangles, point, [0.12 * scale, 0, 0], [0.58 * scale, 0.055 * scale, 1.28 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.46 * scale, 0, 0], [0.34 * scale, 0.055 * scale, 0.52 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.5 * scale, 0.24 * scale, 0], [0.2 * scale, 0.44 * scale, 0.07 * scale], yaw, color);
+  }
+  pushLine(lines, [point[0], 0.06, point[2]], [point[0], point[1], point[2]], color);
+}
+
+function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: OperatorSensorFrame[], selectedTrackId: string) {
+  for (let x = -8; x <= 8; x += 2) {
+    pushLine(lines, [x, 0, -6.2], [x, 0, 6.2], sensorPalette.grid);
+  }
+  for (let z = -6; z <= 6; z += 2) {
+    pushLine(lines, [-8.2, 0, z], [8.2, 0, z], sensorPalette.grid);
+  }
+  [5, 10, 15].forEach((range) => {
+    const radius = (range / 15) * 9.6;
+    const segments = 80;
+    for (let index = 0; index < segments; index += 1) {
+      const angle = (index / segments) * Math.PI * 2;
+      const nextAngle = ((index + 1) / segments) * Math.PI * 2;
+      pushLine(
+        lines,
+        [SENSOR_DOME_POSITION[0] - Math.cos(angle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(angle) * radius * 0.64],
+        [SENSOR_DOME_POSITION[0] - Math.cos(nextAngle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(nextAngle) * radius * 0.64],
+        sensorPalette.ring,
+      );
+    }
+  });
+
+  const selectedFrame = frames.find((frame) => frame.trackId === selectedTrackId) ?? frames[0];
+  const selectedPoint = selectedFrame ? sensorFrameWorldPoint(selectedFrame, Math.max(0, frames.indexOf(selectedFrame)), frames.length) : undefined;
+  const turretYaw = selectedPoint
+    ? Math.atan2(-(selectedPoint[2] - SENSOR_DOME_POSITION[2]), selectedPoint[0] - SENSOR_DOME_POSITION[0])
+    : Math.PI;
+
+  pushCylinder(triangles, [SENSOR_DOME_POSITION[0], 0.28, SENSOR_DOME_POSITION[2]], 0.42, 0.56, 24, sensorPalette.domeDark);
+  pushCylinder(triangles, [SENSOR_DOME_POSITION[0], 0.68, SENSOR_DOME_POSITION[2]], 0.72, 0.24, 28, sensorPalette.dome);
+  pushOrientedBox(triangles, [SENSOR_DOME_POSITION[0], 0.78, SENSOR_DOME_POSITION[2]], [0.42, 0, 0], [0.92, 0.12, 0.12], turretYaw, sensorPalette.dome);
+
+  if (selectedPoint) {
+    pushLine(lines, [SENSOR_DOME_POSITION[0], 0.9, SENSOR_DOME_POSITION[2]], selectedPoint, sensorPalette.selected);
+  }
+
+  frames.forEach((frame, index) => {
+    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index, frames.length), selectedTrackId === frame.trackId);
+  });
+}
+
+function createSensorShader(gl: WebGLRenderingContext, type: number, source: string) {
+  const shader = gl.createShader(type);
+  if (!shader) throw new Error('WebGL shader oluşturulamadı.');
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const message = gl.getShaderInfoLog(shader) ?? 'Bilinmeyen shader hatası';
+    gl.deleteShader(shader);
+    throw new Error(message);
+  }
+  return shader;
+}
+
+function createSensorResources(gl: WebGLRenderingContext): SensorGlResources {
+  const vertexShader = createSensorShader(gl, gl.VERTEX_SHADER, `
+    attribute vec3 a_position;
+    attribute vec3 a_color;
+    uniform mat4 u_matrix;
+    varying vec3 v_color;
+    void main() {
+      gl_Position = u_matrix * vec4(a_position, 1.0);
+      v_color = a_color;
+    }
+  `);
+  const fragmentShader = createSensorShader(gl, gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec3 v_color;
+    void main() {
+      gl_FragColor = vec4(v_color, 1.0);
+    }
+  `);
+  const program = gl.createProgram();
+  if (!program) throw new Error('WebGL programı oluşturulamadı.');
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program) ?? 'Bilinmeyen WebGL link hatası';
+    gl.deleteProgram(program);
+    throw new Error(message);
+  }
+  const positionBuffer = gl.createBuffer();
+  const colorBuffer = gl.createBuffer();
+  const matrixLocation = gl.getUniformLocation(program, 'u_matrix');
+  if (!positionBuffer || !colorBuffer || !matrixLocation) throw new Error('WebGL buffer lokasyonu alınamadı.');
+  return {
+    program,
+    positionBuffer,
+    colorBuffer,
+    positionLocation: gl.getAttribLocation(program, 'a_position'),
+    colorLocation: gl.getAttribLocation(program, 'a_color'),
+    matrixLocation,
+  };
+}
+
+function resizeSensorCanvas(canvas: HTMLCanvasElement) {
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
+  const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+}
+
+function drawSensorBatch(gl: WebGLRenderingContext, resources: SensorGlResources, batch: SensorBatch, mode: number, matrix: number[]) {
+  if (batch.positions.length === 0) return;
+  gl.useProgram(resources.program);
+  gl.uniformMatrix4fv(resources.matrixLocation, false, new Float32Array(matrix));
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, resources.positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(batch.positions), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(resources.positionLocation);
+  gl.vertexAttribPointer(resources.positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, resources.colorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(batch.colors), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(resources.colorLocation);
+  gl.vertexAttribPointer(resources.colorLocation, 3, gl.FLOAT, false, 0, 0);
+
+  gl.drawArrays(mode, 0, batch.positions.length / 3);
+}
+
+function renderSensorWebGlScene(gl: WebGLRenderingContext, resources: SensorGlResources, frames: OperatorSensorFrame[], selectedTrackId: string, view: SensorViewState) {
+  const canvas = gl.canvas as HTMLCanvasElement;
+  resizeSensorCanvas(canvas);
+  const matrix = sensorViewMatrix(view, canvas.width / canvas.height);
+  const triangles: SensorBatch = { positions: [], colors: [] };
+  const lines: SensorBatch = { positions: [], colors: [] };
+  pushSensorWorld(triangles, lines, frames, selectedTrackId);
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.012, 0.022, 0.035, 1);
+  gl.clearDepth(1);
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  drawSensorBatch(gl, resources, triangles, gl.TRIANGLES, matrix);
+  drawSensorBatch(gl, resources, lines, gl.LINES, matrix);
+
+  return {
+    matrix,
+    overlayPoints: frames.map((frame, index) => {
+      const projected = projectSensorPoint(matrix, sensorFrameWorldPoint(frame, index, frames.length));
+      const fallback = sensorFrame3DPoint(frame, index);
+      return {
+        frameId: frame.frameId,
+        trackId: frame.trackId,
+        left: projected.visible ? projected.left : fallback.x,
+        top: projected.visible ? projected.top : fallback.y,
+        visible: projected.visible,
+      };
+    }),
+    domePoint: projectSensorPoint(matrix, [SENSOR_DOME_POSITION[0], 1.05, SENSOR_DOME_POSITION[2]]),
+  };
+}
+
+function overlayPointsEqual(a: SensorOverlayPoint[], b: SensorOverlayPoint[]) {
+  return a.length === b.length && a.every((point, index) => {
+    const other = b[index];
+    return other
+      && other.frameId === point.frameId
+      && other.trackId === point.trackId
+      && Math.abs(other.left - point.left) < 0.2
+      && Math.abs(other.top - point.top) < 0.2
+      && other.visible === point.visible;
+  });
 }
 
 function commandLabel(result: CommandResult) {
@@ -352,7 +818,7 @@ function OperatorTrackScene({
       data-testid="operator-track-scene"
       aria-label="Operatör iz görüntüsü"
     >
-      <div className="relative z-[2] flex flex-wrap items-start justify-between gap-3 p-4">
+      <div className="relative z-[2] flex flex-wrap items-start justify-between gap-3 p-5 pb-2">
         <div>
           <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görüntü</p>
           <h2 className="m-0 mt-1 text-2xl font-black">İzler</h2>
@@ -433,38 +899,40 @@ function OperatorTrackScene({
         )}
       </svg>
 
-      <div
-        className="steel-dome pointer-events-none absolute z-[5] grid h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_20px_rgba(51,230,140,.26))_drop-shadow(0_12px_24px_rgba(0,0,0,.5))]"
-        style={domeStyle}
-        data-testid="operator-steel-dome"
-        data-rotation={domeAngle.toFixed(1)}
-        aria-hidden="true"
-      >
-        <img className="h-[68px] w-[68px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
-      </div>
+      <div className="parkour-object-layer">
+        <div
+          className="steel-dome pointer-events-none absolute z-[5] grid h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_20px_rgba(51,230,140,.26))_drop-shadow(0_12px_24px_rgba(0,0,0,.5))]"
+          style={domeStyle}
+          data-testid="operator-steel-dome"
+          data-rotation={domeAngle.toFixed(1)}
+          aria-hidden="true"
+        >
+          <img className="h-[68px] w-[68px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
+        </div>
 
-      {visualTracks.map((track) => {
-        const selected = selectedVisualTrack?.trackId === track.trackId;
-        const affiliationClass = track.friendFoe === 'Düşman' ? 'enemy' : track.friendFoe === 'Dost' ? 'friend' : 'neutral';
-        return (
-          <button
-            key={track.trackId}
-            className={`aircraft absolute z-[6] grid min-h-24 min-w-[78px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center gap-[3px] rounded-full border-0 bg-transparent p-0.5 text-center text-[#ffd17a] shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
-            style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
-            data-testid={`operator-track-${track.trackId}`}
-            aria-label={`${track.trackId} ${targetLabel[track.targetType]} ${track.friendFoe} ${track.rangeM.toFixed(1)} metre`}
-            onClick={() => onSelect(track.trackId)}
-          >
-            <span className="motion-trail" />
-            <span className="target-visual"><OperatorTargetSilhouette type={track.targetType} /></span>
-            <span className="target-label-stack">
-              <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
-              <small>{targetShortLabel[track.targetType]}</small>
-              <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={visualRangeLabel(track)}>{visualTrackStatus(track, stage)}</em>
-            </span>
-          </button>
-        );
-      })}
+        {visualTracks.map((track) => {
+          const selected = selectedVisualTrack?.trackId === track.trackId;
+          const affiliationClass = track.friendFoe === 'Düşman' ? 'enemy' : track.friendFoe === 'Dost' ? 'friend' : 'neutral';
+          return (
+            <button
+              key={track.trackId}
+              className={`aircraft absolute z-[6] grid min-h-[74px] min-w-[62px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center gap-[3px] rounded-full border-0 bg-transparent p-0.5 text-center text-[#ffd17a] shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
+              style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
+              data-testid={`operator-track-${track.trackId}`}
+              aria-label={`${track.trackId} ${targetLabel[track.targetType]} ${track.friendFoe} ${track.rangeM.toFixed(1)} metre`}
+              onClick={() => onSelect(track.trackId)}
+            >
+              <span className="motion-trail" />
+              <span className="target-visual"><OperatorTargetSilhouette type={track.targetType} /></span>
+              <span className="target-label-stack">
+                <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
+                <small>{targetShortLabel[track.targetType]}</small>
+                <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={visualRangeLabel(track)}>{visualTrackStatus(track, stage)}</em>
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
@@ -472,6 +940,224 @@ function OperatorTrackScene({
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil</span>
       </div>
     </section>
+  );
+}
+
+function SensorFusion3DView({
+  frames,
+  selectedTrackId,
+  onSelect,
+  sensorHealth,
+  sensorSource,
+  connectedSensorFramesEmpty,
+}: {
+  frames: OperatorSensorFrame[];
+  selectedTrackId: string;
+  onSelect: (trackId: string) => void;
+  sensorHealth: OperatorSensorHealth;
+  sensorSource: string;
+  connectedSensorFramesEmpty: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glResourcesRef = useRef<SensorGlResources | undefined>(undefined);
+  const [view, setView] = useState<SensorViewState>(defaultSensorView);
+  const [dragState, setDragState] = useState<SensorDragState>();
+  const [renderTick, setRenderTick] = useState(0);
+  const [webglAvailable, setWebglAvailable] = useState(true);
+  const [overlayPoints, setOverlayPoints] = useState<SensorOverlayPoint[]>([]);
+  const [domeOverlayPoint, setDomeOverlayPoint] = useState({ left: 82, top: 58, visible: true });
+
+  const selectedFrame = frames.find((frame) => frame.trackId === selectedTrackId) ?? frames[0];
+  const zoomLevel = SENSOR_DEFAULT_DISTANCE / view.distance;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (typeof ResizeObserver === 'undefined') {
+      const handleResize = () => setRenderTick((value) => value + 1);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+    const observer = new ResizeObserver(() => setRenderTick((value) => value + 1));
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl', {
+      alpha: false,
+      antialias: true,
+      depth: true,
+      powerPreference: 'high-performance',
+    });
+    if (!gl) {
+      setWebglAvailable(false);
+      return;
+    }
+    setWebglAvailable(true);
+    try {
+      const resources = glResourcesRef.current ?? createSensorResources(gl);
+      glResourcesRef.current = resources;
+      const result = renderSensorWebGlScene(gl, resources, frames, selectedTrackId, view);
+      setOverlayPoints((current) => (overlayPointsEqual(current, result.overlayPoints) ? current : result.overlayPoints));
+      setDomeOverlayPoint((current) => (
+        Math.abs(current.left - result.domePoint.left) < 0.2
+        && Math.abs(current.top - result.domePoint.top) < 0.2
+        && current.visible === result.domePoint.visible
+          ? current
+          : result.domePoint
+      ));
+    } catch (error) {
+      console.warn('Radar/LiDAR WebGL çizimi devre dışı kaldı:', error);
+      setWebglAvailable(false);
+    }
+  }, [frames, selectedTrackId, view, renderTick]);
+
+  useEffect(() => () => {
+    const canvas = canvasRef.current;
+    const gl = canvas?.getContext('webgl');
+    const resources = glResourcesRef.current;
+    if (!gl || !resources) return;
+    gl.deleteProgram(resources.program);
+    gl.deleteBuffer(resources.positionBuffer);
+    gl.deleteBuffer(resources.colorBuffer);
+    glResourcesRef.current = undefined;
+  }, []);
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragState({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      basePitch: view.pitch,
+      baseYaw: view.yaw,
+      basePanX: view.panX,
+      basePanZ: view.panZ,
+      mode: event.shiftKey ? 'pan' : 'orbit',
+    });
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    setView((current) => ({
+      ...current,
+      pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch - deltaY * 0.16, 22, 72) : current.pitch,
+      yaw: dragState.mode === 'orbit' ? clampNumber(dragState.baseYaw + deltaX * 0.24, -82, 34) : current.yaw,
+      panX: dragState.mode === 'pan' ? clampNumber(dragState.basePanX - deltaX * 0.018 * current.distance, -6, 6) : current.panX,
+      panZ: dragState.mode === 'pan' ? clampNumber(dragState.basePanZ + deltaY * 0.018 * current.distance, -4.5, 4.5) : current.panZ,
+    }));
+  };
+
+  const endPointerDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (dragState?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragState(undefined);
+  };
+
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setView((current) => ({
+      ...current,
+      distance: clampNumber(current.distance * (event.deltaY < 0 ? 0.9 : 1.1), 9.2, 29),
+    }));
+  };
+
+  return (
+    <div
+      className={`sensor-3d-view webgl-3d-view ${dragState ? 'is-dragging' : ''}`}
+      data-testid="operator-sensor-3d-view"
+      data-renderer={webglAvailable ? 'webgl' : 'unavailable'}
+      data-rotate-x={view.pitch.toFixed(1)}
+      data-rotate-z={view.yaw.toFixed(1)}
+      data-yaw={view.yaw.toFixed(1)}
+      data-pitch={view.pitch.toFixed(1)}
+      data-zoom={zoomLevel.toFixed(2)}
+      data-pan-x={view.panX.toFixed(1)}
+      data-pan-z={view.panZ.toFixed(1)}
+      aria-label="Etkileşimli üç boyutlu Radar LiDAR iz görüntüsü"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endPointerDrag}
+      onPointerCancel={endPointerDrag}
+      onWheel={handleWheel}
+    >
+      <canvas ref={canvasRef} className="sensor-3d-canvas" data-testid="operator-sensor-3d-canvas" aria-hidden="true" />
+      <div className="sensor-3d-hud">
+        <span>Radar / LiDAR</span>
+        <b>3D SensorFrame</b>
+        <small>Sürükle: döndür · Shift+sürükle: kaydır · Tekerlek: yakınlaştır</small>
+      </div>
+      <div className="sensor-3d-stats" aria-label="SensorFrame akış özeti">
+        <span>{sensorSource}</span>
+        <span>{sensorHealth.status} · replayOnly={String(sensorHealth.replayOnly)}</span>
+        <span>{sensorHealth.frameCount} frame</span>
+      </div>
+      <button
+        className="sensor-3d-reset"
+        type="button"
+        data-testid="operator-sensor-3d-reset"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setView(defaultSensorView)}
+      >
+        3D sıfırla
+      </button>
+      {frames.map((frame, index) => {
+        const fallbackPoint = sensorFrame3DPoint(frame, index);
+        const point = overlayPoints[index] ?? {
+          frameId: frame.frameId,
+          trackId: frame.trackId,
+          left: fallbackPoint.x,
+          top: fallbackPoint.y,
+          visible: true,
+        };
+        const selected = selectedTrackId === frame.trackId;
+        const affiliationClass = frame.friendFoe === 'Düşman' ? 'enemy' : frame.friendFoe === 'Dost' ? 'friend' : 'neutral';
+        return (
+          <button
+            key={frame.frameId}
+            className={`sensor-3d-target ${affiliationClass} ${selected ? 'selected' : ''} ${point.visible ? '' : 'is-off-axis'}`}
+            data-testid={`operator-sensor-3d-target-${frame.trackId}`}
+            style={{ left: `${point.left}%`, top: `${point.top}%` }}
+            aria-label={`${frame.trackId} ${targetLabel[frame.targetType]} ${frame.friendFoe} ${frame.rangeM.toFixed(1)} metre`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onSelect(frame.trackId)}
+          >
+            <span>{targetShortLabel[frame.targetType]}</span>
+            <small>{frame.friendFoe}</small>
+          </button>
+        );
+      })}
+      <span
+        className={`sensor-3d-dome ${domeOverlayPoint.visible ? '' : 'is-off-axis'}`}
+        data-testid="operator-sensor-3d-dome"
+        style={{ left: `${domeOverlayPoint.left}%`, top: `${domeOverlayPoint.top}%` }}
+      >
+        <img src={gokkalkanIconUrl} alt="" />
+        <b>Gökkalkan</b>
+        <small>sağ mevzi</small>
+      </span>
+      {selectedFrame && (
+        <article className="sensor-3d-selected-card" data-testid="operator-sensor-selected-frame">
+          <p>Menzil · Açı · Sınıf</p>
+          <b>{targetShortLabel[selectedFrame.targetType]} · {selectedFrame.friendFoe}</b>
+          <span>{selectedFrame.rangeM.toFixed(1)} m · {selectedFrame.bearingDeg.toFixed(1)}° · menzil {selectedFrame.rangeGate}</span>
+        </article>
+      )}
+      {!webglAvailable && (
+        <span className="sensor-3d-empty sensor-3d-webgl-warning">WebGL açılamadı; sensör akışı yazılım katmanında tutuluyor.</span>
+      )}
+      {(connectedSensorFramesEmpty || frames.length === 0) && (
+        <span className="sensor-3d-empty" data-testid="operator-sensor-3d-empty">SensorFrame yok</span>
+      )}
+    </div>
   );
 }
 
@@ -583,6 +1269,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const localFrames = useMemo(() => makeLocalSensorFrames(displayStage, displayRound), [displayStage, displayRound]);
   const sensorFrames = apiSnapshot ? (apiSnapshot.sensorFrames ?? []) : localFrames;
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
+  const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
   const sensorHealth: OperatorSensorHealth = apiSnapshot?.sensorHealth ?? { ...localSensorHealth, frameCount: sensorFrames.length, latestFrameAt: sensorFrames[0]?.timestamp ?? localSensorHealth.latestFrameAt };
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
   const missionMode = stageExpectedMode(displayStage);
@@ -995,7 +1682,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   };
 
   return (
-    <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel">
+    <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
       <header className="mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[1000px]:grid-cols-[1fr_auto]">
         <div>
           <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Operasyon</p>
@@ -1010,18 +1697,8 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         </div>
       </header>
 
-      <section className="mb-3 grid gap-2 min-[900px]:grid-cols-6" aria-label="Canlı bağlantı durumları">
-        <span className="rounded-lg border border-[#25d8ff]/30 bg-[#25d8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">Aşama {displayStage} · Tur {displayRound}/{stageRoundLimit(displayStage)}</span>
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(config.connectionState !== 'offline')}`}>Backend: {apiBusy ? 'kontrol ediliyor' : config.connectionState === 'offline' ? 'bağlantı yok' : config.connectionState === 'dry-run' ? 'dry-run adapter' : 'canlı API'}</span>
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.perceptionConnected)}`}>Perception: {safety.perceptionConnected ? 'canlı' : config.connectionState === 'dry-run' ? 'replay' : 'beklemede'}</span>
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(sensorSource === 'Canlı')}`}>Radar/LiDAR: {sensorSource === 'Canlı' ? 'canlı' : sensorSource === 'Replay' ? 'replay fixture' : sensorSource}</span>
-        <span className={`rounded-lg border px-3 py-2 text-sm font-black ${statusTone(safety.blockReason === 'ALLOWED')}`}>Safety Gate: {safety.blockReason}</span>
-        {isDesktopShell && <span className="rounded-lg border border-[#33e68c]/30 bg-[#33e68c]/10 px-3 py-2 text-sm font-black text-[#bfffe0]" data-testid="operator-desktop-shell">Kabuk: Desktop</span>}
-        <span className="rounded-lg border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 py-2 text-sm font-black text-[#cbe9ff]">API: {apiError || config.apiBaseUrl}</span>
-      </section>
-
-      <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1.25fr)_minmax(330px,.75fr)]">
-        <div className="grid content-start gap-3">
+      <section className="grid gap-3 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+        <div className="grid min-w-0 content-start gap-3">
           <OperatorTrackScene
             stage={displayStage}
             tracks={visibleTracks}
@@ -1031,67 +1708,15 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
             onSelect={setSelectedTrackId}
           />
 
-          <section className="min-h-[420px] rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
-            <div className="grid min-h-[388px] gap-4 min-[1100px]:grid-cols-[minmax(260px,.38fr)_1fr]">
-              <div>
-                <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#48a8ff]">Radar / LiDAR</p>
-                <h2 className="m-0 mt-1 text-2xl font-black text-white">Menzil · Açı · Sınıf</h2>
-                <div className="mt-3 grid gap-2 text-sm">
-                  <EvidenceRow label="Akış durumu" value={`${sensorHealth.status} · replayOnly=${String(sensorHealth.replayOnly)}`} />
-                  <EvidenceRow label="Kaynak" value={sensorSource} />
-                  <EvidenceRow label="Veri yolu" value="SensorFrame" />
-                  <EvidenceRow label="Son frame" value={`${sensorHealth.latestFrameAt} · ${sensorHealth.frameCount} frame`} />
-                </div>
-                {connectedSensorFramesEmpty && (
-                  <p className="m-0 mt-3 rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm font-bold text-[#ffe4ad]">
-                    SensorFrame yok.
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-3 min-[900px]:grid-cols-[220px_1fr]">
-                <div className="relative h-[250px] overflow-hidden rounded-xl border border-[#48a8ff]/18 bg-[radial-gradient(circle_at_50%_100%,rgba(72,168,255,.20),rgba(0,0,0,.08)_36%,rgba(0,0,0,.32)_80%)]" aria-label="Radar range rings">
-                  {[5, 10, 15].map((rangeMeters) => (
-                    <span
-                      key={rangeMeters}
-                      className="absolute left-1/2 top-full rounded-full border border-[#48a8ff]/20"
-                      style={{ width: `${rangeMeters * 18}px`, height: `${rangeMeters * 18}px`, transform: 'translate(-50%, -50%)' }}
-                    >
-                      <b className="absolute right-1 top-2 text-[10px] text-[#cbe9ff]">{rangeMeters}m</b>
-                    </span>
-                  ))}
-                  <span className="absolute bottom-3 left-1/2 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full border border-[#33e68c]/35 bg-[#33e68c]/10 text-[10px] font-black text-[#ccffe2]">SYS</span>
-                  {fusedSensorFrames.length === 0 && (
-                    <span className="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#ffbb42]/25 bg-black/55 px-3 py-2 text-center text-[11px] font-black text-[#ffe4ad]">SensorFrame yok</span>
-                  )}
-                  {fusedSensorFrames.map((frame) => (
-                    <button
-                      key={frame.frameId}
-                      className={`absolute h-4 w-4 rounded-full border ${frame.friendFoe === 'Düşman' ? 'border-[#ff4757] bg-[#ff4757]' : frame.friendFoe === 'Dost' ? 'border-[#48a8ff] bg-[#48a8ff]' : 'border-[#ffbb42] bg-[#ffbb42]'}`}
-                      style={{ left: `${50 + Math.sin((frame.bearingDeg * Math.PI) / 180) * frame.rangeM * 3.8}%`, bottom: `${8 + frame.rangeM * 5.3}%` }}
-                      aria-label={`${frame.trackId} ${frame.sensor} ${frame.rangeM.toFixed(1)} metre`}
-                      onClick={() => setSelectedTrackId(frame.trackId)}
-                    />
-                  ))}
-                </div>
-                <div className="grid h-[320px] content-start gap-2 overflow-auto pr-1">
-                  {fusedSensorFrames.length === 0 && (
-                    <article className="rounded-lg border border-[#ffbb42]/25 bg-[#ffbb42]/10 p-3 text-sm text-[#ffe4ad]">
-                      <b>SensorFrame yok</b>
-                    </article>
-                  )}
-                  {fusedSensorFrames.map((frame) => (
-                    <article key={frame.frameId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <b className={frame.friendFoe === 'Düşman' ? 'text-[#ffbdc4]' : frame.friendFoe === 'Dost' ? 'text-[#cbe9ff]' : 'text-[#ffe4ad]'}>{frame.trackId} · {frame.friendFoe}</b>
-                        <span className="rounded-full border border-white/10 bg-white/[.06] px-2 py-1 text-[11px] font-black uppercase text-[#d7efff]">{frame.sensor}</span>
-                      </div>
-                      <p className="m-0 mt-2 text-[#c8d8e2]">{frame.rangeM.toFixed(1)} m · {frame.bearingDeg.toFixed(1)}° · {frame.radialVelocityMps.toFixed(1)} m/s · SNR {frame.snrDb?.toFixed(1) ?? 'LiDAR'} · {frame.pointCount} nokta</p>
-                      <p className="m-0 mt-1 text-[#eaf7ff]">{targetLabel[frame.targetType]} · {formatPercent(frame.classificationConfidence)} · menzil {frame.rangeGate}</p>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </div>
+          <section className="rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
+            <SensorFusion3DView
+              frames={interpretedSensorFrames}
+              selectedTrackId={selectedTrackId}
+              onSelect={setSelectedTrackId}
+              sensorHealth={sensorHealth}
+              sensorSource={sensorSource}
+              connectedSensorFramesEmpty={connectedSensorFramesEmpty}
+            />
           </section>
 
           <section className="grid gap-3 min-[760px]:grid-cols-3">
@@ -1125,7 +1750,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
           </section>
         </div>
 
-        <aside className="grid gap-3 content-start">
+        <aside className="grid min-w-0 gap-3 content-start">
           <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-stage-control" aria-label="Aşama ve tur kontrolü">
             <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görev</p>
             <h2 className="m-0 mt-1 text-2xl font-black">Aşama / Tur</h2>

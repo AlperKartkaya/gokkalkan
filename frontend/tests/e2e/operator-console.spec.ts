@@ -250,10 +250,17 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByRole('heading', { name: 'Interlock' })).toBeVisible();
   await expect(page.getByTestId('operator-readiness-dashboard')).toHaveCount(0);
   await expect(page.getByText('Sistem Durumu')).toHaveCount(0);
+  await expect(page.getByText(/Aşama \d · Tur/)).toHaveCount(0);
+  await expect(page.getByText(/^Backend:/)).toHaveCount(0);
+  await expect(page.getByText(/^Perception:/)).toHaveCount(0);
+  await expect(page.getByText(/^Radar\/LiDAR:/)).toHaveCount(0);
+  await expect(page.getByText(/^Safety Gate:/)).toHaveCount(0);
+  await expect(page.getByText(/^API:/)).toHaveCount(0);
   await expect(page.getByTestId('operator-track-scene')).toBeVisible();
   await expect(page.getByTestId('operator-steel-dome')).toBeVisible();
   await expect(page.getByTestId('operator-aim-line')).toBeVisible();
   await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
+  await expect(page.getByTestId('operator-sensor-3d-canvas')).toBeVisible();
   await expect(page.getByText(/Puan/)).toHaveCount(0);
 
   await expect(page.getByRole('button', { name: 'FIRE INTENT KİLİTLİ' })).toBeDisabled();
@@ -436,6 +443,41 @@ test('operator panel changes final-phase stage and renders radar LiDAR software 
   await expect(page.getByTestId('operator-track-scene')).toContainText('Düşman');
   await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
   await expect(page.getByTestId('operator-steel-dome')).toHaveAttribute('data-rotation', /-?\d+\.\d/);
+  const trackSceneBox = await page.getByTestId('operator-track-scene').boundingBox();
+  const sensorPanelBox = await sensorPanel.boundingBox();
+  expect(trackSceneBox).not.toBeNull();
+  expect(sensorPanelBox).not.toBeNull();
+  expect(Math.abs((trackSceneBox?.x ?? 0) - (sensorPanelBox?.x ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((trackSceneBox?.width ?? 0) - (sensorPanelBox?.width ?? 0))).toBeLessThanOrEqual(1);
+
+  const sensor3dView = page.getByTestId('operator-sensor-3d-view');
+  await expect(sensor3dView).toBeVisible();
+  await expect(sensor3dView).toHaveAttribute('data-renderer', 'webgl');
+  await sensor3dView.scrollIntoViewIfNeeded();
+  await expect(sensor3dView).toContainText('Sürükle');
+  await expect(sensor3dView).toContainText('Tekerlek');
+  const domeBox = await page.getByTestId('operator-sensor-3d-dome').boundingBox();
+  const f16Box = await page.getByTestId('operator-sensor-3d-target-DRY-RUN-F16-01').boundingBox();
+  expect(domeBox).not.toBeNull();
+  expect(f16Box).not.toBeNull();
+  expect((domeBox?.x ?? 0)).toBeGreaterThan((f16Box?.x ?? Number.MAX_SAFE_INTEGER));
+
+  const viewBox = await sensor3dView.boundingBox();
+  expect(viewBox).not.toBeNull();
+  const zoomBefore = await sensor3dView.getAttribute('data-zoom');
+  await sensor3dView.dispatchEvent('wheel', { deltaY: -240, bubbles: true, cancelable: true });
+  await expect.poll(() => sensor3dView.getAttribute('data-zoom')).not.toBe(zoomBefore);
+  await page.getByTestId('operator-sensor-3d-reset').click();
+  await expect(sensor3dView).toHaveAttribute('data-zoom', '1.00');
+
+  const rotateBefore = await sensor3dView.getAttribute('data-rotate-z');
+  await page.mouse.move((viewBox?.x ?? 0) + 24, (viewBox?.y ?? 0) + (viewBox?.height ?? 0) - 38);
+  await page.mouse.down();
+  await page.mouse.move((viewBox?.x ?? 0) + 132, (viewBox?.y ?? 0) + (viewBox?.height ?? 0) - 64, { steps: 4 });
+  await page.mouse.up();
+  const rotateAfter = await sensor3dView.getAttribute('data-rotate-z');
+  expect(rotateAfter).not.toBe(rotateBefore);
+
   const sensorTopAfterStage = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
   expect(Math.abs(sensorTopAfterStage - sensorTopBefore)).toBeLessThanOrEqual(1);
   await page.getByTestId('operator-track-DRY-RUN-HEL-02').click();
@@ -654,7 +696,8 @@ test('desktop operator shell keeps LiDAR vendor tools diagnostic-only', async ({
   await page.goto('/?operator=1&desktop=1');
 
   await expect(page.getByTestId('operator-panel')).toBeVisible();
-  await expect(page.getByTestId('operator-desktop-shell')).toContainText('Kabuk: Desktop');
+  await expect(page.getByTestId('operator-panel')).toHaveAttribute('data-desktop-shell', 'true');
+  await expect(page.getByText('Kabuk: Desktop')).toHaveCount(0);
   await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Radar / LiDAR');
   await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('SensorFrame');
 
