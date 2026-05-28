@@ -269,8 +269,9 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-track-scene')).toBeVisible();
   await expect(page.getByTestId('operator-steel-dome')).toBeVisible();
   await expect(page.getByTestId('operator-aim-line')).toBeVisible();
-  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(2);
-  await expect(page.locator('.operator-track-scene .target-unknown-sphere')).toHaveCount(1);
+  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
+  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(4);
+  await expect(page.locator('.operator-track-scene .target-unknown-sphere')).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .target-label-stack')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Görüntü' })).toHaveCount(0);
   await expect(page.getByTestId('operator-sensor-3d-canvas')).toBeVisible();
@@ -279,7 +280,12 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Kimlik yüzdeleri');
   await expect(page.getByTestId('operator-confidence-panel')).toContainText('Tür');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Tip');
-  await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
+  await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-color"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-type"]')).toHaveCount(4);
+  await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
+  await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-shape', 'symbol');
+  await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
+  await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-shape', 'symbol');
   await expect(page.getByText('İzler')).toHaveCount(0);
   await expect(page.getByText('DRY-RUN · fiziksel çıkış yok')).toHaveCount(0);
   await expect(page.getByText('İZ')).toHaveCount(0);
@@ -288,34 +294,35 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-hardware-result')).toHaveCount(0);
   await expect(page.getByText(/Puan/)).toHaveCount(0);
 
-  await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('otonom mod');
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
   await expect(page.getByTestId('operator-stop-button')).toBeVisible();
   await expect(page.getByTestId('operator-stop-button')).toContainText('ACİL DURDUR');
   await expect(page.getByTestId('operator-maintenance-button')).toBeVisible();
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
-  await page.getByRole('button', { name: 'Aşama 1' }).click();
-  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
   await expect(page.locator('.map-legend')).toHaveCount(0);
-  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
   await expect(page.getByTestId('fire-cluster')).not.toContainText('S1-ORDER');
-  await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-color"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-type"]')).toHaveCount(4);
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Düşman');
-  await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
-  await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   expect(await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.every((target) => getComputedStyle(target).color === 'rgb(245, 251, 255)'))).toBe(true);
   const confidenceRowTops = await page.locator('article[data-testid^="operator-confidence-"]').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().top)));
   expect(new Set(confidenceRowTops).size).toBe(1);
   await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-shot-trace')).toBeVisible();
+  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '1');
+  await expect(page.locator('[data-testid="operator-shot-trace"] .shot-bullet')).toHaveCount(1);
   await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.getByTestId('operator-track-shot-icon-S1-ORDER-FUZE-01')).toBeVisible();
   await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
+  await page.getByTestId('operator-fire-button').click();
+  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '2');
 
   await page.getByRole('button', { name: 'Aşama 2' }).click();
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await page.getByTestId('operator-fire-button').click();
+  await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
   await expect(page.locator('.map-legend')).toHaveCount(0);
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-color"]')).toHaveCount(0);
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-type"]')).toHaveCount(3);
@@ -351,6 +358,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
       { trackId: 'DRY-RUN-F16-01', stage: 3, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 12.4, bearingDeg: -18, confidence: 0.96, source: 'fused', updatedAt: '2026-05-25T20:20:00Z' },
       { trackId: 'DRY-RUN-HEL-02', stage: 3, round: 1, targetType: 'Helikopter', friendFoe: 'Dost', rangeM: 8.1, bearingDeg: 4, confidence: 0.91, source: 'fused', updatedAt: '2026-05-25T20:20:00Z' },
       { trackId: 'DRY-RUN-UAV-03', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Bilinmeyen', rangeM: 4.2, bearingDeg: 23, confidence: 0.42, source: 'radar-lidar', updatedAt: '2026-05-25T20:20:00Z' },
+      { trackId: 'DRY-RUN-LOW-04', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Bilinmeyen', rangeM: 6.1, bearingDeg: 38, confidence: 0.39, source: 'radar-lidar', updatedAt: '2026-05-25T20:20:00Z' },
     ],
   } as const;
   const sensorFrames = [
@@ -426,6 +434,30 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
       replayOnly: true,
       rawSampleRef: 'fixture/fusion/uav-unknown',
     },
+    {
+      frameId: 'SENS-3-1-LOW-FUSION',
+      stage: 3,
+      round: 1,
+      trackId: 'DRY-RUN-LOW-04',
+      sensor: 'fusion',
+      timestamp: '2026-05-25T20:20:00Z',
+      rangeM: 6.1,
+      bearingDeg: 38,
+      elevationDeg: 0.7,
+      radialVelocityMps: -1,
+      rcsDbsm: 1.8,
+      snrDb: 12.5,
+      pointCount: 46,
+      quality: 0.49,
+      targetType: 'Mini/Micro İHA',
+      friendFoe: 'Bilinmeyen',
+      classificationConfidence: 0.39,
+      rangeGate: 'Kimlik bekleniyor',
+      recommendation: 'Tür doğruluğu eşiğin altında; operatöre küre olarak gösterilir.',
+      sourceDataset: 'Gökkalkan recorded-style radar/LiDAR replay fixture.',
+      replayOnly: true,
+      rawSampleRef: 'fixture/fusion/uav-low-confidence',
+    },
   ];
   let statePayload = {
     app: 'gokkalkan-operator-api',
@@ -499,14 +531,17 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
       }),
     });
   });
+  let fireIntentCount = 0;
   await page.route(`${apiBase}/fire-intent`, async (route) => {
+    fireIntentCount += 1;
+    const commandId = `CMD-FIRE-${fireIntentCount}`;
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        result: { commandId: 'CMD-FIRE-MISS', kind: 'FireIntent', accepted: true, completed: false, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Atış niyeti kabul edildi; hedef imha doğrulanmadı.', physicalOutput: false, createdAt: '2026-05-25T20:20:02Z' },
+        result: { commandId, kind: 'FireIntent', accepted: true, completed: false, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Atış niyeti kabul edildi; hedef imha doğrulanmadı.', physicalOutput: false, createdAt: '2026-05-25T20:20:02Z' },
         safety,
         state: statePayload,
-        hardwareResult: { adapter: 'dry-run.test', commandId: 'CMD-FIRE-MISS', kind: 'FireIntent', accepted: true, completed: false, physicalOutput: false, message: 'Dry-run isabet yok.', createdAt: '2026-05-25T20:20:02Z' },
+        hardwareResult: { adapter: 'dry-run.test', commandId, kind: 'FireIntent', accepted: true, completed: false, physicalOutput: false, message: 'Dry-run isabet yok.', createdAt: '2026-05-25T20:20:02Z' },
       }),
     });
   });
@@ -543,13 +578,15 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(page.getByTestId('operator-confidence-panel')).toContainText('Düşman');
   await expect(page.getByTestId('operator-accuracy-DRY-RUN-F16-01-color')).toContainText('96%');
   await expect(page.getByTestId('operator-accuracy-DRY-RUN-UAV-03-type')).toContainText('42%');
-  await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
+  await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
+  await expect(page.getByTestId('operator-accuracy-DRY-RUN-LOW-04-type')).toContainText('39%');
+  await expect(page.getByTestId('operator-confidence-DRY-RUN-LOW-04')).toHaveAttribute('data-identification', 'unknown');
   await expect(page.getByText('İzler')).toHaveCount(0);
   await expect(page.getByText('İZ')).toHaveCount(0);
   await expect(page.getByText('DURAĞAN')).toHaveCount(0);
   await expect(page.getByText('DRY-RUN · fiziksel çıkış yok')).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .target-label-stack')).toHaveCount(0);
-  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(2);
+  await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
   await expect(page.locator('.operator-track-scene .target-unknown-sphere')).toHaveCount(1);
   await expect(page.getByTestId('operator-steel-dome')).toHaveAttribute('data-rotation', /-?\d+\.\d/);
   const trackSceneBox = await page.getByTestId('operator-track-scene').boundingBox();
@@ -574,7 +611,10 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const f16Box = await page.getByTestId('operator-sensor-3d-target-DRY-RUN-F16-01').boundingBox();
   expect(f16Box).not.toBeNull();
   await expect(page.getByTestId('operator-sensor-3d-dome')).toHaveCount(0);
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-shape', 'symbol');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-LOW-04')).toHaveAttribute('data-identification', 'unknown');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-LOW-04')).toHaveAttribute('data-shape', 'sphere');
   await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-HEL-02')).toHaveAttribute('data-affiliation', 'Dost');
 
   const viewBox = await sensor3dView.boundingBox();
@@ -594,7 +634,11 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
   await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
 
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
 
   const resetViewBox = await sensor3dView.boundingBox();
@@ -666,15 +710,15 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByTestId('manual-aim-controls')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Manuel' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Otonom' })).toHaveCount(0);
-  await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('otonom mod');
-  await page.getByRole('button', { name: 'Aşama 1' }).click();
+  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
   await expect(page.getByTestId('fire-cluster')).not.toContainText('S1-ORDER');
   await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-shot-trace')).toBeVisible();
+  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '1');
+  await expect(page.locator('[data-testid="operator-shot-trace"] .shot-bullet')).toHaveCount(1);
   await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.getByTestId('operator-track-shot-icon-S1-ORDER-FUZE-01')).toBeVisible();
   await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
@@ -712,20 +756,26 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByTestId('operator-lidar-diagnostics')).toContainText('SDK/driver → SensorFrame → Backend');
 });
 
-test('operator panel keeps unknown targets white/spherical and fire-locked until identified', async ({ page }) => {
+test('operator panel uses the 40 percent type-confidence threshold for radar symbols', async ({ page }) => {
   await page.goto('/?operator=1');
+  await page.getByRole('button', { name: 'Aşama 3' }).click();
 
   const unknownTrack = page.getByTestId('operator-track-DRY-RUN-UAV-03');
-  await expect(unknownTrack).toHaveAttribute('data-identification', 'unknown');
+  await expect(unknownTrack).toHaveAttribute('data-identification', 'identified');
   await expect(unknownTrack).toHaveAttribute('data-affiliation', 'Bilinmeyen');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
+  await expect(unknownTrack).toHaveAttribute('data-shape', 'symbol');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
+  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-shape', 'symbol');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('Tür');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('42%');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).not.toContainText('DRY-RUN-UAV-03');
 
   await unknownTrack.click();
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('otonom mod');
+  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
 });
 
 test('operator panel can be opened directly with query parameter without simulator chrome', async ({ page }) => {

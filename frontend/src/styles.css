@@ -212,7 +212,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .window-dot { background: var(--green); }
 
 .strike .shot-trail { stroke: rgba(255,241,190,.62); stroke-width: .45; stroke-dasharray: 2 2; animation: strikeFade 2.4s ease-out forwards; }
-.strike .shot-bullet { fill: #fff2a8; stroke: #fff; stroke-width: .35; filter: drop-shadow(0 0 5px rgba(255,242,168,.95)); }
+.strike .shot-bullet-flight { filter: drop-shadow(0 0 5px rgba(255,242,168,.95)); }
+.strike .shot-bullet { fill: #fff2a8; stroke: #fff; stroke-width: .42; }
+.strike .shot-bullet-shine { fill: none; stroke: #fff; stroke-width: .38; stroke-linecap: round; opacity: .82; }
 .strike .impact-ring { fill: none; stroke: var(--green); stroke-width: .7; animation: strikePop 2.4s ease-out forwards; }
 .strike.penalty .impact-ring, .strike.miss .impact-ring { stroke: var(--red); }
 .strike.penalty .shot-bullet, .strike.miss .shot-bullet { fill: #ffb0b7; }
