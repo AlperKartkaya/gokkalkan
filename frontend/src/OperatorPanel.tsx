@@ -37,6 +37,9 @@ import {
 } from './operatorApiClient';
 import type { Mode, Stage, TargetType } from './types';
 
+const DEFAULT_OPERATOR_STAGE: Stage = 1;
+const TYPE_SYMBOL_CONFIDENCE_THRESHOLD = 0.4;
+
 const targetLabel: Record<TargetType, string> = {
   F16: 'Savaş Uçağı / F16',
   Helikopter: 'Helikopter',
@@ -63,7 +66,7 @@ const dryRunTracksByStage: Record<Stage, OperatorTrackState[]> = {
   ],
 };
 
-const dryRunTracks = dryRunTracksByStage[3];
+const dryRunTracks = dryRunTracksByStage[DEFAULT_OPERATOR_STAGE];
 
 const localSensorHealth: OperatorSensorHealth = {
   schemaVersion: 1,
@@ -98,6 +101,14 @@ function isTrackUnidentified(track: Pick<OperatorTrackState, 'friendFoe' | 'conf
 
 function isFrameUnidentified(frame: Pick<OperatorSensorFrame, 'friendFoe' | 'classificationConfidence'>) {
   return frame.friendFoe === 'Bilinmeyen' || frame.classificationConfidence < 0.6;
+}
+
+function hasReliableTrackType(track: Pick<OperatorTrackState, 'confidence'>) {
+  return track.confidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD;
+}
+
+function hasReliableFrameType(frame: Pick<OperatorSensorFrame, 'classificationConfidence'>) {
+  return frame.classificationConfidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD;
 }
 
 function hostilityConfidence(frame: OperatorSensorFrame) {
@@ -254,7 +265,7 @@ function visualSizeForTarget(type: TargetType) {
 
 function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) {
   const radians = (track.bearingDeg * Math.PI) / 180;
-  const size = isTrackUnidentified(track) ? { w: 6.2, h: 6.2 } : visualSizeForTarget(track.targetType);
+  const size = hasReliableTrackType(track) ? visualSizeForTarget(track.targetType) : { w: 6.2, h: 6.2 };
   const x = stage === 1
     ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -2.4 : 2.4), 12, 82)
     : clampPercent(operatorXForRange(track.rangeM) + Math.sin(radians) * 7, 13, 72);
@@ -563,7 +574,7 @@ function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: O
   const color = sensorFrameColor(frame);
   const yaw = ((frame.bearingDeg - 2) * Math.PI) / 180;
   const scale = 1;
-  if (isFrameUnidentified(frame)) {
+  if (!hasReliableFrameType(frame)) {
     pushSphere(triangles, point, 0.36, color);
   } else if (frame.targetType === 'Helikopter') {
     pushOrientedBox(triangles, point, [0, 0, 0], [0.88 * scale, 0.28 * scale, 0.42 * scale], yaw, color);
@@ -826,6 +837,7 @@ function OperatorTrackScene({
   tracks,
   selectedTrackId,
   lastIntent,
+  shotTraceVersion,
   shotTrackIds,
   onSelect,
   compact = false,
@@ -834,6 +846,7 @@ function OperatorTrackScene({
   tracks: OperatorTrackState[];
   selectedTrackId: string;
   lastIntent?: FireIntent;
+  shotTraceVersion: number;
   shotTrackIds: Set<string>;
   onSelect: (trackId: string) => void;
   compact?: boolean;
@@ -842,6 +855,9 @@ function OperatorTrackScene({
   const visualTracks = tracks.map((track, index) => visualTrackFor(track, index, stage));
   const selectedVisualTrack = visualTracks.find((track) => track.trackId === selectedTrackId) ?? visualTracks[0];
   const firedVisualTrack = visualTracks.find((track) => track.trackId === lastIntent?.targetId);
+  const shotAngle = firedVisualTrack
+    ? (Math.atan2(firedVisualTrack.y - OPERATOR_SYSTEM_POSITION.y, firedVisualTrack.x - OPERATOR_SYSTEM_POSITION.x) * 180) / Math.PI
+    : 0;
   const ruleWindow = selectedVisualTrack && stage !== 1
     ? { start: Math.min(operatorXForRange(15), operatorXForRange(5)), width: Math.abs(operatorXForRange(5) - operatorXForRange(15)) }
     : selectedVisualTrack
@@ -919,12 +935,27 @@ function OperatorTrackScene({
           </g>
         )}
         {firedVisualTrack && (
-          <g className="strike hit" data-testid="operator-shot-trace">
+          <g
+            key={`${lastIntent?.requestedAt ?? 'shot'}-${shotTraceVersion}`}
+            className="strike hit"
+            data-testid="operator-shot-trace"
+            data-shot-version={shotTraceVersion}
+          >
             <line className="shot-trail" x1={OPERATOR_SYSTEM_POSITION.x} y1={OPERATOR_SYSTEM_POSITION.y} x2={firedVisualTrack.x} y2={firedVisualTrack.y} />
-            <circle className="shot-bullet" cx={OPERATOR_SYSTEM_POSITION.x} cy={OPERATOR_SYSTEM_POSITION.y} r="1.05">
-              <animate attributeName="cx" from={OPERATOR_SYSTEM_POSITION.x} to={firedVisualTrack.x} dur="0.26s" fill="freeze" />
-              <animate attributeName="cy" from={OPERATOR_SYSTEM_POSITION.y} to={firedVisualTrack.y} dur="0.26s" fill="freeze" />
-            </circle>
+            <g className="shot-bullet-flight">
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                from={`${OPERATOR_SYSTEM_POSITION.x} ${OPERATOR_SYSTEM_POSITION.y}`}
+                to={`${firedVisualTrack.x} ${firedVisualTrack.y}`}
+                dur="0.26s"
+                fill="freeze"
+              />
+              <g transform={`rotate(${shotAngle})`}>
+                <path className="shot-bullet" d="M-3.6,-1 L1.5,-1 L3.5,0 L1.5,1 L-3.6,1 Z" />
+                <path className="shot-bullet-shine" d="M-2.4,-.38 L1.1,-.38" />
+              </g>
+            </g>
             <circle className="impact-ring" cx={firedVisualTrack.x} cy={firedVisualTrack.y} r="2.8" />
             <text x={Math.min(88, firedVisualTrack.x + 2)} y={Math.max(9, firedVisualTrack.y - 2)}>KAYIT</text>
           </g>
@@ -944,10 +975,11 @@ function OperatorTrackScene({
 
         {visualTracks.map((track) => {
           const selected = selectedVisualTrack?.trackId === track.trackId;
-          const unknown = hostilityDetection && isTrackUnidentified(track);
+          const typeReliable = hasReliableTrackType(track);
+          const unknown = !typeReliable;
           const shot = shotTrackIds.has(track.trackId);
           const displayAffiliation = hostilityDetection ? track.friendFoe : 'Bilinmeyen';
-          const statusText = unknown ? 'kimlik bekliyor' : hostilityDetection ? `${targetLabel[track.targetType]} ${track.friendFoe}` : targetLabel[track.targetType];
+          const statusText = unknown ? 'tür doğruluğu bekleniyor' : hostilityDetection ? `${targetLabel[track.targetType]} ${track.friendFoe}` : targetLabel[track.targetType];
           return (
             <button
               key={track.trackId}
@@ -957,6 +989,7 @@ function OperatorTrackScene({
               data-track-id={track.trackId}
               data-affiliation={displayAffiliation}
               data-identification={unknown ? 'unknown' : 'identified'}
+              data-shape={typeReliable ? 'symbol' : 'sphere'}
               data-shot={shot ? 'true' : 'false'}
               aria-label={`${track.trackId} ${statusText} ${track.rangeM.toFixed(1)} metre`}
               onClick={() => onSelect(track.trackId)}
@@ -1176,7 +1209,8 @@ function SensorFusion3DView({
           visible: true,
         };
         const selected = selectedTrackId === frame.trackId;
-        const unknown = stageHasHostilityDetection(stage) && isFrameUnidentified(frame);
+        const typeReliable = hasReliableFrameType(frame);
+        const unknown = !typeReliable;
         const shot = shotTrackIds.has(frame.trackId);
         return (
           <button
@@ -1186,6 +1220,7 @@ function SensorFusion3DView({
             data-track-id={frame.trackId}
             data-affiliation={frame.friendFoe}
             data-identification={unknown ? 'unknown' : 'identified'}
+            data-shape={typeReliable ? 'symbol' : 'sphere'}
             data-shot={shot ? 'true' : 'false'}
             data-type-confidence={frame.classificationConfidence.toFixed(2)}
             data-color-confidence={hostilityConfidence(frame).toFixed(2)}
@@ -1232,7 +1267,7 @@ function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; fra
         style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
       >
         {uniqueFrames.map((frame) => {
-          const unknown = hostilityDetection && isFrameUnidentified(frame);
+          const unknown = !hasReliableFrameType(frame);
           const colorValue = hostilityConfidence(frame);
           const selected = frame.trackId === selectedTrackId;
           const displayType = unknown ? 'Bilinmeyen cisim' : targetLabel[frame.targetType];
@@ -1285,12 +1320,14 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
   const dryRun = true;
   const maintenanceFinishingRef = useRef(false);
-  const [mode, setMode] = useState<Mode>(stageExpectedMode(3));
-  const [stage, setStage] = useState<Stage>(3);
+  const [mode, setMode] = useState<Mode>(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
+  const [stage, setStage] = useState<Stage>(DEFAULT_OPERATOR_STAGE);
   const [round, setRound] = useState(1);
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
+  const [shotTraceVersion, setShotTraceVersion] = useState(0);
   const [shotTrackIds, setShotTrackIds] = useState<Set<string>>(() => new Set());
+  const [autonomousFireStartKeys, setAutonomousFireStartKeys] = useState<Set<string>>(() => new Set());
   const [, setLastHardwareResult] = useState<HardwareResult>();
   const [operatorStopActive, setOperatorStopActive] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
@@ -1407,11 +1444,33 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   });
   const sensorSource = sensorSourceLabel(sensorHealth, safety.sensorAdapterConnected);
   const safetyFireReady = canSendFireIntent(safety, selectedTrack?.trackId);
-  const operatorFireAllowedByStage = stageExpectedMode(displayStage) === 'manual';
-  const fireReady = safetyFireReady && operatorFireAllowedByStage;
-  const fireBlockedCopy = operatorFireAllowedByStage
-    ? operatorBlockCopy[safety.blockReason]
-    : 'Bu aşamada atış otonom mod tarafından yönetilir.';
+  const isAutonomousFireStage = stageExpectedMode(displayStage) !== 'manual';
+  const autonomousFireKey = `${displayStage}-${displayRound}`;
+  const autonomousFireStarted = isAutonomousFireStage && autonomousFireStartKeys.has(autonomousFireKey);
+  const autonomousStartSafety = evaluateOperatorSafety({
+    estop: safety.estop,
+    motionZoneOk: safety.motionZoneOk,
+    fireZoneOk: safety.fireZoneOk,
+    targetGateOk: true,
+    modeOk: safety.modeOk,
+    backendConnected: safety.backendConnected,
+    perceptionConnected: safety.perceptionConnected,
+    sensorAdapterConnected: safety.sensorAdapterConnected,
+    dryRun: safety.dryRun,
+    liveArmEnabled: safety.liveArmEnabled,
+  });
+  const manualFireReady = !isAutonomousFireStage && safetyFireReady;
+  const autonomousFireReady = isAutonomousFireStage && !autonomousFireStarted && canSendFireIntent(autonomousStartSafety, `AUTO-S${displayStage}-R${displayRound}`);
+  const fireReady = manualFireReady || autonomousFireReady;
+  const fireCaption = isAutonomousFireStage
+    ? autonomousFireStarted
+      ? 'Otonom Ateş Başlatıldı'
+      : autonomousFireReady
+        ? 'Otonom Ateş Başlat'
+        : operatorBlockCopy[autonomousStartSafety.blockReason]
+    : manualFireReady
+      ? 'Hazır'
+      : operatorBlockCopy[safety.blockReason];
   const maintenanceElapsedSeconds = maintenanceSessionActive && maintenanceSessionStartedAt
     ? Math.max(0, Math.floor((maintenanceClockMs - maintenanceSessionStartedAt) / 1000))
     : 0;
@@ -1680,14 +1739,85 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     }));
   };
 
+  const markManualShotComplete = (intent: FireIntent) => {
+    setLastIntent(intent);
+    setShotTraceVersion((value) => value + 1);
+    setShotTrackIds((current) => new Set(current).add(intent.targetId));
+  };
+
+  const markAutonomousFireStarted = (key: string) => {
+    setAutonomousFireStartKeys((current) => new Set(current).add(key));
+  };
+
   const sendFireIntent = () => {
-    if (!selectedTrack || !fireReady) {
+    if (isAutonomousFireStage) {
+      if (!autonomousFireReady) {
+        pushResult(makeCommandResult({
+          commandId: `AUTO-BLOCK-${Date.now()}`,
+          kind: 'FireIntent',
+          accepted: false,
+          dryRun: config.dryRun,
+          safetyBlockReason: autonomousFireStarted ? 'BLOCKED_MODE' : autonomousStartSafety.blockReason,
+        }));
+        return;
+      }
+
+      const intentKey = autonomousFireKey;
+      const intent = makeFireIntent({ targetId: `AUTO-S${displayStage}-R${displayRound}`, stage: displayStage, round: displayRound, dryRun: config.dryRun });
+      if (apiBaseUrl) {
+        setApiBusy(true);
+        void sendOperatorFireIntent(apiBaseUrl, intent)
+          .then((response) => {
+            pushResult(response.result);
+            setApiSnapshot(response.state);
+            setLastHardwareResult(response.hardwareResult ?? undefined);
+            if (response.result.accepted) markAutonomousFireStarted(intentKey);
+            setApiError('');
+          })
+          .catch((error: unknown) => {
+            pushResult(makeCommandResult({
+              commandId: `AUTO-FIRE-BLOCK-${Date.now()}`,
+              kind: 'FireIntent',
+              accepted: false,
+              dryRun: config.dryRun,
+              safetyBlockReason: 'BLOCKED_BACKEND',
+            }));
+            setLastHardwareResult(undefined);
+            setApiError(error instanceof Error ? error.message : 'Backend API otonom ateş başlatma komutunu kabul etmedi.');
+          })
+          .finally(() => setApiBusy(false));
+        return;
+      }
+
+      const result = makeCommandResult({
+        commandId: intent.requestedAt,
+        kind: intent.kind,
+        accepted: true,
+        dryRun: intent.dryRun,
+        safetyBlockReason: 'ALLOWED',
+      });
+      pushResult({ ...result, message: 'Otonom ateş döngüsü başlatıldı; fiziksel çıkış üretilmedi.' });
+      markAutonomousFireStarted(intentKey);
+      setLastHardwareResult({
+        adapter: 'local-ui.autonomous-dry-run',
+        commandId: result.commandId,
+        kind: intent.kind,
+        accepted: true,
+        completed: true,
+        physicalOutput: false,
+        message: 'Yerel dry-run otonom ateş başlatma niyetini kaydetti; fiziksel çıkış üretilmedi.',
+        createdAt: result.createdAt,
+      });
+      return;
+    }
+
+    if (!selectedTrack || !manualFireReady) {
       pushResult(makeCommandResult({
         commandId: `BLOCK-${Date.now()}`,
         kind: 'FireIntent',
         accepted: false,
         dryRun: config.dryRun,
-        safetyBlockReason: operatorFireAllowedByStage ? safety.blockReason : 'BLOCKED_MODE',
+        safetyBlockReason: safety.blockReason,
       }));
       return;
     }
@@ -1702,8 +1832,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           setLastHardwareResult(response.hardwareResult ?? undefined);
           const fireCompleted = response.result.accepted && (response.result.completed || response.hardwareResult?.completed === true);
           if (fireCompleted) {
-            setLastIntent(intent);
-            setShotTrackIds((current) => new Set(current).add(intent.targetId));
+            markManualShotComplete(intent);
           }
           setApiError('');
         })
@@ -1730,8 +1859,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       safetyBlockReason: 'ALLOWED',
     });
     pushResult(result);
-    setLastIntent(intent);
-    setShotTrackIds((current) => new Set(current).add(intent.targetId));
+    markManualShotComplete(intent);
     setLastHardwareResult({
       adapter: 'local-ui.dry-run',
       commandId: result.commandId,
@@ -1930,6 +2058,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
             tracks={visibleTracks}
             selectedTrackId={selectedTrackId}
             lastIntent={lastIntent}
+            shotTraceVersion={shotTraceVersion}
             shotTrackIds={shotTrackIds}
             onSelect={setSelectedTrackId}
           />
@@ -1945,7 +2074,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
                 >
                   ATEŞ
                 </button>
-                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? 'Hazır' : fireBlockedCopy}</p>
+                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireCaption}</p>
               </div>
 
               <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
