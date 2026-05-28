@@ -188,10 +188,6 @@ function readinessTone(status: OperatorReadinessStatus) {
   return 'border-[#48a8ff]/30 bg-[#48a8ff]/10 text-[#cbe9ff]';
 }
 
-function formatPercent(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
-
 function operatorXForRange(range: number) {
   return 88 - range * 5;
 }
@@ -436,8 +432,7 @@ function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number, total:
   ];
 }
 
-function sensorFrameColor(frame: OperatorSensorFrame, selected: boolean): Vec3 {
-  if (selected) return sensorPalette.selected;
+function sensorFrameColor(frame: OperatorSensorFrame): Vec3 {
   if (frame.friendFoe === 'Düşman') return sensorPalette.enemy;
   if (frame.friendFoe === 'Dost') return sensorPalette.friend;
   return sensorPalette.unknown;
@@ -548,17 +543,17 @@ function pushSphere(batch: SensorBatch, center: Vec3, radius: number, color: Vec
   }
 }
 
-function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: OperatorSensorFrame, point: Vec3, selected: boolean) {
-  const color = sensorFrameColor(frame, selected);
+function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: OperatorSensorFrame, point: Vec3) {
+  const color = sensorFrameColor(frame);
   const yaw = ((frame.bearingDeg - 2) * Math.PI) / 180;
-  const scale = selected ? 1.16 : 1;
+  const scale = 1;
   if (isFrameUnidentified(frame)) {
-    pushSphere(triangles, point, selected ? 0.44 : 0.36, color);
+    pushSphere(triangles, point, 0.36, color);
   } else if (frame.targetType === 'Helikopter') {
     pushOrientedBox(triangles, point, [0, 0, 0], [0.88 * scale, 0.28 * scale, 0.42 * scale], yaw, color);
     pushOrientedBox(triangles, point, [-0.72 * scale, 0, 0], [0.86 * scale, 0.08 * scale, 0.12 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [0, 0.32 * scale, 0], [1.18 * scale, 0.035 * scale, 0.08 * scale], yaw, sensorPalette.selected);
-    pushOrientedBox(triangles, point, [0, 0.33 * scale, 0], [0.08 * scale, 0.035 * scale, 1.18 * scale], yaw, sensorPalette.selected);
+    pushOrientedBox(triangles, point, [0, 0.32 * scale, 0], [1.18 * scale, 0.035 * scale, 0.08 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [0, 0.33 * scale, 0], [0.08 * scale, 0.035 * scale, 1.18 * scale], yaw, color);
   } else if (frame.targetType === 'Balistik Füze') {
     pushOrientedBox(triangles, point, [0, 0, 0], [1.15 * scale, 0.2 * scale, 0.2 * scale], yaw, color);
     pushPyramidNose(triangles, point, [0.58 * scale, 0, 0], 0.38 * scale, 0.13 * scale, yaw, color);
@@ -569,14 +564,15 @@ function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: O
     pushOrientedBox(triangles, point, [0, 0, 0], [1.05 * scale, 0.045 * scale, 0.09 * scale], yaw, color);
     pushOrientedBox(triangles, point, [0, 0, 0], [0.09 * scale, 0.045 * scale, 1.05 * scale], yaw, color);
     [[0.48, 0.48], [0.48, -0.48], [-0.48, 0.48], [-0.48, -0.48]].forEach(([x, z]) => {
-      pushOrientedBox(triangles, point, [x * scale, 0.04 * scale, z * scale], [0.23 * scale, 0.04 * scale, 0.23 * scale], yaw, sensorPalette.selected);
+      pushOrientedBox(triangles, point, [x * scale, 0.04 * scale, z * scale], [0.23 * scale, 0.04 * scale, 0.23 * scale], yaw, color);
     });
   } else {
-    pushOrientedBox(triangles, point, [0, 0, 0], [1.25 * scale, 0.18 * scale, 0.26 * scale], yaw, color);
-    pushPyramidNose(triangles, point, [0.62 * scale, 0, 0], 0.42 * scale, 0.16 * scale, yaw, color);
-    pushOrientedBox(triangles, point, [0.12 * scale, 0, 0], [0.58 * scale, 0.055 * scale, 1.28 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.46 * scale, 0, 0], [0.34 * scale, 0.055 * scale, 0.52 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.5 * scale, 0.24 * scale, 0], [0.2 * scale, 0.44 * scale, 0.07 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [0.05 * scale, 0, 0], [1.38 * scale, 0.16 * scale, 0.22 * scale], yaw, color);
+    pushPyramidNose(triangles, point, [0.72 * scale, 0, 0], 0.48 * scale, 0.12 * scale, yaw, color);
+    pushOrientedBox(triangles, point, [-0.04 * scale, -0.01 * scale, 0], [0.62 * scale, 0.04 * scale, 1.54 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.58 * scale, 0, 0], [0.38 * scale, 0.045 * scale, 0.64 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.62 * scale, 0.28 * scale, 0], [0.22 * scale, 0.54 * scale, 0.08 * scale], yaw, color);
+    pushOrientedBox(triangles, point, [-0.18 * scale, -0.1 * scale, 0], [0.34 * scale, 0.07 * scale, 0.18 * scale], yaw, color);
   }
   pushLine(lines, [point[0], 0.06, point[2]], [point[0], point[1], point[2]], color);
 }
@@ -618,7 +614,7 @@ function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: Ope
   }
 
   frames.forEach((frame, index) => {
-    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index, frames.length), selectedTrackId === frame.trackId);
+    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index, frames.length));
   });
 }
 
@@ -737,7 +733,6 @@ function renderSensorWebGlScene(gl: WebGLRenderingContext, resources: SensorGlRe
         visible: projected.visible,
       };
     }),
-    domePoint: projectSensorPoint(matrix, [SENSOR_DOME_POSITION[0], 1.05, SENSOR_DOME_POSITION[2]]),
   };
 }
 
@@ -787,10 +782,12 @@ function OperatorTargetSilhouette({ type, className = '' }: { type: TargetType; 
       )}
       {type === 'F16' && (
         <g>
-          <path d="M3 32 L25 25 L43 11 L53 15 L43 29 L62 32 L43 35 L53 49 L43 53 L25 39 Z" />
-          <path d="M23 25 L14 15 L30 23 Z M23 39 L14 49 L30 41 Z" />
-          <path d="M36 28 L45 24 L43 32 L45 40 L36 36 Z" />
-          <circle cx="47" cy="32" r="2.2" />
+          <path d="M4 32 L16 28 L36 28 L57 32 L36 36 L16 36 Z" />
+          <path d="M32 28 L47 12 L55 15 L42 31 Z M32 36 L47 52 L55 49 L42 33 Z" />
+          <path d="M17 28 L8 17 L27 27 Z M17 36 L8 47 L27 37 Z" />
+          <path d="M38 29 L47 25 L44 32 L47 39 L38 35 Z" />
+          <path d="M23 29 L30 23 L37 29 Z" />
+          <circle cx="48" cy="32" r="2" />
         </g>
       )}
       {type === 'Mini/Micro İHA' && (
@@ -847,8 +844,7 @@ function OperatorTrackScene({
     >
       <div className="relative z-[2] flex flex-wrap items-start justify-between gap-3 p-5 pb-2">
         <div>
-          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görüntü</p>
-          <h2 className="m-0 mt-1 text-2xl font-black">İzler</h2>
+          <h2 className="m-0 text-2xl font-black">Görüntü</h2>
         </div>
         <span className="rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-1 text-xs font-black text-[#ffe4ad]">DRY-RUN · fiziksel çıkış yok</span>
       </div>
@@ -992,7 +988,6 @@ function SensorFusion3DView({
   const [renderTick, setRenderTick] = useState(0);
   const [webglAvailable, setWebglAvailable] = useState(true);
   const [overlayPoints, setOverlayPoints] = useState<SensorOverlayPoint[]>([]);
-  const [domeOverlayPoint, setDomeOverlayPoint] = useState({ left: 82, top: 58, visible: true });
 
   const zoomLevel = SENSOR_DEFAULT_DISTANCE / view.distance;
 
@@ -1028,13 +1023,6 @@ function SensorFusion3DView({
       glResourcesRef.current = resources;
       const result = renderSensorWebGlScene(gl, resources, frames, selectedTrackId, view);
       setOverlayPoints((current) => (overlayPointsEqual(current, result.overlayPoints) ? current : result.overlayPoints));
-      setDomeOverlayPoint((current) => (
-        Math.abs(current.left - result.domePoint.left) < 0.2
-        && Math.abs(current.top - result.domePoint.top) < 0.2
-        && current.visible === result.domePoint.visible
-          ? current
-          : result.domePoint
-      ));
     } catch (error) {
       console.warn('Radar/LiDAR WebGL çizimi devre dışı kaldı:', error);
       setWebglAvailable(false);
@@ -1074,7 +1062,7 @@ function SensorFusion3DView({
     setView((current) => ({
       ...current,
       pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch - deltaY * 0.16, 22, 72) : current.pitch,
-      yaw: dragState.mode === 'orbit' ? clampNumber(dragState.baseYaw + deltaX * 0.24, -82, 34) : current.yaw,
+      yaw: dragState.mode === 'orbit' ? dragState.baseYaw + deltaX * 0.36 : current.yaw,
       panX: dragState.mode === 'pan' ? clampNumber(dragState.basePanX - deltaX * 0.018 * current.distance, -6, 6) : current.panX,
       panZ: dragState.mode === 'pan' ? clampNumber(dragState.basePanZ + deltaY * 0.018 * current.distance, -4.5, 4.5) : current.panZ,
     }));
@@ -1092,7 +1080,7 @@ function SensorFusion3DView({
     event.preventDefault();
     setView((current) => ({
       ...current,
-      distance: clampNumber(current.distance * (event.deltaY < 0 ? 0.9 : 1.1), 9.2, 29),
+      distance: clampNumber(current.distance * (event.deltaY < 0 ? 0.96 : 1.04), 10.5, 32),
     }));
   };
 
@@ -1163,13 +1151,6 @@ function SensorFusion3DView({
           />
         );
       })}
-      <span
-        className={`sensor-3d-dome ${domeOverlayPoint.visible ? '' : 'is-off-axis'}`}
-        data-testid="operator-sensor-3d-dome"
-        style={{ left: `${domeOverlayPoint.left}%`, top: `${domeOverlayPoint.top}%` }}
-      >
-        <img src={gokkalkanIconUrl} alt="" />
-      </span>
       {!webglAvailable && (
         <span className="sensor-3d-empty sensor-3d-webgl-warning">WebGL açılamadı; sensör akışı yazılım katmanında tutuluyor.</span>
       )}
@@ -1180,15 +1161,30 @@ function SensorFusion3DView({
   );
 }
 
+function AccuracyCircle({ label, value, tone, testId }: { label: string; value: number; tone: string; testId: string }) {
+  const percent = Math.round(clampNumber(value, 0, 1) * 100);
+  return (
+    <span
+      className={`accuracy-circle ${tone}`}
+      style={{ '--accuracy': `${percent}%` } as CSSProperties}
+      data-testid={testId}
+      aria-label={`${label} doğruluk ${percent}%`}
+    >
+      <b>{percent}%</b>
+      <small>{label}</small>
+    </span>
+  );
+}
+
 function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFrame[]; selectedTrackId: string }) {
   const uniqueFrames = frames.filter((frame, index, all) => all.findIndex((candidate) => candidate.trackId === frame.trackId) === index);
 
   return (
-    <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman güven yüzdeleri">
+    <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Güven</p>
-          <h2 className="m-0 mt-1 text-xl font-black">Renk / Tip</h2>
+          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">DOĞRULUK</p>
+          <h2 className="m-0 mt-1 text-xl font-black">Kimlik yüzdeleri</h2>
         </div>
         <span className="rounded-full border border-white/10 bg-white/[.05] px-3 py-1 text-xs font-black text-[#c8d8e2]">Beyaz: kimlik bekliyor</span>
       </div>
@@ -1209,13 +1205,19 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
                 <b className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{frame.trackId}</b>
                 <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-black">
-                <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-2 text-[#d7efff]">
-                  Renk <b className="block text-base text-white">{formatPercent(colorValue)}</b>
-                </span>
-                <span className="rounded-md border border-white/[.07] bg-black/20 px-2 py-2 text-[#d7efff]">
-                  Tip <b className="block text-base text-white">{formatPercent(frame.classificationConfidence)}</b>
-                </span>
+              <div className="accuracy-circle-grid mt-3">
+                <AccuracyCircle
+                  label="Renk"
+                  value={colorValue}
+                  tone={affiliationClass(frame.friendFoe)}
+                  testId={`operator-accuracy-${frame.trackId}-color`}
+                />
+                <AccuracyCircle
+                  label="Tip"
+                  value={frame.classificationConfidence}
+                  tone={unknown ? 'unknown' : 'type'}
+                  testId={`operator-accuracy-${frame.trackId}-type`}
+                />
               </div>
               <p className="m-0 mt-2 text-xs font-bold text-[#91a6b7]">{unknown ? 'Nesne küre olarak kalır; yazılım kimlik kesinleşince şekil ve renk günceller.' : 'Kimlik kesinleşti; renk ve tip güveni güncel.'}</p>
             </article>
@@ -1239,7 +1241,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   const [round, setRound] = useState(1);
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
-  const [lastHardwareResult, setLastHardwareResult] = useState<HardwareResult>();
+  const [, setLastHardwareResult] = useState<HardwareResult>();
   const [operatorStopActive, setOperatorStopActive] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
@@ -1733,11 +1735,14 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 </button>
               ))}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div
+              className="operator-round-grid mt-3"
+              style={{ '--round-count': stageRoundLimit(displayStage) } as CSSProperties}
+            >
               {Array.from({ length: stageRoundLimit(displayStage) }, (_, index) => index + 1).map((item) => (
                 <button
                   key={item}
-                  className={`rounded-full border px-3 py-1 text-xs font-black ${displayRound === item ? 'border-[#ffbb42]/40 bg-[#ffbb42]/14 text-[#ffe4ad]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
+                  className={`rounded-full border px-1.5 py-1 text-[11px] font-black ${displayRound === item ? 'border-[#ffbb42]/40 bg-[#ffbb42]/14 text-[#ffe4ad]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
                   disabled={apiBusy}
                   onClick={() => recordStage(displayStage, item)}
                 >
@@ -1755,52 +1760,45 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
             lastIntent={lastIntent}
             onSelect={setSelectedTrackId}
           />
+
+          <section className="operator-action-strip rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
+            <div className="operator-action-buttons">
+              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5" data-testid="fire-cluster">
+                <button
+                  className={`min-h-16 w-full rounded-xl px-3 text-base font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)] fire-ready-pulse' : 'bg-white/[.08] text-[#91a6b7]'}`}
+                  disabled={!fireReady || apiBusy}
+                  data-testid="operator-fire-button"
+                  onClick={sendFireIntent}
+                >
+                  {fireReady ? 'ATEŞ' : 'KİLİTLİ'}
+                </button>
+                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? selectedTrack?.trackId ?? 'Hedef' : operatorBlockCopy[safety.blockReason]}</p>
+              </div>
+
+              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
+                <button
+                  className="min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-3 text-base font-black text-[#ffd3d7]"
+                  data-testid="operator-stop-button"
+                  onClick={triggerOperatorStop}
+                >
+                  STOP
+                </button>
+                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#ffbdc4]">{operatorStopActive ? 'AKTİF' : 'Hazır'}</p>
+              </div>
+
+              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
+                <button
+                  className="min-h-16 w-full rounded-xl border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 text-base font-black text-[#d7efff]"
+                  data-testid="operator-maintenance-button"
+                  onClick={openMaintenance}
+                >
+                  BAKIM
+                </button>
+                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceOpen ? 'Açık' : 'Kapalı'}</p>
+              </div>
+            </div>
+          </section>
         </aside>
-      </section>
-
-      <section className="operator-action-strip mt-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
-        <div className="grid gap-3 min-[820px]:grid-cols-[minmax(220px,.9fr)_minmax(150px,.45fr)_minmax(150px,.45fr)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3" data-testid="fire-cluster">
-            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ffbb42]">Ateş</p>
-            <button
-              className={`mt-2 min-h-16 w-full rounded-xl px-4 text-lg font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)] fire-ready-pulse' : 'bg-white/[.08] text-[#91a6b7]'}`}
-              disabled={!fireReady || apiBusy}
-              data-testid="operator-fire-button"
-              onClick={sendFireIntent}
-            >
-              {fireReady ? 'ATEŞLE' : 'ATEŞ KİLİTLİ'}
-            </button>
-            <p className="m-0 mt-2 text-sm font-bold text-[#ffe4ad]">{fireReady ? `${selectedTrack?.trackId ?? 'Hedef'} · dry-run` : operatorBlockCopy[safety.blockReason]}</p>
-          </div>
-
-          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3">
-            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#ff4757]">Stop</p>
-            <button
-              className="mt-2 min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-4 text-lg font-black text-[#ffd3d7]"
-              data-testid="operator-stop-button"
-              onClick={triggerOperatorStop}
-            >
-              {operatorStopActive ? 'STOP AKTİF' : 'DURDUR'}
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-white/[.08] bg-black/20 p-3">
-            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#25d8ff]">Bakım</p>
-            <button
-              className="mt-2 min-h-16 w-full rounded-xl border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-4 text-lg font-black text-[#d7efff]"
-              data-testid="operator-maintenance-button"
-              onClick={openMaintenance}
-            >
-              BAKIM
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-[#33e68c]/18 bg-[#33e68c]/[.06] p-3" data-testid="operator-hardware-result">
-            <p className="m-0 text-xs font-black uppercase tracking-[.14em] text-[#bfffe0]">Sonuç</p>
-            <b className="mt-2 block text-sm text-white">{lastHardwareResult ? `${lastHardwareResult.kind} · physicalOutput=${String(lastHardwareResult.physicalOutput)}` : 'Bekleniyor'}</b>
-            <p className="m-0 mt-1 text-xs font-bold text-[#91a6b7]">{lastHardwareResult?.message ?? 'Niyetler dry-run Safety Gate üzerinden kayda alınır.'}</p>
-          </div>
-        </div>
       </section>
 
       <ConfidencePanel frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />

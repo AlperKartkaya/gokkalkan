@@ -126,7 +126,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .aircraft.enemy { color: #ff6876; }
 .aircraft.friend { color: #33e68c; }
 .aircraft.unknown { color: #f5fbff; }
-.aircraft.selected { transform: translate(-50%, -50%) scale(1.12); filter: saturate(1.12); }
+.aircraft.selected { filter: none; }
 .aircraft.candidate { animation: aircraftReady 1.25s ease-in-out infinite; }
 .aircraft.destroyed { opacity: .16; filter: grayscale(1); }
 .aircraft.selected .target-visual::before,
@@ -307,10 +307,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .sensor-3d-target.friend { color: #33e68c; }
 .sensor-3d-target.unknown { color: #f5fbff; }
 .sensor-3d-target.selected {
-  border-color: rgba(255,187,66,.58);
-  background: rgba(255,187,66,.08);
-  filter: drop-shadow(0 0 18px rgba(255,187,66,.55));
-  transform: translate(-50%, -50%) scale(1.08);
+  border-color: rgba(255,255,255,.62);
+  background: transparent;
+  filter: none;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.16), 0 0 18px rgba(255,255,255,.24);
 }
 
 .sensor-3d-target::after {
@@ -324,33 +325,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   box-shadow: 0 0 16px currentColor;
 }
 
-.sensor-3d-target.is-off-axis,
-.sensor-3d-dome.is-off-axis {
+.sensor-3d-target.is-off-axis {
   opacity: .52;
-}
-
-.sensor-3d-dome {
-  position: absolute;
-  z-index: 8;
-  display: grid;
-  width: 82px;
-  place-items: center;
-  gap: 1px;
-  color: #cbe9ff;
-  text-align: center;
-  transform: translate(-50%, -50%);
-  filter: drop-shadow(0 0 22px rgba(72,168,255,.42)) drop-shadow(0 18px 24px rgba(0,0,0,.45));
-  pointer-events: none;
-}
-
-.sensor-3d-dome img {
-  width: 48px;
-  height: 48px;
-  border-radius: 999px;
-  object-fit: contain;
-  opacity: .94;
-  transform: rotate(58deg);
-  filter: hue-rotate(145deg) saturate(1.7) brightness(1.08);
 }
 
 .confidence-swatch {
@@ -364,6 +340,83 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .confidence-swatch.enemy { background: var(--red); }
 .confidence-swatch.friend { background: var(--green); }
 .confidence-swatch.unknown { background: #f5fbff; }
+
+.operator-round-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--round-count), minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.operator-round-grid button {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.operator-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.operator-action-buttons button {
+  letter-spacing: .03em;
+}
+
+.accuracy-circle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accuracy-circle {
+  --accuracy: 0%;
+  --accuracy-color: var(--cyan);
+  position: relative;
+  display: grid;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  border-radius: 999px;
+  background: conic-gradient(var(--accuracy-color) var(--accuracy), rgba(255,255,255,.12) 0);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.10), 0 0 18px color-mix(in srgb, var(--accuracy-color) 34%, transparent);
+}
+
+.accuracy-circle::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: inherit;
+  background: rgba(2,4,7,.92);
+  box-shadow: inset 0 0 18px rgba(255,255,255,.04);
+}
+
+.accuracy-circle b,
+.accuracy-circle small {
+  position: relative;
+  z-index: 1;
+}
+
+.accuracy-circle b {
+  font-size: clamp(16px, 2vw, 21px);
+  line-height: 1;
+}
+
+.accuracy-circle small {
+  color: #a8c5d5;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.accuracy-circle.enemy { --accuracy-color: var(--red); }
+.accuracy-circle.friend { --accuracy-color: var(--green); }
+.accuracy-circle.unknown { --accuracy-color: #f5fbff; }
+.accuracy-circle.type { --accuracy-color: var(--blue); }
 
 .sensor-3d-empty {
   position: absolute;
@@ -452,15 +505,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   }
 
   .sensor-3d-target {
-    width: 40px;
-    height: 40px;
-  }
-
-  .sensor-3d-dome {
-    width: 70px;
-  }
-
-  .sensor-3d-dome img {
     width: 40px;
     height: 40px;
   }
