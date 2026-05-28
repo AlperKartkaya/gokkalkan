@@ -14,6 +14,7 @@ import {
 import { mechanicsConfig } from './mechanicsConfig';
 import { TARGET_ORDER, rangeRuleFor, stageConfigFor, thresholdFor } from './missionConfig';
 import { blockCopy, evaluateSafety, evaluateSystemHealth } from './safetyGate';
+import OperatorPanel from './OperatorPanel';
 import { exportJsonl, makeEvent } from './telemetry';
 import type { EventType, Mode, SafetyState, Stage, TargetType, TelemetryEvent, Track } from './types';
 
@@ -753,7 +754,7 @@ function TutorialOverlay({ step, index, count, onNext, onSkip }: { step: (typeof
   );
 }
 
-function Landing({ onEnter }: { onEnter: () => void }) {
+function Landing({ onEnter, onOperatorPanel }: { onEnter: () => void; onOperatorPanel: () => void }) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -797,7 +798,11 @@ function Landing({ onEnter }: { onEnter: () => void }) {
           ))}
         </div>
         <div className="boot-progress my-6 h-1 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-linear-to-r from-[#25d8ff] to-[#33e68c] transition-[width]" style={{ width: `${progress}%` }} /></div>
-        <button className="enter-console rounded-lg bg-[#e5fbff] px-6 py-3 text-[#001319] shadow-[0_12px_28px_rgba(37,216,255,.18)] font-black" onClick={onEnter}>Simülatöre Başla</button>
+        <div className="grid gap-2 justify-items-center">
+          <button className="enter-console rounded-lg bg-[#e5fbff] px-6 py-3 text-[#001319] shadow-[0_12px_28px_rgba(37,216,255,.18)] font-black" onClick={onEnter}>Simülatöre Başla</button>
+          <button className="operator-entry rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-5 py-2.5 text-sm font-black text-[#ffe4ad] shadow-[0_10px_24px_rgba(255,187,66,.08)]" onClick={onOperatorPanel}>Operatör Paneli</button>
+          <span className="max-w-[42ch] text-xs font-bold leading-snug text-[#91a6b7]">Gerçek sistem entegrasyonu için dry-run güvenli panel</span>
+        </div>
       </section>
     </main>
   );
@@ -1227,7 +1232,18 @@ function Console() {
   );
 }
 
+type AppSurface = 'landing' | 'simulator' | 'operator';
+
+function initialSurface(): AppSurface {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('operator')) return 'operator';
+  if (params.has('console')) return 'simulator';
+  return 'landing';
+}
+
 export default function App() {
-  const [entered, setEntered] = useState(() => new URLSearchParams(window.location.search).has('console'));
-  return entered ? <Console /> : <Landing onEnter={() => setEntered(true)} />;
+  const [surface, setSurface] = useState<AppSurface>(initialSurface);
+  if (surface === 'simulator') return <Console />;
+  if (surface === 'operator') return <OperatorPanel onBack={() => setSurface('landing')} onOpenSimulator={() => setSurface('simulator')} />;
+  return <Landing onEnter={() => setSurface('simulator')} onOperatorPanel={() => setSurface('operator')} />;
 }

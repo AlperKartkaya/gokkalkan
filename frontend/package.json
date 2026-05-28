@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "desktop": "node scripts/desktop-launcher.mjs --mode dev",
+    "desktop:dev": "node scripts/desktop-launcher.mjs --mode dev",
+    "desktop:preview": "npm run build && node scripts/desktop-launcher.mjs --mode preview",
+    "desktop:check": "node scripts/desktop-launcher.mjs --mode dev --no-browser --smoke --ui-port 5183 --api-port 8089 --timeout-ms 20000",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src",
+    "test:desktop": "node --test scripts/desktop-launcher.test.mjs",
     "test:e2e": "playwright test",
     "test:competition": "playwright test tests/e2e/operator-console.spec.ts"
   },

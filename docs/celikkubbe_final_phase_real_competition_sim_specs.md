@@ -8,6 +8,15 @@ The simulator should behave like a practice environment for competitors. It shou
 
 ---
 
+## 2026-05-25 status update
+
+Current implementation direction: use a **redrawn, scalable competition-style parkour** instead of embedding/cropping the original PDF parkour images as the runtime background. The official diagrams remain the structural reference for A→B movement, three lanes, 5/10/15 m bands, manual vs autonomous behavior, and scoring. This avoids treating low-resolution report artwork as an exact coordinate map while still following the competition mechanics.
+
+Also distinguish two surfaces:
+
+- **Competition simulator:** safe training/practice UI with configurable assumptions.
+- **Real operator panel:** future backend/perception/hardware-connected panel; documented separately in `docs/operator_panel_interfaces_roadmap.md`.
+
 ## 1. Core Product Goal
 
 Build an interactive simulation of the final competition where:
@@ -98,44 +107,35 @@ Therefore, implement these as configuration values. Do **not** hard-code invente
 
 ## 3. Required Visual Approach
 
-### 3.1 Use official parkour images as map backgrounds
+### 3.1 Use official diagrams as structural references, not runtime backgrounds
 
-The simulator should use the official diagrams as the visual basis:
+Do **not** add the original parkour images from the PDF as direct background images in the application. The simulator should instead redraw the competition structure with scalable HTML/SVG/CSS primitives:
 
-- **Stage 2 map:** page 17, Figure 4, “Aşama 2 Temsili Gösterim”
-- **Stage 3 map:** page 19, Figure 5, “Aşama 3 Temsili Gösterim”
-- **Stage 1 map:** page 15, Figure 2, “Aşama 1 Temsili Gösterim”
+- A and B route direction,
+- three lanes/branches,
+- 5 m / 10 m / 15 m distance bands,
+- Gökkalkan system position,
+- valid fire windows,
+- target silhouettes and motion trails.
 
-For Stage 2 and Stage 3, the document shows two views:
+The official figures remain the reference for the layout concept and rules, but the runtime map should be a clean, readable, maintainable visualization rather than a pasted/cropped PDF image.
 
-1. a 3D perspective representation of the parkour,
-2. a top-down map representation.
+### 3.2 Do not draw a fictional parkour
 
-The simulator should use the **top-down map** as the playable background because it is easier to map coordinates, paths, range bands, target positions, and user interactions.
+The parkour may be redrawn, but it must preserve the official competition mechanics:
 
-### 3.2 Do not draw a different fictional parkour
+1. targets start from A and progress toward B,
+2. Stage 2 and Stage 3 use three lanes,
+3. the 15 m, 10 m, and 5 m bands stay visible,
+4. the system cannot engage targets as if they had passed behind it,
+5. route geometry, speed and coordinate values remain configurable assumptions unless official numeric values are published.
 
-Do not replace the parkour with a generic canvas unless the official image cannot be loaded. The preferred implementation is:
+Recommended implementation:
 
-1. Extract/crop the official top-down parkour from the PDF page.
-2. Use that cropped image as the canvas/map background.
-3. Overlay simulated moving targets on top of it.
-4. Overlay the air defense system position.
-5. Overlay optional range bands, target paths, and tutorial highlights.
-
-Fallback only if image extraction is not available:
-
-- redraw the map using the same structure:
-  - long rectangular arena,
-  - three horizontal lanes,
-  - left-side start region A,
-  - right/top-right end region B,
-  - defense system on the right side,
-  - range markers 15 m, 10 m, 5 m along the top,
-  - wavy paths from left to right,
-  - right-side return/exit segment near B.
-
----
+1. Define normalized route points per lane in code/config.
+2. Render the lanes and distance bands as vector shapes.
+3. Overlay aircraft silhouettes, selected target highlight, fire-window band highlight and bullet/strike effects.
+4. Keep a source note in the UI/docs that exact route coordinates and speeds are simulator parameters, not official numeric values.
 
 ## 4. Coordinate System and Scaling
 
@@ -168,22 +168,22 @@ screen_x = map function of range_m, usually reversed:
 screen_y = lane/branch position
 ```
 
-### 4.2 Calibration using the map image
+### 4.2 Calibration using the vector map
 
-Because the exact physical size of the parkour is not fully specified, calibrate the map using the visible range labels in the official image.
+Because the exact physical size of the parkour is not fully specified, calibrate the vector map using the visible range labels in the official figures.
 
-The top edge of the Stage 2 and Stage 3 diagrams shows vertical range markers labeled approximately:
+The Stage 2 and Stage 3 diagrams show range markers labeled approximately:
 
 ```text
 15 metre    10 Metre    5 Metre
 ```
 
-Use these labels as the meter-to-pixel calibration references.
+Use these labels as the meter-to-screen calibration references for the redrawn vector map.
 
 Implementation approach:
 
 ```text
-Define calibration anchor points on the cropped top-down map:
+Define calibration anchor points on the redrawn vector map:
 
 stageMap.calibration = {
   rangeMarkers: {
@@ -774,7 +774,7 @@ Lower lane:
 - curves/turns down or toward the lower right exit/near B path.
 ```
 
-The exact drawn paths in the PDF are illustrative, not given as numeric coordinates. Therefore, define route waypoints by manually tracing/clicking points on the extracted map image.
+The exact drawn paths in the PDF are illustrative, not given as numeric coordinates. Therefore, define route waypoints by authoring normalized control points from the official diagram reference, not by embedding the PDF image as a runtime asset.
 
 ### 8.3 Stage 3 path shape
 
@@ -791,75 +791,16 @@ For each round:
 
 ### 8.4 Recommended route-authoring workflow for the agent
 
-The agent should implement a small route-authoring/config mode or hardcoded route config.
-
-Best workflow:
-
-1. Load the cropped official top-down image.
-2. User/developer clicks route waypoints for each lane.
-3. Save them into JSON:
-   - `stage2_routes.json`
-   - `stage3_routes.json`
-4. Simulation uses the saved JSON routes.
-5. Add a debug toggle:
-   - show/hide route lines,
-   - show/hide waypoints,
-   - show/hide range bands.
-
-Example route config shape:
-
-```json
-{
-  "stage": 2,
-  "mapImage": "assets/stage2_topdown.png",
-  "rangeCalibration": {
-    "15m": { "x": 80 },
-    "10m": { "x": 300 },
-    "5m": { "x": 520 },
-    "0m": { "x": 690 }
-  },
-  "routes": [
-    {
-      "id": "S2-L1",
-      "lane": "upper",
-      "waypointsPx": [
-        { "x": 40, "y": 115 },
-        { "x": 155, "y": 110 },
-        { "x": 250, "y": 145 },
-        { "x": 380, "y": 185 },
-        { "x": 560, "y": 150 },
-        { "x": 650, "y": 95 }
-      ]
-    },
-    {
-      "id": "S2-L2",
-      "lane": "middle",
-      "waypointsPx": [
-        { "x": 40, "y": 205 },
-        { "x": 170, "y": 200 },
-        { "x": 310, "y": 215 },
-        { "x": 500, "y": 205 },
-        { "x": 650, "y": 225 }
-      ]
-    },
-    {
-      "id": "S2-L3",
-      "lane": "lower",
-      "waypointsPx": [
-        { "x": 40, "y": 285 },
-        { "x": 165, "y": 275 },
-        { "x": 305, "y": 255 },
-        { "x": 480, "y": 265 },
-        { "x": 640, "y": 310 }
-      ]
-    }
-  ]
-}
-```
-
-The numeric example above is only a placeholder. The agent should replace it with actual traced pixel coordinates from the cropped image.
-
----
+1. Use the official figures only as visual/rule references.
+2. Redraw the competition course as normalized vector geometry.
+3. Define lane route points in config/code:
+   - `laneId`,
+   - normalized x/y points,
+   - range mapping,
+   - direction arrows,
+   - valid fire-window bands.
+4. Keep target speed, route coordinates, hit tolerance and target visual size configurable.
+5. If a future official numeric parkour coordinate set is published, update the config without rewriting the UI.
 
 ## 9. Competition Flow Engine
 
@@ -1238,8 +1179,8 @@ This is a simulation of the required emergency stop behavior from the competitio
 
 The implementation is acceptable when it can do the following:
 
-- [ ] Load official/cropped parkour map for Stage 2.
-- [ ] Load official/cropped parkour map for Stage 3.
+- [ ] Draw Stage 2 parkour as vector geometry based on the official A→B / three-lane structure.
+- [ ] Draw Stage 3 parkour as vector geometry based on the official A→B / three-lane structure.
 - [ ] Show range markers or range-band overlay for 15 m, 10 m, 5 m.
 - [ ] Spawn Stage 2 targets on 3 lanes, 4 rounds.
 - [ ] Move Stage 2 targets from A to B along traced wavy routes.
@@ -1266,7 +1207,7 @@ The implementation is acceptable when it can do the following:
 Do **not** create a scripted story where aircraft simply appear according to a custom scenario. The required simulator is a **competition-mechanics simulator**:
 
 ```text
-official map image
+diagram-derived parkur geometry
 + official stage structure
 + route-following targets
 + official scoring
