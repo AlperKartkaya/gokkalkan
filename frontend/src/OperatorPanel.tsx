@@ -220,9 +220,9 @@ type SensorDragState = {
 };
 
 const defaultSensorView: SensorViewState = {
-  pitch: 54,
-  yaw: -28,
-  panX: 0,
+  pitch: 48,
+  yaw: 92,
+  panX: 0.8,
   panZ: 0,
   distance: 18,
 };
@@ -262,10 +262,11 @@ function visualRangeLabel(track?: ReturnType<typeof visualTrackFor>) {
 
 const DOME_SOURCE_NOSE_SCREEN_DEG = 135;
 const DOME_DEFAULT_ROTATION_DEG = 45;
+const OPERATOR_SYSTEM_POSITION = { x: 91, y: 50 };
 
 function domeRotationForVisualTrack(track?: ReturnType<typeof visualTrackFor>) {
   if (!track) return DOME_DEFAULT_ROTATION_DEG;
-  const targetAngle = (Math.atan2(track.y - COMPETITION_COURSE.systemPosition.y, track.x - COMPETITION_COURSE.systemPosition.x) * 180) / Math.PI;
+  const targetAngle = (Math.atan2(track.y - OPERATOR_SYSTEM_POSITION.y, track.x - OPERATOR_SYSTEM_POSITION.x) * 180) / Math.PI;
   return targetAngle - DOME_SOURCE_NOSE_SCREEN_DEG;
 }
 
@@ -830,11 +831,10 @@ function OperatorTrackScene({
       : { start: operatorXForRange(15), width: Math.abs(operatorXForRange(5) - operatorXForRange(15)) };
   const domeAngle = domeRotationForVisualTrack(selectedVisualTrack);
   const domeStyle = {
-    left: `${COMPETITION_COURSE.systemPosition.x}%`,
-    top: `${COMPETITION_COURSE.systemPosition.y}%`,
+    left: `${OPERATOR_SYSTEM_POSITION.x}%`,
+    top: `${OPERATOR_SYSTEM_POSITION.y}%`,
     '--dome-rotation': `${domeAngle}deg`,
   } as CSSProperties;
-  const shotLabel = lastIntent ? 'DRY-RUN' : 'İZ';
 
   return (
     <section
@@ -846,7 +846,6 @@ function OperatorTrackScene({
         <div>
           <h2 className="m-0 text-2xl font-black">Görüntü</h2>
         </div>
-        <span className="rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-1 text-xs font-black text-[#ffe4ad]">DRY-RUN · fiziksel çıkış yok</span>
       </div>
 
       <svg className="parkour-overlay" viewBox="0 0 100 100" aria-label={`Aşama ${stage} iz şeması`}>
@@ -866,7 +865,6 @@ function OperatorTrackScene({
               <g key={range} className={`stage1-zone zone-${range} ${selectedVisualTrack && Math.abs(selectedVisualTrack.rangeM - range) < 2.6 ? 'active' : ''}`} data-testid={`operator-range-${range}m`}>
                 <rect x={range === 15 ? 9 : range === 10 ? 36 : 63} y="15" width="25" height="66" rx="4" />
                 <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="22">{range} m</text>
-                <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="76">DURAĞAN</text>
               </g>
             ))}
             <text className="stage1-title" x="9" y="10">A1 · MANUEL ATIŞ</text>
@@ -900,21 +898,20 @@ function OperatorTrackScene({
         )}
 
         <g className="system-anchor">
-          <circle cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.4" />
-          <text x={COMPETITION_COURSE.systemPosition.x - 8} y={COMPETITION_COURSE.systemPosition.y + 9}>Gökkalkan</text>
+          <circle cx={OPERATOR_SYSTEM_POSITION.x} cy={OPERATOR_SYSTEM_POSITION.y} r="1.15" />
+          <text x={OPERATOR_SYSTEM_POSITION.x} y={OPERATOR_SYSTEM_POSITION.y + 8} textAnchor="middle">GÖKKALKAN</text>
         </g>
         {selectedVisualTrack && (
           <g className="target-link" data-testid="operator-aim-line">
-            <line x1={selectedVisualTrack.x} y1={selectedVisualTrack.y} x2={COMPETITION_COURSE.systemPosition.x} y2={COMPETITION_COURSE.systemPosition.y} />
-            <text x={Math.min(88, selectedVisualTrack.x + 2)} y={Math.max(10, selectedVisualTrack.y - 3)}>{shotLabel}</text>
+            <line x1={selectedVisualTrack.x} y1={selectedVisualTrack.y} x2={OPERATOR_SYSTEM_POSITION.x} y2={OPERATOR_SYSTEM_POSITION.y} />
           </g>
         )}
         {firedVisualTrack && (
           <g className="strike hit" data-testid="operator-shot-trace">
-            <line className="shot-trail" x1={COMPETITION_COURSE.systemPosition.x} y1={COMPETITION_COURSE.systemPosition.y} x2={firedVisualTrack.x} y2={firedVisualTrack.y} />
-            <circle className="shot-bullet" cx={COMPETITION_COURSE.systemPosition.x} cy={COMPETITION_COURSE.systemPosition.y} r="1.05">
-              <animate attributeName="cx" from={COMPETITION_COURSE.systemPosition.x} to={firedVisualTrack.x} dur="0.26s" fill="freeze" />
-              <animate attributeName="cy" from={COMPETITION_COURSE.systemPosition.y} to={firedVisualTrack.y} dur="0.26s" fill="freeze" />
+            <line className="shot-trail" x1={OPERATOR_SYSTEM_POSITION.x} y1={OPERATOR_SYSTEM_POSITION.y} x2={firedVisualTrack.x} y2={firedVisualTrack.y} />
+            <circle className="shot-bullet" cx={OPERATOR_SYSTEM_POSITION.x} cy={OPERATOR_SYSTEM_POSITION.y} r="1.05">
+              <animate attributeName="cx" from={OPERATOR_SYSTEM_POSITION.x} to={firedVisualTrack.x} dur="0.26s" fill="freeze" />
+              <animate attributeName="cy" from={OPERATOR_SYSTEM_POSITION.y} to={firedVisualTrack.y} dur="0.26s" fill="freeze" />
             </circle>
             <circle className="impact-ring" cx={firedVisualTrack.x} cy={firedVisualTrack.y} r="2.8" />
             <text x={Math.min(88, firedVisualTrack.x + 2)} y={Math.max(9, firedVisualTrack.y - 2)}>KAYIT</text>
@@ -924,13 +921,13 @@ function OperatorTrackScene({
 
       <div className="parkour-object-layer">
         <div
-          className="steel-dome pointer-events-none absolute z-[5] grid h-[76px] w-[76px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_20px_rgba(51,230,140,.26))_drop-shadow(0_12px_24px_rgba(0,0,0,.5))]"
+          className="steel-dome pointer-events-none absolute z-[5] grid h-[62px] w-[62px] -translate-x-1/2 -translate-y-1/2 place-items-center [filter:drop-shadow(0_0_18px_rgba(51,230,140,.24))_drop-shadow(0_10px_20px_rgba(0,0,0,.48))]"
           style={domeStyle}
           data-testid="operator-steel-dome"
           data-rotation={domeAngle.toFixed(1)}
           aria-hidden="true"
         >
-          <img className="h-[68px] w-[68px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
+          <img className="h-[54px] w-[54px] rounded-full object-contain opacity-90 will-change-transform [transform:rotate(var(--dome-rotation))]" src={gokkalkanIconUrl} alt="" />
         </div>
 
         {visualTracks.map((track) => {
@@ -1121,7 +1118,7 @@ function SensorFusion3DView({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={() => setView(defaultSensorView)}
       >
-        3D sıfırla
+        3D RESET
       </button>
       {frames.map((frame, index) => {
         const fallbackPoint = sensorFrame3DPoint(frame, index);
@@ -1181,28 +1178,29 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
 
   return (
     <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">DOĞRULUK</p>
-          <h2 className="m-0 mt-1 text-xl font-black">Kimlik yüzdeleri</h2>
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/[.05] px-3 py-1 text-xs font-black text-[#c8d8e2]">Beyaz: kimlik bekliyor</span>
-      </div>
-      <div className="mt-3 grid gap-2 min-[880px]:grid-cols-3">
+      <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">DOĞRULUK</p>
+      <div
+        className="operator-confidence-grid mt-3"
+        style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
+      >
         {uniqueFrames.map((frame) => {
           const unknown = isFrameUnidentified(frame);
           const colorValue = hostilityConfidence(frame);
           const selected = frame.trackId === selectedTrackId;
+          const displayType = unknown ? 'Bilinmeyen cisim' : targetLabel[frame.targetType];
           return (
             <article
               key={frame.trackId}
-              className={`confidence-row rounded-lg border p-3 ${selected ? 'border-[#ffbb42]/35 bg-[#ffbb42]/10' : 'border-white/[.07] bg-white/[.04]'}`}
+              className={`confidence-row rounded-lg border p-2.5 ${selected ? 'border-[#ffbb42]/35 bg-[#ffbb42]/10' : 'border-white/[.07] bg-white/[.04]'}`}
               data-testid={`operator-confidence-${frame.trackId}`}
               data-affiliation={frame.friendFoe}
               data-identification={unknown ? 'unknown' : 'identified'}
             >
               <div className="flex items-center justify-between gap-2">
-                <b className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{frame.trackId}</b>
+                <div className="min-w-0">
+                  <b className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{displayType}</b>
+                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-black text-[#91a6b7]">{frame.friendFoe}</span>
+                </div>
                 <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />
               </div>
               <div className="accuracy-circle-grid mt-3">
@@ -1219,7 +1217,6 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
                   testId={`operator-accuracy-${frame.trackId}-type`}
                 />
               </div>
-              <p className="m-0 mt-2 text-xs font-bold text-[#91a6b7]">{unknown ? 'Nesne küre olarak kalır; yazılım kimlik kesinleşince şekil ve renk günceller.' : 'Kimlik kesinleşti; renk ve tip güveni güncel.'}</p>
             </article>
           );
         })}
@@ -1228,14 +1225,14 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
   );
 }
 
-export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () => void; onOpenSimulator: () => void }) {
+export default function OperatorPanel(_props: { onBack: () => void; onOpenSimulator: () => void }) {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
   const isDesktopShell = queryParams.get('desktop') === '1';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
-  const [dryRun, setDryRun] = useState(true);
+  const dryRun = true;
   const [mode, setMode] = useState<Mode>(stageExpectedMode(3));
   const [stage, setStage] = useState<Stage>(3);
   const [round, setRound] = useState(1);
@@ -1351,7 +1348,13 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
     liveArmEnabled: config.liveArmEnabled,
   });
   const sensorSource = sensorSourceLabel(sensorHealth, safety.sensorAdapterConnected);
-  const fireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+  const safetyFireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+  const operatorFireAllowedByStage = stageExpectedMode(displayStage) === 'manual';
+  const fireReady = safetyFireReady && operatorFireAllowedByStage;
+  const fireBlockedCopy = operatorFireAllowedByStage
+    ? operatorBlockCopy[safety.blockReason]
+    : 'Bu aşamada atış otonom mod tarafından yönetilir.';
+  const maintenanceReady = !apiBusy && (operatorStopActive || stageExpectedMode(displayStage) === 'manual' || mode === 'maintenance');
   const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
   const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
@@ -1612,7 +1615,7 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
         kind: 'FireIntent',
         accepted: false,
         dryRun: config.dryRun,
-        safetyBlockReason: safety.blockReason,
+        safetyBlockReason: operatorFireAllowedByStage ? safety.blockReason : 'BLOCKED_MODE',
       }));
       return;
     }
@@ -1687,23 +1690,26 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
   };
 
   const openMaintenance = () => {
+    if (!maintenanceReady) {
+      pushResult(makeCommandResult({
+        commandId: `MAINTENANCE-BLOCK-${Date.now()}`,
+        kind: 'ModeRequest',
+        accepted: false,
+        dryRun: config.dryRun,
+        safetyBlockReason: 'BLOCKED_MODE',
+      }));
+      return;
+    }
     setMaintenanceOpen((value) => !value);
     recordMode('maintenance');
   };
 
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
-      <header className="operator-header mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[1000px]:grid-cols-[1fr_auto]">
+      <header className="operator-header mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
         <div className="min-w-0">
           <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Operasyon</p>
           <h1 className="m-0 mt-1 text-3xl font-black tracking-[.04em] text-white min-[760px]:text-4xl">GÖKKALKAN OPERATÖR PANELİ</h1>
-        </div>
-        <div className="grid min-w-0 content-start gap-2 min-[560px]:grid-cols-2 min-[1000px]:min-w-[360px]">
-          <button className="rounded-lg border border-white/10 bg-white/[.07] px-3 py-2 text-sm font-black text-[#eaf7ff]" onClick={onBack}>Landing’e dön</button>
-          <button className="rounded-lg border border-[#25d8ff]/25 bg-[#25d8ff]/10 px-3 py-2 text-sm font-black text-[#bff2ff]" onClick={onOpenSimulator}>Simülatöre dön</button>
-          <button className="col-span-full rounded-lg border border-[#ffbb42]/30 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad]" onClick={() => setDryRun((value) => !value)}>
-            {dryRun ? 'DRY-RUN AÇIK · fiziksel çıkış yok' : 'DRY-RUN KAPALI · canlı kilit gerekli'}
-          </button>
         </div>
       </header>
 
@@ -1770,15 +1776,16 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                   data-testid="operator-fire-button"
                   onClick={sendFireIntent}
                 >
-                  {fireReady ? 'ATEŞ' : 'KİLİTLİ'}
+                  ATEŞ
                 </button>
-                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? selectedTrack?.trackId ?? 'Hedef' : operatorBlockCopy[safety.blockReason]}</p>
+                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? selectedTrack?.trackId ?? 'Hedef' : fireBlockedCopy}</p>
               </div>
 
               <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
                 <button
                   className="min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-3 text-base font-black text-[#ffd3d7]"
                   data-testid="operator-stop-button"
+                  disabled={operatorStopActive}
                   onClick={triggerOperatorStop}
                 >
                   STOP
@@ -1790,11 +1797,12 @@ export default function OperatorPanel({ onBack, onOpenSimulator }: { onBack: () 
                 <button
                   className="min-h-16 w-full rounded-xl border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 text-base font-black text-[#d7efff]"
                   data-testid="operator-maintenance-button"
+                  disabled={!maintenanceReady}
                   onClick={openMaintenance}
                 >
                   BAKIM
                 </button>
-                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceOpen ? 'Açık' : 'Kapalı'}</p>
+                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceOpen ? 'Açık' : maintenanceReady ? 'Hazır' : 'STOP sonrası'}</p>
               </div>
             </div>
           </section>
