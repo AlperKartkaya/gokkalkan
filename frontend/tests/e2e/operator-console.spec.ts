@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+const UNKNOWN_AIRCRAFT_GRAY = 'rgb(143, 152, 163)';
+
 async function openConsole(page: Page) {
   await page.goto('/?console=1');
   await page.getByRole('button', { name: 'Bu aşamada rehberi atla' }).click();
@@ -246,6 +248,7 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await page.getByRole('button', { name: 'Operatör Paneli' }).click();
   await expect(page.getByTestId('operator-panel')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
+  await expect(page.getByTestId('operator-reset-button')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Landing’e dön' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Simülatöre dön' })).toHaveCount(0);
   await expect(page.getByText('DRY-RUN KAPALI · canlı kilit gerekli')).toHaveCount(0);
@@ -303,33 +306,39 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.locator('.map-legend')).toHaveCount(0);
   await expect(page.getByTestId('fire-cluster')).not.toContainText('S1-ORDER');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Düşman');
-  expect(await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.every((target) => getComputedStyle(target).color === 'rgb(245, 251, 255)'))).toBe(true);
+  const aircraftColors = await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.map((target) => getComputedStyle(target).color));
+  expect(aircraftColors.every((color) => color === UNKNOWN_AIRCRAFT_GRAY)).toBe(true);
   const confidenceRowTops = await page.locator('article[data-testid^="operator-confidence-"]').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().top)));
   expect(new Set(confidenceRowTops).size).toBe(1);
   await page.getByTestId('operator-fire-button').click();
-  await expect(page.getByTestId('operator-shot-trace')).toBeVisible();
-  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '1');
-  await expect(page.locator('[data-testid="operator-shot-trace"] .shot-bullet')).toHaveCount(1);
+  await expect(page.getByTestId('operator-shot-trace')).toHaveCount(0);
   await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.getByTestId('operator-track-shot-icon-S1-ORDER-FUZE-01')).toBeVisible();
   await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.locator('article').filter({ hasText: 'FireIntent · Kabul' }).first()).toContainText('fiziksel çıkış üretilmedi');
-  await page.getByTestId('operator-fire-button').click();
-  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '2');
 
   await page.getByRole('button', { name: 'Aşama 2' }).click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveCount(0);
   await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
+  await page.getByTestId('operator-reset-button').click();
+  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
+  await expect(page.getByTestId('operator-shot-trace')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Aşama 2' }).click();
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveCount(0);
   await expect(page.locator('.map-legend')).toHaveCount(0);
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-color"]')).toHaveCount(0);
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-type"]')).toHaveCount(3);
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Düşman');
   await expect(page.getByTestId('operator-track-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   await expect(page.getByTestId('operator-sensor-3d-target-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
-  expect(await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.every((target) => getComputedStyle(target).color === 'rgb(245, 251, 255)'))).toBe(true);
+  const stageTwoAircraftColors = await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.map((target) => getComputedStyle(target).color));
+  expect(stageTwoAircraftColors.every((color) => color === UNKNOWN_AIRCRAFT_GRAY)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -538,10 +547,10 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        result: { commandId, kind: 'FireIntent', accepted: true, completed: false, dryRun: true, safetyBlockReason: 'ALLOWED', message: 'Atış niyeti kabul edildi; hedef imha doğrulanmadı.', physicalOutput: false, createdAt: '2026-05-25T20:20:02Z' },
+        result: { commandId, kind: 'FireIntent', accepted: false, completed: false, dryRun: true, safetyBlockReason: 'BLOCKED_BACKEND', message: 'Test API niyeti reddetti; UI otonom başlatma düğmesini tıklama durumuna göre kilitlemelidir.', physicalOutput: false, createdAt: '2026-05-25T20:20:02Z' },
         safety,
         state: statePayload,
-        hardwareResult: { adapter: 'dry-run.test', commandId, kind: 'FireIntent', accepted: true, completed: false, physicalOutput: false, message: 'Dry-run isabet yok.', createdAt: '2026-05-25T20:20:02Z' },
+        hardwareResult: { adapter: 'dry-run.test', commandId, kind: 'FireIntent', accepted: false, completed: false, physicalOutput: false, message: 'Dry-run isabet yok.', createdAt: '2026-05-25T20:20:02Z' },
       }),
     });
   });
@@ -553,7 +562,8 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(stageControl).not.toContainText('Beklenen mod');
   await expect(stageControl).not.toContainText('Kural');
   const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
-  await expect(sensorPanel).toContainText('0 frame');
+  await expect(sensorPanel).not.toContainText(/\b\d+\s+frame\b/);
+  await expect(sensorPanel).not.toContainText('replayOnly');
   await expect(sensorPanel).toContainText('SensorFrame yok');
   const sensorTopBefore = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
@@ -565,7 +575,8 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(stageControl).toContainText('Tur 8');
   const roundBoxes = await stageControl.locator('.operator-round-grid button').evaluateAll((buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().top)));
   expect(new Set(roundBoxes).size).toBe(1);
-  await expect(sensorPanel).toContainText('replayOnly=true');
+  await expect(sensorPanel).not.toContainText('replayOnly');
+  await expect(sensorPanel).not.toContainText(/\b\d+\s+frame\b/);
   await expect(sensorPanel.getByText('Menzil · Açı · Sınıf')).toHaveCount(0);
   await expect(sensorPanel.getByText('F16')).toHaveCount(0);
   await expect(sensorPanel.getByText('Düşman')).toHaveCount(0);
@@ -606,10 +617,21 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const sensor3dView = page.getByTestId('operator-sensor-3d-view');
   await expect(sensor3dView).toBeVisible();
   await expect(sensor3dView).toHaveAttribute('data-renderer', 'webgl');
-  await expect(sensor3dView).toContainText('Sürükle');
-  await expect(sensor3dView).toContainText('Tekerlek');
+  await expect(sensor3dView).toContainText('3D Panel');
+  await expect(sensor3dView).not.toContainText('3D SensorFrame');
+  await expect(sensor3dView).not.toContainText('Sürükle: döndür');
+  await expect(sensor3dView).not.toContainText('Tekerlek: yakınlaştır');
   const f16Box = await page.getByTestId('operator-sensor-3d-target-DRY-RUN-F16-01').boundingBox();
   expect(f16Box).not.toBeNull();
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '13');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '25');
+  const stageThreeWindowStyle = await page.getByTestId('operator-permitted-range-window').evaluate((windowElement) => {
+    const style = getComputedStyle(windowElement);
+    return { animationName: style.animationName, fill: style.fill };
+  });
+  expect(stageThreeWindowStyle.animationName).toBe('none');
+  const stageThreeWindowAlpha = Number(stageThreeWindowStyle.fill.match(/rgba\(255, 255, 255, ([0-9.]+)\)/)?.[1] ?? '1');
+  expect(stageThreeWindowAlpha).toBeLessThanOrEqual(0.07);
   await expect(page.getByTestId('operator-sensor-3d-dome')).toHaveCount(0);
   await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
   await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-shape', 'symbol');
@@ -685,6 +707,8 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const helTrackBoxBefore = await helTrack.boundingBox();
   const helTrackColorBefore = await helTrack.evaluate((element) => getComputedStyle(element).color);
   await helTrack.click();
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '13');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '50');
   const helTrackBoxAfter = await helTrack.boundingBox();
   const helTrackColorAfter = await helTrack.evaluate((element) => getComputedStyle(element).color);
   expect(helTrackBoxAfter).not.toBeNull();
@@ -716,9 +740,7 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
   await expect(page.getByTestId('fire-cluster')).not.toContainText('S1-ORDER');
   await page.getByTestId('operator-fire-button').click();
-  await expect(page.getByTestId('operator-shot-trace')).toBeVisible();
-  await expect(page.getByTestId('operator-shot-trace')).toHaveAttribute('data-shot-version', '1');
-  await expect(page.locator('[data-testid="operator-shot-trace"] .shot-bullet')).toHaveCount(1);
+  await expect(page.getByTestId('operator-shot-trace')).toHaveCount(0);
   await expect(page.getByTestId('operator-track-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
   await expect(page.getByTestId('operator-track-shot-icon-S1-ORDER-FUZE-01')).toBeVisible();
   await expect(page.getByTestId('operator-sensor-3d-target-S1-ORDER-FUZE-01')).toHaveAttribute('data-shot', 'true');
@@ -793,7 +815,8 @@ test('desktop operator shell keeps LiDAR vendor tools diagnostic-only', async ({
   await expect(page.getByTestId('operator-panel')).toHaveAttribute('data-desktop-shell', 'true');
   await expect(page.getByText('Kabuk: Desktop')).toHaveCount(0);
   await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Radar / LiDAR');
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('SensorFrame');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('3D Panel');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).not.toContainText('3D SensorFrame');
 
   await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   const lidarDiagnostics = page.getByTestId('operator-lidar-diagnostics');
