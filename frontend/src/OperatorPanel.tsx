@@ -200,6 +200,13 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function formatDuration(totalSeconds: number) {
+  const boundedSeconds = Math.max(0, Math.ceil(totalSeconds));
+  const minutes = Math.floor(boundedSeconds / 60);
+  const seconds = boundedSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 type SensorViewState = {
   pitch: number;
   yaw: number;
@@ -226,6 +233,10 @@ const defaultSensorView: SensorViewState = {
   panZ: 0,
   distance: 18,
 };
+
+const MAINTENANCE_SESSION_LIMIT = 3;
+const MAINTENANCE_TOTAL_SECONDS = 10 * 60;
+const MAINTENANCE_MIN_CHARGE_SECONDS = 30;
 
 function visualSizeForTarget(type: TargetType) {
   const base = {
@@ -842,12 +853,6 @@ function OperatorTrackScene({
       data-testid="operator-track-scene"
       aria-label="Operatör iz görüntüsü"
     >
-      <div className="relative z-[2] flex flex-wrap items-start justify-between gap-3 p-5 pb-2">
-        <div>
-          <h2 className="m-0 text-2xl font-black">Görüntü</h2>
-        </div>
-      </div>
-
       <svg className="parkour-overlay" viewBox="0 0 100 100" aria-label={`Aşama ${stage} iz şeması`}>
         <defs>
           <pattern id={`operator-grid-${stage}`} width="5" height="5" patternUnits="userSpaceOnUse">
@@ -1059,7 +1064,7 @@ function SensorFusion3DView({
     setView((current) => ({
       ...current,
       pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch - deltaY * 0.16, 22, 72) : current.pitch,
-      yaw: dragState.mode === 'orbit' ? dragState.baseYaw + deltaX * 0.36 : current.yaw,
+      yaw: dragState.mode === 'orbit' ? dragState.baseYaw - deltaX * 0.36 : current.yaw,
       panX: dragState.mode === 'pan' ? clampNumber(dragState.basePanX - deltaX * 0.018 * current.distance, -6, 6) : current.panX,
       panZ: dragState.mode === 'pan' ? clampNumber(dragState.basePanZ + deltaY * 0.018 * current.distance, -4.5, 4.5) : current.panZ,
     }));
@@ -1075,6 +1080,7 @@ function SensorFusion3DView({
 
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     setView((current) => ({
       ...current,
       distance: clampNumber(current.distance * (event.deltaY < 0 ? 0.96 : 1.04), 10.5, 32),
@@ -1098,7 +1104,7 @@ function SensorFusion3DView({
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerDrag}
       onPointerCancel={endPointerDrag}
-      onWheel={handleWheel}
+      onWheelCapture={handleWheel}
     >
       <canvas ref={canvasRef} className="sensor-3d-canvas" data-testid="operator-sensor-3d-canvas" aria-hidden="true" />
       <div className="sensor-3d-hud">
@@ -1178,9 +1184,8 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
 
   return (
     <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
-      <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">DOĞRULUK</p>
       <div
-        className="operator-confidence-grid mt-3"
+        className="operator-confidence-grid"
         style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
       >
         {uniqueFrames.map((frame) => {
@@ -1211,7 +1216,7 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
                   testId={`operator-accuracy-${frame.trackId}-color`}
                 />
                 <AccuracyCircle
-                  label="Tip"
+                  label="Tür"
                   value={frame.classificationConfidence}
                   tone={unknown ? 'unknown' : 'type'}
                   testId={`operator-accuracy-${frame.trackId}-type`}
@@ -1233,6 +1238,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
   const dryRun = true;
+  const maintenanceFinishingRef = useRef(false);
   const [mode, setMode] = useState<Mode>(stageExpectedMode(3));
   const [stage, setStage] = useState<Stage>(3);
   const [round, setRound] = useState(1);
@@ -1241,6 +1247,11 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [, setLastHardwareResult] = useState<HardwareResult>();
   const [operatorStopActive, setOperatorStopActive] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [maintenanceSessionActive, setMaintenanceSessionActive] = useState(false);
+  const [maintenanceSessionStartedAt, setMaintenanceSessionStartedAt] = useState<number>();
+  const [maintenanceClockMs, setMaintenanceClockMs] = useState(Date.now());
+  const [maintenanceSessionsUsed, setMaintenanceSessionsUsed] = useState(0);
+  const [maintenanceRemainingSeconds, setMaintenanceRemainingSeconds] = useState(MAINTENANCE_TOTAL_SECONDS);
   const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
   const [apiError, setApiError] = useState('');
   const [apiBusy, setApiBusy] = useState(false);
@@ -1354,7 +1365,21 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const fireBlockedCopy = operatorFireAllowedByStage
     ? operatorBlockCopy[safety.blockReason]
     : 'Bu aşamada atış otonom mod tarafından yönetilir.';
-  const maintenanceReady = !apiBusy && (operatorStopActive || stageExpectedMode(displayStage) === 'manual' || mode === 'maintenance');
+  const maintenanceElapsedSeconds = maintenanceSessionActive && maintenanceSessionStartedAt
+    ? Math.max(0, Math.floor((maintenanceClockMs - maintenanceSessionStartedAt) / 1000))
+    : 0;
+  const maintenanceCountdownSeconds = maintenanceSessionActive
+    ? Math.max(0, maintenanceRemainingSeconds - maintenanceElapsedSeconds)
+    : maintenanceRemainingSeconds;
+  const maintenanceSessionsLeft = Math.max(0, MAINTENANCE_SESSION_LIMIT - maintenanceSessionsUsed);
+  const maintenanceReady = !apiBusy && !operatorStopActive && !maintenanceSessionActive && maintenanceSessionsLeft > 0 && maintenanceRemainingSeconds > 0;
+  const maintenanceStatusCopy = maintenanceSessionActive
+    ? `Aktif · ${formatDuration(maintenanceCountdownSeconds)}`
+    : maintenanceReady
+      ? `${maintenanceSessionsLeft} hak · ${formatDuration(maintenanceRemainingSeconds)}`
+      : maintenanceRemainingSeconds <= 0
+        ? 'Süre bitti'
+        : 'Hak bitti';
   const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
   const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
@@ -1667,7 +1692,11 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   };
 
   const triggerOperatorStop = () => {
+    if (operatorStopActive) return;
     setOperatorStopActive(true);
+    setMaintenanceSessionActive(false);
+    setMaintenanceSessionStartedAt(undefined);
+    setMaintenanceOpen(false);
     setMode('blocked');
     const result = makeCommandResult({
       commandId: `STOP-${Date.now()}`,
@@ -1689,6 +1718,58 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     });
   };
 
+  const resumeOperatorStop = () => {
+    if (!operatorStopActive) return;
+    setOperatorStopActive(false);
+    setMode(stageExpectedMode(displayStage));
+    const result = makeCommandResult({
+      commandId: `RESUME-${Date.now()}`,
+      kind: 'ModeRequest',
+      accepted: true,
+      dryRun: config.dryRun,
+      safetyBlockReason: 'ALLOWED',
+    });
+    pushResult(result);
+    setLastHardwareResult({
+      adapter: 'local-ui.safety-gate',
+      commandId: result.commandId,
+      kind: 'ModeRequest',
+      accepted: true,
+      completed: true,
+      physicalOutput: false,
+      message: 'Acil durdurma oturumu kapatıldı; panel seçili aşamanın beklenen moduna döndü.',
+      createdAt: result.createdAt,
+    });
+  };
+
+  const finishMaintenanceSession = (reason: 'operator' | 'expired' = 'operator') => {
+    if (!maintenanceSessionActive || maintenanceFinishingRef.current) return;
+    maintenanceFinishingRef.current = true;
+    const now = Date.now();
+    const elapsedSeconds = maintenanceSessionStartedAt ? Math.max(0, Math.ceil((now - maintenanceSessionStartedAt) / 1000)) : 0;
+    const chargedSeconds = Math.min(maintenanceRemainingSeconds, Math.max(MAINTENANCE_MIN_CHARGE_SECONDS, elapsedSeconds));
+    setMaintenanceSessionActive(false);
+    setMaintenanceSessionStartedAt(undefined);
+    setMaintenanceClockMs(now);
+    setMaintenanceRemainingSeconds((value) => Math.max(0, value - chargedSeconds));
+    setMaintenanceSessionsUsed((value) => Math.min(MAINTENANCE_SESSION_LIMIT, value + 1));
+    setMaintenanceOpen(false);
+    recordMode(stageExpectedMode(displayStage));
+    const result = makeCommandResult({
+      commandId: `MAINTENANCE-END-${Date.now()}`,
+      kind: 'ModeRequest',
+      accepted: true,
+      dryRun: config.dryRun,
+      safetyBlockReason: 'ALLOWED',
+    });
+    pushResult({
+      ...result,
+      message: reason === 'expired'
+        ? 'Bakım süresi doldu; panel otomatik olarak görev moduna döndü.'
+        : `Bakım kapatıldı; toplam bakım hakkından en az ${MAINTENANCE_MIN_CHARGE_SECONDS} saniye düşüldü.`,
+    });
+  };
+
   const openMaintenance = () => {
     if (!maintenanceReady) {
       pushResult(makeCommandResult({
@@ -1700,9 +1781,26 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       }));
       return;
     }
-    setMaintenanceOpen((value) => !value);
+    const now = Date.now();
+    maintenanceFinishingRef.current = false;
+    setMaintenanceOpen(true);
+    setMaintenanceSessionActive(true);
+    setMaintenanceSessionStartedAt(now);
+    setMaintenanceClockMs(now);
     recordMode('maintenance');
   };
+
+  useEffect(() => {
+    if (!maintenanceSessionActive) return;
+    const timer = window.setInterval(() => setMaintenanceClockMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [maintenanceSessionActive]);
+
+  useEffect(() => {
+    if (maintenanceSessionActive && maintenanceCountdownSeconds <= 0) {
+      finishMaintenanceSession('expired');
+    }
+  }, [maintenanceSessionActive, maintenanceCountdownSeconds]);
 
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
@@ -1785,10 +1883,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
                 <button
                   className="min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-3 text-base font-black text-[#ffd3d7]"
                   data-testid="operator-stop-button"
-                  disabled={operatorStopActive}
+                  disabled={operatorStopActive || apiBusy}
                   onClick={triggerOperatorStop}
                 >
-                  STOP
+                  ACİL DURDUR
                 </button>
                 <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#ffbdc4]">{operatorStopActive ? 'AKTİF' : 'Hazır'}</p>
               </div>
@@ -1802,7 +1900,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
                 >
                   BAKIM
                 </button>
-                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceOpen ? 'Açık' : maintenanceReady ? 'Hazır' : 'STOP sonrası'}</p>
+                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceStatusCopy}</p>
               </div>
             </div>
           </section>
@@ -1906,6 +2004,32 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           ))}
         </div>
       </details>
+
+      {maintenanceSessionActive && (
+        <div className="operator-lock-overlay operator-lock-overlay-maintenance" data-testid="operator-maintenance-overlay" role="dialog" aria-modal="true" aria-label="Bakım oturumu">
+          <section className="operator-lock-card">
+            <span>BAKIM</span>
+            <b data-testid="operator-maintenance-countdown">{formatDuration(maintenanceCountdownSeconds)}</b>
+            <p>{maintenanceSessionsLeft} hak · toplam kalan {formatDuration(maintenanceRemainingSeconds)}</p>
+            <button type="button" data-testid="operator-maintenance-finish-button" onClick={() => finishMaintenanceSession('operator')}>
+              Bakımı Bitir
+            </button>
+          </section>
+        </div>
+      )}
+
+      {operatorStopActive && (
+        <div className="operator-lock-overlay operator-lock-overlay-emergency" data-testid="operator-stop-overlay" role="dialog" aria-modal="true" aria-label="Acil durdurma">
+          <section className="operator-lock-card">
+            <span>ACİL DURDUR</span>
+            <b>KİLİTLİ</b>
+            <p>Hareket ve atış niyetleri durduruldu.</p>
+            <button type="button" data-testid="operator-stop-resume-button" onClick={resumeOperatorStop}>
+              DEVAM ET
+            </button>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

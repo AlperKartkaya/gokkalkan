@@ -199,6 +199,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
     linear-gradient(180deg, rgba(7,16,24,.96), rgba(2,4,7,.96));
   box-shadow: inset 0 0 42px rgba(72,168,255,.10), inset 0 -34px 64px rgba(0,0,0,.58);
   cursor: grab;
+  overscroll-behavior: contain;
   touch-action: none;
   user-select: none;
 }
@@ -426,6 +427,98 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .accuracy-circle.friend { --accuracy-color: var(--green); }
 .accuracy-circle.unknown { --accuracy-color: #f5fbff; }
 .accuracy-circle.type { --accuracy-color: var(--blue); }
+
+.operator-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: auto;
+  backdrop-filter: blur(2px);
+}
+
+.operator-lock-overlay-maintenance {
+  background: rgba(72,168,255,.32);
+}
+
+.operator-lock-overlay-emergency {
+  z-index: 90;
+  background: rgba(255,71,87,.34);
+}
+
+.operator-lock-card {
+  display: grid;
+  width: min(420px, 92vw);
+  gap: 12px;
+  justify-items: center;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 26px;
+  background: rgba(3,7,12,.88);
+  padding: 28px;
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0,0,0,.42), inset 0 0 46px rgba(255,255,255,.05);
+}
+
+.operator-lock-card span {
+  font-size: 12px;
+  font-weight: 1000;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.operator-lock-card b {
+  color: #fff;
+  font-size: clamp(38px, 7vw, 72px);
+  line-height: .95;
+}
+
+.operator-lock-card p {
+  margin: 0;
+  color: #dbeeff;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.operator-lock-card button {
+  min-width: 180px;
+  border-radius: 999px;
+  padding: 12px 18px;
+  color: white;
+  font-weight: 1000;
+  letter-spacing: .04em;
+}
+
+.operator-lock-overlay-maintenance .operator-lock-card {
+  border-color: rgba(72,168,255,.55);
+  box-shadow: 0 30px 80px rgba(0,0,0,.42), inset 0 0 52px rgba(72,168,255,.16);
+}
+
+.operator-lock-overlay-maintenance .operator-lock-card span,
+.operator-lock-overlay-maintenance .operator-lock-card p {
+  color: #d7efff;
+}
+
+.operator-lock-overlay-maintenance .operator-lock-card button {
+  background: var(--blue);
+  box-shadow: 0 18px 42px rgba(72,168,255,.34);
+}
+
+.operator-lock-overlay-emergency .operator-lock-card {
+  border-color: rgba(255,71,87,.58);
+  box-shadow: 0 30px 80px rgba(0,0,0,.46), inset 0 0 52px rgba(255,71,87,.16);
+}
+
+.operator-lock-overlay-emergency .operator-lock-card span,
+.operator-lock-overlay-emergency .operator-lock-card p {
+  color: #ffd3d7;
+}
+
+.operator-lock-overlay-emergency .operator-lock-card button {
+  background: var(--red);
+  box-shadow: 0 18px 42px rgba(255,71,87,.34);
+}
 
 .sensor-3d-empty {
   position: absolute;

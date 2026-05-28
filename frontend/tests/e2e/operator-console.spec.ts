@@ -272,10 +272,13 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(2);
   await expect(page.locator('.operator-track-scene .target-unknown-sphere')).toHaveCount(1);
   await expect(page.locator('.operator-track-scene .target-label-stack')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Görüntü' })).toHaveCount(0);
   await expect(page.getByTestId('operator-sensor-3d-canvas')).toBeVisible();
-  await expect(page.getByTestId('operator-confidence-panel')).toContainText('DOĞRULUK');
+  await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('DOĞRULUK');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Güven');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Kimlik yüzdeleri');
+  await expect(page.getByTestId('operator-confidence-panel')).toContainText('Tür');
+  await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Tip');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
   await expect(page.getByText('İzler')).toHaveCount(0);
   await expect(page.getByText('DRY-RUN · fiziksel çıkış yok')).toHaveCount(0);
@@ -288,8 +291,9 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('otonom mod');
   await expect(page.getByTestId('operator-stop-button')).toBeVisible();
+  await expect(page.getByTestId('operator-stop-button')).toContainText('ACİL DURDUR');
   await expect(page.getByTestId('operator-maintenance-button')).toBeVisible();
-  await expect(page.getByTestId('operator-maintenance-button')).toBeDisabled();
+  await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
   await page.getByRole('button', { name: 'Aşama 1' }).click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
@@ -494,8 +498,10 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensorPanel.getByText('Menzil · Açı · Sınıf')).toHaveCount(0);
   await expect(sensorPanel.getByText('F16')).toHaveCount(0);
   await expect(sensorPanel.getByText('Düşman')).toHaveCount(0);
-  await expect(page.getByTestId('operator-confidence-panel')).toContainText('DOĞRULUK');
+  await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('DOĞRULUK');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Kimlik yüzdeleri');
+  await expect(page.getByTestId('operator-confidence-panel')).toContainText('Tür');
+  await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Tip');
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('DRY-RUN-F16-01');
   await expect(page.getByTestId('operator-confidence-panel')).toContainText('Savaş Uçağı / F16');
   await expect(page.getByTestId('operator-confidence-panel')).toContainText('Düşman');
@@ -538,8 +544,12 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const viewBox = await sensor3dView.boundingBox();
   expect(viewBox).not.toBeNull();
   const zoomBefore = await sensor3dView.getAttribute('data-zoom');
-  await sensor3dView.dispatchEvent('wheel', { deltaY: -240, bubbles: true, cancelable: true });
+  await page.evaluate(() => window.scrollTo(0, 160));
+  const scrollBeforeWheel = await page.evaluate(() => window.scrollY);
+  await page.mouse.move((viewBox?.x ?? 0) + (viewBox?.width ?? 0) / 2, (viewBox?.y ?? 0) + (viewBox?.height ?? 0) / 2 - scrollBeforeWheel);
+  await page.mouse.wheel(0, -240);
   await expect.poll(() => sensor3dView.getAttribute('data-zoom')).not.toBe(zoomBefore);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBeforeWheel);
   const zoomAfter = Number(await sensor3dView.getAttribute('data-zoom'));
   expect(Math.abs(zoomAfter - Number(zoomBefore))).toBeLessThanOrEqual(0.06);
   await expect(page.getByTestId('operator-sensor-3d-reset')).toContainText('3D RESET');
@@ -549,16 +559,24 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
 
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('operator-maintenance-button')).toBeDisabled();
+  await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
 
-  const rotateBefore = await sensor3dView.getAttribute('data-rotate-z');
-  await page.mouse.move((viewBox?.x ?? 0) + 24, (viewBox?.y ?? 0) + (viewBox?.height ?? 0) - 38);
+  const resetViewBox = await sensor3dView.boundingBox();
+  expect(resetViewBox).not.toBeNull();
+  const rotateBefore = Number(await sensor3dView.getAttribute('data-rotate-z'));
+  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
   await page.mouse.down();
-  await page.mouse.move((viewBox?.x ?? 0) + (viewBox?.width ?? 0) - 24, (viewBox?.y ?? 0) + (viewBox?.height ?? 0) - 64, { steps: 6 });
+  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 + 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
   await page.mouse.up();
-  const rotateAfter = await sensor3dView.getAttribute('data-rotate-z');
-  expect(rotateAfter).not.toBe(rotateBefore);
-  expect(Math.abs(Number(rotateAfter) - Number(rotateBefore))).toBeGreaterThan(180);
+  const rotateAfterRightDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
+  expect(rotateAfterRightDrag).toBeLessThan(rotateBefore);
+  await page.getByTestId('operator-sensor-3d-reset').click();
+  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
+  await page.mouse.down();
+  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 - 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
+  await page.mouse.up();
+  const rotateAfterLeftDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
+  expect(rotateAfterLeftDrag).toBeGreaterThan(rotateBefore);
 
   const sensorTopAfterStage = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
   expect(Math.abs(sensorTopAfterStage - sensorTopBefore)).toBeLessThanOrEqual(1);
@@ -592,7 +610,7 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByRole('button', { name: 'Manuel' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Otonom' })).toHaveCount(0);
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('operator-maintenance-button')).toBeDisabled();
+  await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('otonom mod');
   await page.getByRole('button', { name: 'Aşama 1' }).click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
@@ -603,11 +621,28 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByText('Sonuç')).toHaveCount(0);
 
   await page.getByTestId('operator-stop-button').click();
-  await expect(page.getByTestId('operator-stop-button')).toContainText('STOP');
+  await expect(page.getByTestId('operator-stop-button')).toContainText('ACİL DURDUR');
+  await expect(page.getByTestId('operator-stop-overlay')).toBeVisible();
+  await expect(page.getByTestId('operator-stop-resume-button')).toContainText('DEVAM ET');
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
   await expect(page.getByTestId('operator-safety-state')).toContainText('AKTİF');
+  await page.getByTestId('operator-stop-resume-button').click();
+  await expect(page.getByTestId('operator-stop-overlay')).toHaveCount(0);
+  await expect(page.getByTestId('operator-safety-state')).toContainText('Pasif');
 
   await page.getByTestId('operator-maintenance-button').click();
+  await expect(page.getByTestId('operator-maintenance-overlay')).toBeVisible();
+  await expect(page.getByTestId('operator-maintenance-countdown')).toContainText('10:00');
+  const fireButtonCoveredByMaintenance = await page.getByTestId('operator-fire-button').evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const topElement = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return Boolean(topElement?.closest('[data-testid="operator-maintenance-overlay"]'));
+  });
+  expect(fireButtonCoveredByMaintenance).toBe(true);
+  await page.getByTestId('operator-maintenance-finish-button').click();
+  await expect(page.getByTestId('operator-maintenance-overlay')).toHaveCount(0);
+  await expect(page.getByTestId('operator-action-strip')).toContainText('2 hak · 9:30');
+  await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   await expect(page.getByTestId('operator-maintenance-drawer')).toBeVisible();
   await expect(page.getByTestId('operator-lidar-diagnostics')).toContainText('SDK/driver → SensorFrame → Backend');
 });
@@ -619,7 +654,7 @@ test('operator panel keeps unknown targets white/spherical and fire-locked until
   await expect(unknownTrack).toHaveAttribute('data-identification', 'unknown');
   await expect(unknownTrack).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'unknown');
-  await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('Tip');
+  await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('Tür');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('42%');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).not.toContainText('DRY-RUN-UAV-03');
 
