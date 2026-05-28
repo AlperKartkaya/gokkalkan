@@ -104,6 +104,10 @@ function hostilityConfidence(frame: OperatorSensorFrame) {
   return isFrameUnidentified(frame) ? Math.max(0.52, 1 - frame.classificationConfidence) : frame.quality;
 }
 
+function stageHasHostilityDetection(stage: Stage) {
+  return stage === 3;
+}
+
 function sensorRecommendation(track: OperatorTrackState, stage: Stage) {
   if (track.friendFoe === 'Dost') return 'Dost unsur korunur; FireIntent kilitli.';
   if (track.friendFoe === 'Bilinmeyen') return 'Kimlik kesinleşmeden FireIntent kilitli; yazılım katmanı sınıf/dost-düşman güvenini izler.';
@@ -822,6 +826,7 @@ function OperatorTrackScene({
   tracks,
   selectedTrackId,
   lastIntent,
+  shotTrackIds,
   onSelect,
   compact = false,
 }: {
@@ -829,9 +834,11 @@ function OperatorTrackScene({
   tracks: OperatorTrackState[];
   selectedTrackId: string;
   lastIntent?: FireIntent;
+  shotTrackIds: Set<string>;
   onSelect: (trackId: string) => void;
   compact?: boolean;
 }) {
+  const hostilityDetection = stageHasHostilityDetection(stage);
   const visualTracks = tracks.map((track, index) => visualTrackFor(track, index, stage));
   const selectedVisualTrack = visualTracks.find((track) => track.trackId === selectedTrackId) ?? visualTracks[0];
   const firedVisualTrack = visualTracks.find((track) => track.trackId === lastIntent?.targetId);
@@ -872,7 +879,7 @@ function OperatorTrackScene({
                 <text x={range === 15 ? 21.5 : range === 10 ? 48.5 : 75.5} y="22">{range} m</text>
               </g>
             ))}
-            <text className="stage1-title" x="9" y="10">A1 · MANUEL ATIŞ</text>
+            <text className="stage1-title" x="9" y="10">MANUEL ATIŞ</text>
           </g>
         ) : (
           <g className="moving-course-field">
@@ -937,52 +944,70 @@ function OperatorTrackScene({
 
         {visualTracks.map((track) => {
           const selected = selectedVisualTrack?.trackId === track.trackId;
-          const unknown = isTrackUnidentified(track);
-          const statusText = unknown ? 'kimlik bekliyor' : `${targetLabel[track.targetType]} ${track.friendFoe}`;
+          const unknown = hostilityDetection && isTrackUnidentified(track);
+          const shot = shotTrackIds.has(track.trackId);
+          const displayAffiliation = hostilityDetection ? track.friendFoe : 'Bilinmeyen';
+          const statusText = unknown ? 'kimlik bekliyor' : hostilityDetection ? `${targetLabel[track.targetType]} ${track.friendFoe}` : targetLabel[track.targetType];
           return (
             <button
               key={track.trackId}
-              className={`aircraft absolute z-[6] grid min-h-[62px] min-w-[58px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center rounded-full border-0 bg-transparent p-0.5 text-center shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass(track.friendFoe)} ${unknown ? 'unknown-object' : ''} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate ? 'candidate' : ''}`}
+              className={`aircraft absolute z-[6] grid min-h-[62px] min-w-[58px] -translate-x-1/2 -translate-y-1/2 content-center place-items-center rounded-full border-0 bg-transparent p-0.5 text-center shadow-none transition-[color,filter,transform] duration-150 will-change-[left,top] ${affiliationClass(displayAffiliation)} ${unknown ? 'unknown-object' : ''} ${stage !== 1 ? 'moving' : 'stationary'} ${selected ? 'selected' : ''} ${track.candidate && !shot ? 'candidate' : ''} ${shot ? 'is-shot' : ''}`}
               style={{ left: `${track.x}%`, top: `${track.y}%`, width: `${track.w}%`, height: `${track.h}%` }}
               data-testid={`operator-track-${track.trackId}`}
               data-track-id={track.trackId}
-              data-affiliation={track.friendFoe}
+              data-affiliation={displayAffiliation}
               data-identification={unknown ? 'unknown' : 'identified'}
+              data-shot={shot ? 'true' : 'false'}
               aria-label={`${track.trackId} ${statusText} ${track.rangeM.toFixed(1)} metre`}
               onClick={() => onSelect(track.trackId)}
             >
               <span className="motion-trail" />
               <span className="target-visual">{unknown ? <span className="target-unknown-sphere" aria-hidden="true" /> : <OperatorTargetSilhouette type={track.targetType} />}</span>
+              {shot && (
+                <span className="shot-eliminated-icon" data-testid={`operator-track-shot-icon-${track.trackId}`} aria-hidden="true">
+                  <svg viewBox="0 0 64 64">
+                    <circle cx="32" cy="32" r="23" />
+                    <path d="M20 20 L44 44 M44 20 L20 44" />
+                  </svg>
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
-      <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="unknown-dot" />Bilinmeyen</span>
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil</span>
-      </div>
+      {hostilityDetection && (
+        <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
+          <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="unknown-dot" />Bilinmeyen</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil</span>
+        </div>
+      )}
     </section>
   );
 }
 
 function SensorFusion3DView({
+  stage,
   frames,
   selectedTrackId,
+  shotTrackIds,
   onSelect,
   sensorHealth,
   sensorSource,
   connectedSensorFramesEmpty,
 }: {
+  stage: Stage;
   frames: OperatorSensorFrame[];
   selectedTrackId: string;
+  shotTrackIds: Set<string>;
   onSelect: (trackId: string) => void;
   sensorHealth: OperatorSensorHealth;
   sensorSource: string;
   connectedSensorFramesEmpty: boolean;
 }) {
+  const viewRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glResourcesRef = useRef<SensorGlResources | undefined>(undefined);
   const [view, setView] = useState<SensorViewState>(defaultSensorView);
@@ -992,6 +1017,10 @@ function SensorFusion3DView({
   const [overlayPoints, setOverlayPoints] = useState<SensorOverlayPoint[]>([]);
 
   const zoomLevel = SENSOR_DEFAULT_DISTANCE / view.distance;
+  const displayFrames = useMemo(
+    () => (stageHasHostilityDetection(stage) ? frames : frames.map((frame) => ({ ...frame, friendFoe: 'Bilinmeyen' as const }))),
+    [frames, stage],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1023,13 +1052,13 @@ function SensorFusion3DView({
     try {
       const resources = glResourcesRef.current ?? createSensorResources(gl);
       glResourcesRef.current = resources;
-      const result = renderSensorWebGlScene(gl, resources, frames, selectedTrackId, view);
+      const result = renderSensorWebGlScene(gl, resources, displayFrames, selectedTrackId, view);
       setOverlayPoints((current) => (overlayPointsEqual(current, result.overlayPoints) ? current : result.overlayPoints));
     } catch (error) {
       console.warn('Radar/LiDAR WebGL çizimi devre dışı kaldı:', error);
       setWebglAvailable(false);
     }
-  }, [frames, selectedTrackId, view, renderTick]);
+  }, [displayFrames, selectedTrackId, view, renderTick]);
 
   useEffect(() => () => {
     const canvas = canvasRef.current;
@@ -1042,9 +1071,9 @@ function SensorFusion3DView({
     glResourcesRef.current = undefined;
   }, []);
 
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+  const beginPointerDrag = (event: PointerEvent, captureTarget: HTMLDivElement | null) => {
+    if (!captureTarget) return;
+    captureTarget.setPointerCapture(event.pointerId);
     setDragState({
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -1057,13 +1086,23 @@ function SensorFusion3DView({
     });
   };
 
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    beginPointerDrag(event, event.currentTarget);
+  };
+
+  const handleTargetPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    beginPointerDrag(event, viewRef.current);
+  };
+
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - dragState.startX;
     const deltaY = event.clientY - dragState.startY;
     setView((current) => ({
       ...current,
-      pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch - deltaY * 0.16, 22, 72) : current.pitch,
+      pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch + deltaY * 0.16, 22, 72) : current.pitch,
       yaw: dragState.mode === 'orbit' ? dragState.baseYaw - deltaX * 0.36 : current.yaw,
       panX: dragState.mode === 'pan' ? clampNumber(dragState.basePanX - deltaX * 0.018 * current.distance, -6, 6) : current.panX,
       panZ: dragState.mode === 'pan' ? clampNumber(dragState.basePanZ + deltaY * 0.018 * current.distance, -4.5, 4.5) : current.panZ,
@@ -1099,6 +1138,7 @@ function SensorFusion3DView({
       data-zoom={zoomLevel.toFixed(2)}
       data-pan-x={view.panX.toFixed(1)}
       data-pan-z={view.panZ.toFixed(1)}
+      ref={viewRef}
       aria-label="Etkileşimli üç boyutlu Radar LiDAR iz görüntüsü"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1126,7 +1166,7 @@ function SensorFusion3DView({
       >
         3D RESET
       </button>
-      {frames.map((frame, index) => {
+      {displayFrames.map((frame, index) => {
         const fallbackPoint = sensorFrame3DPoint(frame, index);
         const point = overlayPoints[index] ?? {
           frameId: frame.frameId,
@@ -1136,20 +1176,22 @@ function SensorFusion3DView({
           visible: true,
         };
         const selected = selectedTrackId === frame.trackId;
-        const unknown = isFrameUnidentified(frame);
+        const unknown = stageHasHostilityDetection(stage) && isFrameUnidentified(frame);
+        const shot = shotTrackIds.has(frame.trackId);
         return (
           <button
             key={frame.frameId}
-            className={`sensor-3d-target ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${point.visible ? '' : 'is-off-axis'}`}
+            className={`sensor-3d-target ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${shot ? 'is-shot' : ''} ${point.visible ? '' : 'is-off-axis'}`}
             data-testid={`operator-sensor-3d-target-${frame.trackId}`}
             data-track-id={frame.trackId}
             data-affiliation={frame.friendFoe}
             data-identification={unknown ? 'unknown' : 'identified'}
+            data-shot={shot ? 'true' : 'false'}
             data-type-confidence={frame.classificationConfidence.toFixed(2)}
             data-color-confidence={hostilityConfidence(frame).toFixed(2)}
             style={{ left: `${point.left}%`, top: `${point.top}%` }}
             aria-label={`${frame.trackId} ${unknown ? 'kimlik bekliyor' : targetLabel[frame.targetType]} ${frame.rangeM.toFixed(1)} metre`}
-            onPointerDown={(event) => event.stopPropagation()}
+            onPointerDown={handleTargetPointerDown}
             onClick={() => onSelect(frame.trackId)}
           />
         );
@@ -1157,7 +1199,7 @@ function SensorFusion3DView({
       {!webglAvailable && (
         <span className="sensor-3d-empty sensor-3d-webgl-warning">WebGL açılamadı; sensör akışı yazılım katmanında tutuluyor.</span>
       )}
-      {(connectedSensorFramesEmpty || frames.length === 0) && (
+      {(connectedSensorFramesEmpty || displayFrames.length === 0) && (
         <span className="sensor-3d-empty" data-testid="operator-sensor-3d-empty">SensorFrame yok</span>
       )}
     </div>
@@ -1179,8 +1221,9 @@ function AccuracyCircle({ label, value, tone, testId }: { label: string; value: 
   );
 }
 
-function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFrame[]; selectedTrackId: string }) {
+function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; frames: OperatorSensorFrame[]; selectedTrackId: string }) {
   const uniqueFrames = frames.filter((frame, index, all) => all.findIndex((candidate) => candidate.trackId === frame.trackId) === index);
+  const hostilityDetection = stageHasHostilityDetection(stage);
 
   return (
     <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
@@ -1189,32 +1232,35 @@ function ConfidencePanel({ frames, selectedTrackId }: { frames: OperatorSensorFr
         style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
       >
         {uniqueFrames.map((frame) => {
-          const unknown = isFrameUnidentified(frame);
+          const unknown = hostilityDetection && isFrameUnidentified(frame);
           const colorValue = hostilityConfidence(frame);
           const selected = frame.trackId === selectedTrackId;
           const displayType = unknown ? 'Bilinmeyen cisim' : targetLabel[frame.targetType];
+          const displayAffiliation = hostilityDetection ? frame.friendFoe : 'Bilinmeyen';
           return (
             <article
               key={frame.trackId}
               className={`confidence-row rounded-lg border p-2.5 ${selected ? 'border-[#ffbb42]/35 bg-[#ffbb42]/10' : 'border-white/[.07] bg-white/[.04]'}`}
               data-testid={`operator-confidence-${frame.trackId}`}
-              data-affiliation={frame.friendFoe}
+              data-affiliation={displayAffiliation}
               data-identification={unknown ? 'unknown' : 'identified'}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <b className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{displayType}</b>
-                  <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-black text-[#91a6b7]">{frame.friendFoe}</span>
+                  {hostilityDetection && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-black text-[#91a6b7]">{frame.friendFoe}</span>}
                 </div>
-                <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />
+                {hostilityDetection && <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />}
               </div>
-              <div className="accuracy-circle-grid mt-3">
-                <AccuracyCircle
-                  label="Renk"
-                  value={colorValue}
-                  tone={affiliationClass(frame.friendFoe)}
-                  testId={`operator-accuracy-${frame.trackId}-color`}
-                />
+              <div className={`accuracy-circle-grid mt-3 ${hostilityDetection ? '' : 'type-only'}`}>
+                {hostilityDetection && (
+                  <AccuracyCircle
+                    label="Renk"
+                    value={colorValue}
+                    tone={affiliationClass(frame.friendFoe)}
+                    testId={`operator-accuracy-${frame.trackId}-color`}
+                  />
+                )}
                 <AccuracyCircle
                   label="Tür"
                   value={frame.classificationConfidence}
@@ -1244,6 +1290,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [round, setRound] = useState(1);
   const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
   const [lastIntent, setLastIntent] = useState<FireIntent>();
+  const [shotTrackIds, setShotTrackIds] = useState<Set<string>>(() => new Set());
   const [, setLastHardwareResult] = useState<HardwareResult>();
   const [operatorStopActive, setOperatorStopActive] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
@@ -1646,7 +1693,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     }
 
     const intent = makeFireIntent({ targetId: selectedTrack.trackId, stage: displayStage, round: displayRound, dryRun: config.dryRun });
-    setLastIntent(intent);
     if (apiBaseUrl) {
       setApiBusy(true);
       void sendOperatorFireIntent(apiBaseUrl, intent)
@@ -1654,6 +1700,11 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           pushResult(response.result);
           setApiSnapshot(response.state);
           setLastHardwareResult(response.hardwareResult ?? undefined);
+          const fireCompleted = response.result.accepted && (response.result.completed || response.hardwareResult?.completed === true);
+          if (fireCompleted) {
+            setLastIntent(intent);
+            setShotTrackIds((current) => new Set(current).add(intent.targetId));
+          }
           setApiError('');
         })
         .catch((error: unknown) => {
@@ -1679,6 +1730,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       safetyBlockReason: 'ALLOWED',
     });
     pushResult(result);
+    setLastIntent(intent);
+    setShotTrackIds((current) => new Set(current).add(intent.targetId));
     setLastHardwareResult({
       adapter: 'local-ui.dry-run',
       commandId: result.commandId,
@@ -1802,6 +1855,19 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     }
   }, [maintenanceSessionActive, maintenanceCountdownSeconds]);
 
+  useEffect(() => {
+    const lockPage = maintenanceSessionActive || operatorStopActive;
+    if (!lockPage) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, [maintenanceSessionActive, operatorStopActive]);
+
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
       <header className="operator-header mb-3 grid gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
@@ -1814,8 +1880,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       <section className="operator-primary-grid">
         <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
           <SensorFusion3DView
+            stage={displayStage}
             frames={interpretedSensorFrames}
             selectedTrackId={selectedTrackId}
+            shotTrackIds={shotTrackIds}
             onSelect={setSelectedTrackId}
             sensorHealth={sensorHealth}
             sensorSource={sensorSource}
@@ -1862,6 +1930,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
             tracks={visibleTracks}
             selectedTrackId={selectedTrackId}
             lastIntent={lastIntent}
+            shotTrackIds={shotTrackIds}
             onSelect={setSelectedTrackId}
           />
 
@@ -1876,7 +1945,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
                 >
                   ATEŞ
                 </button>
-                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? selectedTrack?.trackId ?? 'Hedef' : fireBlockedCopy}</p>
+                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireReady ? 'Hazır' : fireBlockedCopy}</p>
               </div>
 
               <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
@@ -1907,7 +1976,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         </aside>
       </section>
 
-      <ConfidencePanel frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />
+      <ConfidencePanel stage={displayStage} frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />
 
       <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
         <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Emniyet kilitleri">
@@ -2010,7 +2079,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           <section className="operator-lock-card">
             <span>BAKIM</span>
             <b data-testid="operator-maintenance-countdown">{formatDuration(maintenanceCountdownSeconds)}</b>
-            <p>{maintenanceSessionsLeft} hak · toplam kalan {formatDuration(maintenanceRemainingSeconds)}</p>
+            <p>{maintenanceSessionsLeft} hak</p>
             <button type="button" data-testid="operator-maintenance-finish-button" onClick={() => finishMaintenanceSession('operator')}>
               Bakımı Bitir
             </button>
@@ -2023,7 +2092,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           <section className="operator-lock-card">
             <span>ACİL DURDUR</span>
             <b>KİLİTLİ</b>
-            <p>Hareket ve atış niyetleri durduruldu.</p>
             <button type="button" data-testid="operator-stop-resume-button" onClick={resumeOperatorStop}>
               DEVAM ET
             </button>
