@@ -762,6 +762,7 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await page.getByTestId('operator-maintenance-button').click();
   await expect(page.getByTestId('operator-maintenance-overlay')).toBeVisible();
   await expect(page.getByTestId('operator-maintenance-countdown')).toContainText('10:00');
+  await expect(page.getByTestId('operator-maintenance-sessions-left')).toHaveText('KALAN BAKIM: 2');
   await expect(page.getByTestId('operator-maintenance-overlay')).not.toContainText('toplam kalan');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
   const fireButtonCoveredByMaintenance = await page.getByTestId('operator-fire-button').evaluate((button) => {

@@ -1414,6 +1414,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     ? Math.max(0, maintenanceRemainingSeconds - maintenanceElapsedSeconds)
     : maintenanceRemainingSeconds;
   const maintenanceSessionsLeft = Math.max(0, MAINTENANCE_SESSION_LIMIT - maintenanceSessionsUsed);
+  const maintenanceSessionsLeftAfterActive = Math.max(0, maintenanceSessionsLeft - (maintenanceSessionActive ? 1 : 0));
   const maintenanceReady = !apiBusy && !operatorStopActive && !maintenanceSessionActive && maintenanceSessionsLeft > 0 && maintenanceRemainingSeconds > 0;
   const maintenanceStatusCopy = maintenanceSessionActive
     ? `Aktif · ${formatDuration(maintenanceCountdownSeconds)}`
@@ -2182,7 +2183,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           <section className="operator-lock-card">
             <span>BAKIM</span>
             <b data-testid="operator-maintenance-countdown">{formatDuration(maintenanceCountdownSeconds)}</b>
-            <p>{maintenanceSessionsLeft} hak</p>
+            <p data-testid="operator-maintenance-sessions-left">KALAN BAKIM: {maintenanceSessionsLeftAfterActive}</p>
             <button type="button" data-testid="operator-maintenance-finish-button" onClick={() => finishMaintenanceSession('operator')}>
               Bakımı Bitir
             </button>
