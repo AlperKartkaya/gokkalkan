@@ -361,8 +361,67 @@ function makeRawLidarClips(stage: Stage, round: number, frames: OperatorSensorFr
         points,
       };
     }),
+
   }));
 }
+
+function cameraPaintColor(friendFoe: OperatorSensorFrame['friendFoe']) {
+  if (friendFoe === 'Dost') return '#43e36d';
+  if (friendFoe === 'Düşman') return '#ff4d6d';
+  return '#aeb7c3';
+}
+
+function cameraPaintName(friendFoe: OperatorSensorFrame['friendFoe']) {
+  if (friendFoe === 'Dost') return 'Yeşil';
+  if (friendFoe === 'Düşman') return 'Kırmızı';
+  return 'Gri';
+}
+
+function makeRawCameraFeed(stage: Stage, round: number, sensorFrames: OperatorSensorFrame[]): RawCameraFeed {
+  const baseFrames = sensorFrames.length > 0 ? sensorFrames : makeLocalSensorFrames(stage, round);
+  const fusionFrames = baseFrames.filter((frame) => frame.sensor === 'fusion');
+  const visualFrames = (fusionFrames.length > 0 ? fusionFrames : baseFrames).slice(0, 4);
+  const timestamp = visualFrames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
+  const frames = Array.from({ length: 10 }, (_, frameIndex): RawCameraFrame => {
+    const objects = visualFrames.map((frame, index): RawCameraObject => {
+      const drift = Math.sin((frameIndex + index) * 0.72) * 2.8;
+      const bearingOffset = clampNumber(frame.bearingDeg / 45, -1, 1) * 8;
+      return {
+        id: `${frame.trackId}-camera-${frameIndex}`,
+        trackId: frame.trackId,
+        targetType: frame.targetType,
+        paintName: cameraPaintName(frame.friendFoe),
+        paintColor: cameraPaintColor(frame.friendFoe),
+        left: clampPercent(18 + index * 21 + bearingOffset + drift, 9, 86),
+        top: clampPercent(32 + index * 9 + Math.cos((frameIndex + index) * 0.55) * 4, 18, 76),
+        scale: clampNumber(1.16 - frame.rangeM / 28 + index * 0.04, 0.62, 1.06),
+        blur: clampNumber(frame.rangeM / 34, 0.06, 0.56),
+      };
+    });
+    return {
+      frameId: `RAW-CAMERA-S${stage}-R${round}`,
+      frameIndex,
+      timestamp: new Date(Date.parse(timestamp) + frameIndex * 33).toISOString(),
+      exposureMs: 4.2 + (frameIndex % 3) * 0.4,
+      gainDb: 6.8 + (frameIndex % 4) * 0.3,
+      whiteBalanceK: 5200 + (frameIndex % 5) * 80,
+      objects,
+    };
+  });
+
+  return {
+    feedId: `RAW-CAMERA-S${stage}-R${round}`,
+    stage,
+    round,
+    sourceName: 'Gökkalkan kamera adapterı',
+    sourceUrl: 'local://gokkalkan/camera-adapter',
+    resolution: '1280×720',
+    fps: 30,
+    lens: 'RGB kamera · 70° FOV',
+    frames,
+  };
+}
+
 type Vec3 = [number, number, number];
 type SensorBatch = { positions: number[]; colors: number[] };
 type SensorOverlayPoint = {
@@ -405,6 +464,40 @@ type RawLidarClip = {
   sampleRateHz: number;
   maxRangeM: number;
   frames: RawLidarFrame[];
+};
+
+type RawCameraObject = {
+  id: string;
+  trackId: string;
+  targetType: TargetType;
+  paintName: 'Kırmızı' | 'Yeşil' | 'Gri';
+  paintColor: string;
+  left: number;
+  top: number;
+  scale: number;
+  blur: number;
+};
+
+type RawCameraFrame = {
+  frameId: string;
+  frameIndex: number;
+  timestamp: string;
+  exposureMs: number;
+  gainDb: number;
+  whiteBalanceK: number;
+  objects: RawCameraObject[];
+};
+
+type RawCameraFeed = {
+  feedId: string;
+  stage: Stage;
+  round: number;
+  sourceName: string;
+  sourceUrl: string;
+  resolution: string;
+  fps: number;
+  lens: string;
+  frames: RawCameraFrame[];
 };
 
 type SensorGlResources = {
@@ -1313,6 +1406,147 @@ function RawLidarDiagnosticPage({ clips, onBack }: { clips: RawLidarClip[]; onBa
   );
 }
 
+function RawCameraDiagnosticPage({ feed, onBack }: { feed: RawCameraFeed; onBack: () => void }) {
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const frame = feed.frames[frameIndex] ?? feed.frames[0];
+  const colorCounts = useMemo(() => {
+    const counts = new Map<RawCameraObject['paintName'], number>();
+    for (const object of frame.objects) {
+      counts.set(object.paintName, (counts.get(object.paintName) ?? 0) + 1);
+    }
+    return Array.from(counts.entries());
+  }, [frame]);
+
+  useEffect(() => {
+    setFrameIndex(0);
+    setPlaying(false);
+  }, [feed]);
+
+  useEffect(() => {
+    if (!playing || feed.frames.length < 2) return undefined;
+    const timer = window.setInterval(() => {
+      setFrameIndex((current) => (current + 1) % feed.frames.length);
+    }, Math.max(120, Math.round(1000 / Math.min(feed.fps, 8))));
+    return () => window.clearInterval(timer);
+  }, [feed.fps, feed.frames.length, playing]);
+
+  function moveFrame(direction: -1 | 1) {
+    setPlaying(false);
+    setFrameIndex((current) => (current + direction + feed.frames.length) % feed.frames.length);
+  }
+
+  return (
+    <main className="raw-camera-page raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-camera-page">
+      <div className="raw-lidar-shell">
+        <header className="raw-lidar-header">
+          <div className="min-w-0">
+            <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Diagnostik</p>
+            <h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM KAMERA</h1>
+          </div>
+          <button
+            type="button"
+            className="raw-lidar-back-button"
+            data-testid="raw-camera-back-button"
+            onClick={onBack}
+          >
+            OPERATÖR PANELİNE DÖN
+          </button>
+        </header>
+
+        <section className="raw-lidar-grid raw-camera-grid">
+          <article className="raw-lidar-canvas-card raw-camera-video-card" aria-label="Ham kamera video akışı">
+            <div className="raw-camera-video-frame" data-testid="raw-camera-video-frame">
+              <div className="raw-camera-sky" />
+              <div className="raw-camera-horizon" />
+              <div className="raw-camera-noise" />
+              <div className="raw-camera-reticle" aria-hidden="true" />
+              {frame.objects.map((object) => (
+                <span
+                  key={object.id}
+                  className="raw-camera-object"
+                  data-testid="raw-camera-object"
+                  data-paint={object.paintName}
+                  style={{
+                    '--camera-left': `${object.left}%`,
+                    '--camera-top': `${object.top}%`,
+                    '--camera-scale': object.scale.toFixed(2),
+                    '--camera-blur': `${object.blur.toFixed(2)}px`,
+                    color: object.paintColor,
+                  } as CSSProperties}
+                >
+                  <OperatorTargetSilhouette type={object.targetType} className="raw-camera-object-icon" />
+                </span>
+              ))}
+              <div className="raw-camera-osd">
+                <span data-testid="raw-camera-status">{playing ? 'CANLI' : 'DURAKLATILDI'}</span>
+                <span>{feed.resolution}</span>
+                <span>{feed.fps} FPS</span>
+              </div>
+            </div>
+            <div className="raw-lidar-controls raw-camera-controls" data-testid="raw-camera-controls">
+              <button type="button" data-testid="raw-camera-play-toggle" onClick={() => setPlaying((current) => !current)}>
+                {playing ? 'DURAKLAT' : 'OYNAT'}
+              </button>
+              <button type="button" data-testid="raw-camera-prev-frame" onClick={() => moveFrame(-1)}>‹</button>
+              <input
+                type="range"
+                min="0"
+                max={Math.max(0, feed.frames.length - 1)}
+                value={frameIndex}
+                aria-label="Kamera karesi"
+                data-testid="raw-camera-frame-slider"
+                onChange={(event) => {
+                  setPlaying(false);
+                  setFrameIndex(Number(event.currentTarget.value));
+                }}
+              />
+              <button type="button" data-testid="raw-camera-next-frame" onClick={() => moveFrame(1)}>›</button>
+              <span data-testid="raw-camera-frame-progress">KARE {frameIndex + 1}/{feed.frames.length}</span>
+            </div>
+          </article>
+
+          <aside className="raw-lidar-side-card">
+            <div>
+              <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Video</p>
+              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-camera-frame-id">{frame.frameId}</h2>
+              <p className="raw-lidar-current-frame" data-testid="raw-camera-current-frame">Frame {String(frame.frameIndex + 1).padStart(2, '0')}</p>
+            </div>
+            <div className="raw-lidar-metric-grid">
+              <EvidenceRow label="Aşama / Tur" value={`Aşama ${feed.stage} · Tur ${feed.round}`} />
+              <EvidenceRow label="Çözünürlük" value={feed.resolution} />
+              <EvidenceRow label="FPS" value={`${feed.fps}`} />
+              <EvidenceRow label="Lens" value={feed.lens} />
+              <EvidenceRow label="Pozlama" value={`${frame.exposureMs.toFixed(1)} ms`} />
+              <EvidenceRow label="Kazanç" value={`${frame.gainDb.toFixed(1)} dB`} />
+              <EvidenceRow label="Beyaz ayarı" value={`${frame.whiteBalanceK} K`} />
+              <EvidenceRow label="Zaman" value={frame.timestamp} />
+            </div>
+            <div className="raw-camera-color-card" data-testid="raw-camera-color-card">
+              <p>RENK ÖRNEKLERİ</p>
+              <div>
+                {colorCounts.map(([paintName, count]) => (
+                  <span
+                    key={paintName}
+                    className={`raw-camera-color-chip ${paintName === 'Kırmızı' ? 'red' : paintName === 'Yeşil' ? 'green' : 'gray'}`}
+                    data-testid={`raw-camera-color-${paintName}`}
+                  >
+                    {paintName} <b>{count}</b>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <p className="raw-lidar-source" data-testid="raw-camera-source">
+              {feed.sourceName}
+            </p>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+
 function SensorFusion3DView({
   stage,
   frames,
@@ -1627,6 +1861,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [evidenceError, setEvidenceError] = useState('');
   const [evidenceNotice, setEvidenceNotice] = useState('');
   const [rawLidarOpen, setRawLidarOpen] = useState(false);
+  const [rawCameraOpen, setRawCameraOpen] = useState(false);
   const [commandResults, setCommandResults] = useState<CommandResult[]>([makeBootCommandResult()]);
 
   useEffect(() => {
@@ -1703,6 +1938,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const rawLidarSourceFrames = interpretedSensorFrames.length > 0 ? interpretedSensorFrames : localFrames;
   const rawLidarClips = useMemo(
     () => makeRawLidarClips(displayStage, displayRound, rawLidarSourceFrames),
+    [displayStage, displayRound, rawLidarSourceFrames],
+  );
+  const rawCameraFeed = useMemo(
+    () => makeRawCameraFeed(displayStage, displayRound, rawLidarSourceFrames),
     [displayStage, displayRound, rawLidarSourceFrames],
   );
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
@@ -1933,6 +2172,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     setEvidenceBusy(false);
     setEvidenceError('');
     setRawLidarOpen(false);
+    setRawCameraOpen(false);
     setEvidenceNotice(apiBaseUrl
       ? 'Panel Aşama 1 yerel başlangıcına sıfırlandı; backend state değiştirilmedi.'
       : 'Panel Aşama 1 yerel başlangıcına sıfırlandı.');
@@ -2291,6 +2531,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     return <RawLidarDiagnosticPage clips={rawLidarClips} onBack={() => setRawLidarOpen(false)} />;
   }
 
+  if (rawCameraOpen) {
+    return <RawCameraDiagnosticPage feed={rawCameraFeed} onBack={() => setRawCameraOpen(false)} />;
+  }
+
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
       <header className="operator-header mb-3 flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
@@ -2307,6 +2551,15 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
             onClick={() => setRawLidarOpen(true)}
           >
             HAM LİDAR
+          </button>
+          <button
+            type="button"
+            className="operator-raw-camera-button"
+            data-testid="operator-raw-camera-button"
+            disabled={apiBusy}
+            onClick={() => setRawCameraOpen(true)}
+          >
+            HAM KAMERA
           </button>
           <button
             type="button"

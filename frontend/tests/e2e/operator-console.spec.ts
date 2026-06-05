@@ -250,6 +250,7 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
   await expect(page.getByTestId('operator-reset-button')).toBeVisible();
   await expect(page.getByTestId('operator-raw-lidar-button')).toBeVisible();
+  await expect(page.getByTestId('operator-raw-camera-button')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Landing’e dön' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Simülatöre dön' })).toHaveCount(0);
   await expect(page.getByText('DRY-RUN KAPALI · canlı kilit gerekli')).toHaveCount(0);
@@ -341,6 +342,34 @@ test('landing opens the dry-run real operator panel without live hardware claims
   const stageTwoAircraftColors = await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.map((target) => getComputedStyle(target).color));
   expect(stageTwoAircraftColors.every((color) => color === UNKNOWN_AIRCRAFT_GRAY)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('operator panel opens a raw camera video page without changing control state', async ({ page }) => {
+  await page.goto('/?operator=1');
+
+  await page.getByTestId('operator-raw-camera-button').click();
+  await expect(page.getByTestId('raw-camera-page')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'HAM KAMERA' })).toBeVisible();
+  await expect(page.getByTestId('raw-camera-frame-id')).toHaveText('RAW-CAMERA-S1-R1');
+  await expect(page.getByTestId('raw-camera-current-frame')).toHaveText('Frame 01');
+  await expect(page.getByTestId('raw-camera-frame-progress')).toHaveText('KARE 1/10');
+  await expect(page.getByTestId('raw-camera-video-frame')).toBeVisible();
+  expect(await page.locator('[data-testid="raw-camera-object"]').count()).toBeGreaterThan(2);
+  await expect(page.getByTestId('raw-camera-status')).toHaveText('DURAKLATILDI');
+  await page.getByTestId('raw-camera-next-frame').click();
+  await expect(page.getByTestId('raw-camera-frame-progress')).toHaveText('KARE 2/10');
+  await page.getByTestId('raw-camera-play-toggle').click();
+  await expect(page.getByTestId('raw-camera-status')).toHaveText('CANLI');
+  await expect(page.getByTestId('raw-camera-color-card')).toContainText('Kırmızı');
+  await expect(page.getByTestId('raw-camera-source')).toContainText('Gökkalkan kamera adapterı');
+  await expect(page.getByTestId('raw-camera-page')).not.toContainText('Düşman');
+  await expect(page.getByTestId('raw-camera-page')).not.toContainText('Dost');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.getByTestId('raw-camera-back-button').click();
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await expect(page.getByTestId('operator-fire-button')).toBeVisible();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
 });
 
 test('operator panel opens a raw LiDAR clip page with visual-only semantic classification', async ({ page }) => {

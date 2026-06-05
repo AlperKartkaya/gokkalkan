@@ -53,7 +53,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   gap: 8px;
 }
 
-.operator-raw-lidar-button {
+.operator-raw-lidar-button,
+.operator-raw-camera-button {
   min-height: 48px;
   white-space: nowrap;
   border-radius: 999px;
@@ -68,10 +69,22 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   transition: border-color .15s ease, background .15s ease, transform .15s ease;
 }
 
-.operator-raw-lidar-button:hover {
+.operator-raw-camera-button {
+  border-color: rgba(255,187,66,.30);
+  background: linear-gradient(135deg, rgba(255,187,66,.18), rgba(37,216,255,.07));
+  box-shadow: 0 0 18px rgba(255,187,66,.10), inset 0 0 18px rgba(255,255,255,.035);
+}
+
+.operator-raw-lidar-button:hover,
+.operator-raw-camera-button:hover {
   border-color: rgba(72,168,255,.58);
   background: linear-gradient(135deg, rgba(72,168,255,.28), rgba(37,216,255,.13));
   transform: translateY(-1px);
+}
+
+.operator-raw-camera-button:hover {
+  border-color: rgba(255,187,66,.54);
+  background: linear-gradient(135deg, rgba(255,187,66,.27), rgba(37,216,255,.11));
 }
 
 .raw-lidar-page {
@@ -432,6 +445,189 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   text-decoration: none;
   vertical-align: middle;
 }
+
+.raw-camera-video-card::before {
+  opacity: .45;
+}
+
+.raw-camera-video-frame {
+  position: relative;
+  z-index: 1;
+  min-height: min(76vh, 760px);
+  overflow: hidden;
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,.08);
+  background:
+    linear-gradient(180deg, rgba(10,22,34,.24), rgba(4,8,13,.34)),
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,.10), transparent 34%),
+    #07111a;
+  aspect-ratio: 16 / 9;
+  box-shadow: inset 0 0 46px rgba(0,0,0,.48), inset 0 0 0 1px rgba(37,216,255,.06);
+}
+
+.raw-camera-sky,
+.raw-camera-horizon,
+.raw-camera-noise,
+.raw-camera-reticle {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.raw-camera-sky {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255,255,255,.20), transparent 12%),
+    linear-gradient(180deg, #244761 0%, #122437 46%, #08111b 74%, #060a10 100%);
+}
+
+.raw-camera-horizon {
+  top: 54%;
+  background:
+    linear-gradient(180deg, rgba(255,187,66,.13), transparent 16%),
+    linear-gradient(90deg, transparent 0 10%, rgba(35,64,51,.78) 10% 18%, rgba(12,24,18,.58) 18% 100%);
+  clip-path: polygon(0 44%, 8% 39%, 16% 48%, 24% 42%, 34% 50%, 44% 43%, 57% 49%, 70% 38%, 84% 45%, 100% 40%, 100% 100%, 0 100%);
+  opacity: .78;
+}
+
+.raw-camera-noise {
+  opacity: .16;
+  mix-blend-mode: screen;
+  background-image:
+    linear-gradient(0deg, transparent 0 48%, rgba(255,255,255,.18) 49% 50%, transparent 51% 100%),
+    radial-gradient(circle at 12% 18%, rgba(255,255,255,.12) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 74% 62%, rgba(255,255,255,.12) 0 1px, transparent 1.6px);
+  background-size: 100% 18px, 31px 29px, 43px 41px;
+}
+
+.raw-camera-reticle {
+  opacity: .48;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(37,216,255,.35) 50%, transparent calc(50% + 1px)),
+    linear-gradient(180deg, transparent calc(50% - 1px), rgba(37,216,255,.35) 50%, transparent calc(50% + 1px));
+}
+
+.raw-camera-reticle::before,
+.raw-camera-reticle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid rgba(37,216,255,.30);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.raw-camera-reticle::before { width: min(34vw, 340px); height: min(34vw, 340px); }
+.raw-camera-reticle::after { width: min(18vw, 180px); height: min(18vw, 180px); }
+
+.raw-camera-object {
+  position: absolute;
+  left: var(--camera-left);
+  top: var(--camera-top);
+  z-index: 3;
+  display: grid;
+  width: clamp(42px, 6vw, 82px);
+  height: clamp(42px, 6vw, 82px);
+  place-items: center;
+  transform: translate(-50%, -50%) scale(var(--camera-scale));
+  filter: blur(var(--camera-blur)) drop-shadow(0 0 16px currentColor);
+  opacity: .86;
+}
+
+.raw-camera-object::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .10;
+  filter: blur(10px);
+}
+
+.raw-camera-object-icon {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+  stroke: rgba(255,255,255,.74);
+  stroke-width: 1.7;
+}
+
+.raw-camera-osd {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.raw-camera-osd span {
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(2,5,9,.70);
+  padding: 6px 10px;
+  color: #eaf7ff;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .10em;
+}
+
+.raw-camera-color-card {
+  display: grid;
+  gap: 9px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: linear-gradient(135deg, rgba(255,187,66,.10), rgba(72,168,255,.055));
+  padding: 12px;
+}
+
+.raw-camera-color-card p {
+  margin: 0;
+  color: #ffda92;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .14em;
+}
+
+.raw-camera-color-card div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.raw-camera-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  padding: 0 9px;
+  color: #eaf7ff;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.raw-camera-color-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.raw-camera-color-chip.red { color: #ff8fa3; }
+.raw-camera-color-chip.green { color: #7df59b; }
+.raw-camera-color-chip.gray { color: #cbd5df; }
 
 .landing-grid {
   background-image: linear-gradient(rgba(0,217,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,217,255,.04) 1px, transparent 1px);
@@ -971,7 +1167,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
     align-items: flex-end;
   }
 
-  .operator-raw-lidar-button {
+  .operator-raw-lidar-button,
+  .operator-raw-camera-button {
     min-height: 40px;
     padding: 0 12px;
     font-size: 10px;
@@ -992,6 +1189,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
   .raw-lidar-scan-frame {
     min-height: min(70vh, 560px);
+  }
+
+  .raw-camera-video-frame {
+    min-height: min(58vh, 440px);
   }
 
   .raw-lidar-controls {
