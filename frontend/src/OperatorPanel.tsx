@@ -36,7 +36,7 @@ import {
 } from './operatorApiClient';
 import {
   SEMANTIC2D_LABELS,
-  SEMANTIC2D_RAW_LIDAR_CLIP,
+  SEMANTIC2D_RAW_LIDAR_CLIPS,
   type Semantic2dLabelId,
 } from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
@@ -323,23 +323,25 @@ function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
   };
 }
 
-function makeRawLidarClip(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarClip {
+function makeRawLidarClips(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarClip[] {
   const timestamp = frames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
 
-  return {
+  return SEMANTIC2D_RAW_LIDAR_CLIPS.map((recordedClip): RawLidarClip => ({
+    clipId: recordedClip.clipId,
+    clipLabel: recordedClip.label,
     stage,
     round,
     timestamp,
-    sourceDataset: `${SEMANTIC2D_RAW_LIDAR_CLIP.sourceName} · ${SEMANTIC2D_RAW_LIDAR_CLIP.sequence}/${SEMANTIC2D_RAW_LIDAR_CLIP.frameStart}–${SEMANTIC2D_RAW_LIDAR_CLIP.frameEnd}`,
-    sourceUrl: SEMANTIC2D_RAW_LIDAR_CLIP.sourceUrl,
-    license: SEMANTIC2D_RAW_LIDAR_CLIP.license,
-    sampleRateHz: SEMANTIC2D_RAW_LIDAR_CLIP.sampleRateHz,
+    sourceDataset: `${recordedClip.sourceName} · ${recordedClip.sequence}/${recordedClip.frameStart}–${recordedClip.frameEnd}`,
+    sourceUrl: recordedClip.sourceUrl,
+    license: recordedClip.license,
+    sampleRateHz: recordedClip.sampleRateHz,
     maxRangeM: RAW_LIDAR_MAX_RANGE_M,
-    frames: SEMANTIC2D_RAW_LIDAR_CLIP.frames.map((recordedFrame, frameIndex): RawLidarFrame => {
+    frames: recordedClip.frames.map((recordedFrame, frameIndex): RawLidarFrame => {
       const points = recordedFrame.points.map((point, pointIndex): RawLidarPoint => {
         const displayRangeM = clampNumber(point.rangeM, 0.35, RAW_LIDAR_MAX_RANGE_M);
         return {
-          id: `semantic2d-${SEMANTIC2D_RAW_LIDAR_CLIP.sequence}-${recordedFrame.frameFile}-${pointIndex}`,
+          id: `semantic2d-${recordedClip.sequence}-${recordedFrame.frameFile}-${pointIndex}`,
           angleDeg: point.angleDeg,
           rangeM: displayRangeM,
           originalRangeM: point.rangeM,
@@ -354,14 +356,13 @@ function makeRawLidarClip(stage: Stage, round: number, frames: OperatorSensorFra
         frameId: `RAW-LIDAR-S${stage}-R${round}`,
         clipFrameFile: `${recordedFrame.frameFile}.npy`,
         clipFrameIndex: frameIndex,
-        originalPointCount: SEMANTIC2D_RAW_LIDAR_CLIP.originalPointCount,
+        originalPointCount: recordedClip.originalPointCount,
         displayedPointCount: points.length,
         points,
       };
     }),
-  };
+  }));
 }
-
 type Vec3 = [number, number, number];
 type SensorBatch = { positions: number[]; colors: number[] };
 type SensorOverlayPoint = {
@@ -393,6 +394,8 @@ type RawLidarFrame = {
 };
 
 type RawLidarClip = {
+  clipId: string;
+  clipLabel: string;
   stage: Stage;
   round: number;
   timestamp: string;
@@ -1087,10 +1090,19 @@ function rawLidarSemanticClass(label: Semantic2dLabelId) {
   }
 }
 
-function RawLidarDiagnosticPage({ clip, onBack }: { clip: RawLidarClip; onBack: () => void }) {
+function RawLidarDiagnosticPage({ clips, onBack }: { clips: RawLidarClip[]; onBack: () => void }) {
+  const [selectedClipId, setSelectedClipId] = useState(clips[0]?.clipId ?? '');
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [classificationEnabled, setClassificationEnabled] = useState(false);
+  const clip = (clips.find((candidate) => candidate.clipId === selectedClipId) ?? clips[0]) as RawLidarClip;
+
+  useEffect(() => {
+    if (!clips.some((candidate) => candidate.clipId === selectedClipId)) {
+      setSelectedClipId(clips[0]?.clipId ?? '');
+    }
+  }, [clips, selectedClipId]);
+
   const frame = clip.frames[frameIndex] ?? clip.frames[0];
   const pointCount = frame?.points.length ?? 0;
   const averageIntensity = pointCount === 0
@@ -1234,6 +1246,24 @@ function RawLidarDiagnosticPage({ clip, onBack }: { clip: RawLidarClip; onBack: 
               <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Çerçeve</p>
               <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">{frame?.frameId}</h2>
               <p className="raw-lidar-current-frame" data-testid="raw-lidar-current-frame">{frame?.clipFrameFile}</p>
+            </div>
+            <div className="raw-lidar-clip-picker" data-testid="raw-lidar-clip-picker" aria-label="LiDAR klip seçimi">
+              {clips.map((candidate) => (
+                <button
+                  key={candidate.clipId}
+                  type="button"
+                  className={candidate.clipId === clip.clipId ? 'active' : ''}
+                  data-testid={`raw-lidar-clip-${candidate.clipId}`}
+                  aria-pressed={candidate.clipId === clip.clipId}
+                  onClick={() => {
+                    setSelectedClipId(candidate.clipId);
+                    setFrameIndex(0);
+                    setPlaying(false);
+                  }}
+                >
+                  {candidate.clipLabel}
+                </button>
+              ))}
             </div>
             <div className="raw-lidar-metric-grid">
               <EvidenceRow label="Aşama / Tur" value={`Aşama ${clip.stage} · Tur ${clip.round}`} />
@@ -1671,8 +1701,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
   const rawLidarSourceFrames = interpretedSensorFrames.length > 0 ? interpretedSensorFrames : localFrames;
-  const rawLidarClip = useMemo(
-    () => makeRawLidarClip(displayStage, displayRound, rawLidarSourceFrames),
+  const rawLidarClips = useMemo(
+    () => makeRawLidarClips(displayStage, displayRound, rawLidarSourceFrames),
     [displayStage, displayRound, rawLidarSourceFrames],
   );
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
@@ -2258,7 +2288,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   }, [maintenanceSessionActive, operatorStopActive]);
 
   if (rawLidarOpen) {
-    return <RawLidarDiagnosticPage clip={rawLidarClip} onBack={() => setRawLidarOpen(false)} />;
+    return <RawLidarDiagnosticPage clips={rawLidarClips} onBack={() => setRawLidarOpen(false)} />;
   }
 
   return (

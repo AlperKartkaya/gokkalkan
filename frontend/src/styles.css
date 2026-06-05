@@ -303,6 +303,30 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   letter-spacing: .08em;
 }
 
+.raw-lidar-clip-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.raw-lidar-clip-picker button {
+  min-height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(72,168,255,.22);
+  background: rgba(72,168,255,.08);
+  color: #cbe9ff;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .10em;
+}
+
+.raw-lidar-clip-picker button.active {
+  border-color: rgba(255,187,66,.45);
+  background: rgba(255,187,66,.14);
+  color: #ffe4ad;
+  box-shadow: 0 0 18px rgba(255,187,66,.10);
+}
+
 .raw-lidar-classifier-card {
   display: grid;
   gap: 10px;
