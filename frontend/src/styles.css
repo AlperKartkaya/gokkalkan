@@ -230,8 +230,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   gap: 8px;
 }
 
-.raw-lidar-source,
-.raw-lidar-callout {
+.raw-lidar-source {
   margin: 0;
   border-radius: 14px;
   border: 1px solid rgba(72,168,255,.18);
@@ -241,12 +240,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   font-size: 13px;
   font-weight: 800;
   line-height: 1.45;
-}
-
-.raw-lidar-callout {
-  border-color: rgba(255,187,66,.22);
-  background: rgba(255,187,66,.08);
-  color: #ffe4ad;
 }
 
 .raw-lidar-source a {

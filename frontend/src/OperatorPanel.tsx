@@ -1073,9 +1073,6 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
           <div className="min-w-0">
             <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Diagnostik</p>
             <h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM LİDAR</h1>
-            <p className="m-0 mt-2 max-w-3xl text-sm font-bold text-[#91a6b7]">
-              Sensörün ham menzil ve intensity dönüşleri · sınıflandırma yok · görev kararları bu ekranda verilmez.
-            </p>
           </div>
           <button
             type="button"
@@ -1163,9 +1160,6 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
             <p className="raw-lidar-source" data-testid="raw-lidar-source">
               {frame.sourceDataset}
               <a href={frame.sourceUrl} target="_blank" rel="noreferrer" data-testid="raw-lidar-source-link">Kaynak</a>
-            </p>
-            <p className="raw-lidar-callout">
-              Bu ekran ham sensör doğrulaması içindir. Operatör panelinde görülen anlamlandırılmış izler ayrı yazılım katmanında üretilir.
             </p>
           </aside>
         </section>

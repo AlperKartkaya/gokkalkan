@@ -353,7 +353,8 @@ test('operator panel opens a raw LiDAR diagnostic page without classified target
   await expect(page.getByTestId('raw-lidar-source')).toContainText('Semantic2D 2D LiDAR Dataset');
   await expect(page.getByTestId('raw-lidar-source-link')).toHaveAttribute('href', 'https://huggingface.co/datasets/TempleRAIL/semantic2d');
   await expect(page.getByTestId('raw-lidar-page')).toContainText('CC BY 4.0');
-  await expect(page.getByTestId('raw-lidar-page')).toContainText('sınıflandırma yok');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Sensörün ham menzil');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Bu ekran ham sensör doğrulaması');
   expect(await page.locator('[data-testid="raw-lidar-point"]').count()).toBeGreaterThan(120);
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Düşman');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Dost');
