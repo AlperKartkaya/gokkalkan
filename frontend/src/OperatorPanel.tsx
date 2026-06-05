@@ -318,6 +318,64 @@ function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
   };
 }
 
+function makeRawLidarFrame(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarFrame {
+  const timestamp = frames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
+  const signalPoints = frames.flatMap((frame, frameIndex) => {
+    const pointCount = Math.round(clampNumber((frame.pointCount || 72) / 7, 9, 24));
+    const spreadDeg = clampNumber(10 - frame.quality * 4, 4, 8.5);
+    const rangeSpreadM = clampNumber(0.38 - frame.quality * 0.18, 0.12, 0.32);
+    return Array.from({ length: pointCount }, (_, index): RawLidarPoint => {
+      const centeredIndex = index - (pointCount - 1) / 2;
+      const angleWave = Math.sin((index + 1) * (frameIndex + 2.2)) * 1.15;
+      const rangeWave = Math.cos((index + 1.4) * (frameIndex + 1.6)) * rangeSpreadM;
+      return {
+        id: `raw-${stage}-${round}-${frameIndex}-${index}`,
+        angleDeg: frame.bearingDeg + centeredIndex * (spreadDeg / pointCount) + angleWave,
+        rangeM: clampNumber(frame.rangeM + rangeWave, 0.35, RAW_LIDAR_MAX_RANGE_M),
+        intensity: clampNumber(0.42 + frame.quality * 0.48 + Math.sin(index * 1.7) * 0.07, 0.24, 0.98),
+        quality: clampNumber(frame.quality + Math.cos(index * 0.9) * 0.04, 0.18, 0.99),
+        source: 'return',
+      };
+    });
+  });
+
+  const sweepPoints = Array.from({ length: 96 }, (_, index): RawLidarPoint => {
+    const angleDeg = index * 3.75;
+    const wobble = Math.sin(index * 0.91 + stage * 0.6 + round * 0.3);
+    return {
+      id: `raw-${stage}-${round}-sweep-${index}`,
+      angleDeg,
+      rangeM: clampNumber(2.4 + ((index * 1.73) % 11.2) + wobble * 0.35, 0.55, RAW_LIDAR_MAX_RANGE_M),
+      intensity: clampNumber(0.12 + Math.abs(Math.sin(index * 0.43)) * 0.32, 0.1, 0.46),
+      quality: clampNumber(0.22 + Math.abs(Math.cos(index * 0.37)) * 0.28, 0.18, 0.55),
+      source: 'noise',
+    };
+  });
+
+  const referencePoints = [5, 10, 15].flatMap((rangeM) => (
+    Array.from({ length: 12 }, (_, index): RawLidarPoint => ({
+      id: `raw-${stage}-${round}-ref-${rangeM}-${index}`,
+      angleDeg: index * 30,
+      rangeM,
+      intensity: 0.18,
+      quality: 0.25,
+      source: 'reference',
+    }))
+  ));
+
+  return {
+    frameId: `RAW-LIDAR-S${stage}-R${round}`,
+    stage,
+    round,
+    timestamp,
+    replayOnly: true,
+    sourceDataset: 'Yerel ham LiDAR replay fixture; gerçek sensör adapterı aynı ham çerçeve sözleşmesine bağlanır.',
+    sampleRateHz: 10,
+    maxRangeM: RAW_LIDAR_MAX_RANGE_M,
+    points: [...referencePoints, ...sweepPoints, ...signalPoints],
+  };
+}
+
 type Vec3 = [number, number, number];
 type SensorBatch = { positions: number[]; colors: number[] };
 type SensorOverlayPoint = {
@@ -327,6 +385,28 @@ type SensorOverlayPoint = {
   top: number;
   visible: boolean;
 };
+
+type RawLidarPoint = {
+  id: string;
+  angleDeg: number;
+  rangeM: number;
+  intensity: number;
+  quality: number;
+  source: 'return' | 'noise' | 'reference';
+};
+
+type RawLidarFrame = {
+  frameId: string;
+  stage: Stage;
+  round: number;
+  timestamp: string;
+  replayOnly: boolean;
+  sourceDataset: string;
+  sampleRateHz: number;
+  maxRangeM: number;
+  points: RawLidarPoint[];
+};
+
 type SensorGlResources = {
   program: WebGLProgram;
   positionBuffer: WebGLBuffer;
@@ -338,6 +418,7 @@ type SensorGlResources = {
 
 const SENSOR_DOME_POSITION: Vec3 = [7.7, 0, 0];
 const SENSOR_DEFAULT_DISTANCE = defaultSensorView.distance;
+const RAW_LIDAR_MAX_RANGE_M = 15;
 
 const sensorPalette = {
   grid: [0.18, 0.52, 0.95] as Vec3,
@@ -994,6 +1075,118 @@ function OperatorTrackScene({
   );
 }
 
+function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBack: () => void }) {
+  const pointCount = frame.points.length;
+  const averageIntensity = pointCount === 0
+    ? 0
+    : frame.points.reduce((sum, point) => sum + point.intensity, 0) / pointCount;
+  const strongestReturn = frame.points.reduce<RawLidarPoint | undefined>(
+    (strongest, point) => (!strongest || point.intensity > strongest.intensity ? point : strongest),
+    undefined,
+  );
+
+  return (
+    <main className="raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-lidar-page">
+      <div className="raw-lidar-shell">
+        <header className="raw-lidar-header">
+          <div className="min-w-0">
+            <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Diagnostik</p>
+            <h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM LİDAR</h1>
+            <p className="m-0 mt-2 max-w-3xl text-sm font-bold text-[#91a6b7]">
+              Sensörün ham menzil ve intensity dönüşleri · sınıflandırma yok · görev kararları bu ekranda verilmez.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="raw-lidar-back-button"
+            data-testid="raw-lidar-back-button"
+            onClick={onBack}
+          >
+            OPERATÖR PANELİNE DÖN
+          </button>
+        </header>
+
+        <section className="raw-lidar-grid">
+          <article className="raw-lidar-canvas-card" aria-label="Ham LiDAR polar nokta bulutu">
+            <div className="raw-lidar-scan-frame">
+              <svg className="raw-lidar-scan" viewBox="0 0 100 100" data-testid="raw-lidar-svg" role="img" aria-label="Ham LiDAR polar tarama noktaları">
+                <defs>
+                  <radialGradient id="raw-lidar-glow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="rgba(72,168,255,.18)" />
+                    <stop offset="72%" stopColor="rgba(37,216,255,.05)" />
+                    <stop offset="100%" stopColor="rgba(37,216,255,0)" />
+                  </radialGradient>
+                  <filter id="raw-lidar-point-glow" x="-80%" y="-80%" width="260%" height="260%">
+                    <feGaussianBlur stdDeviation="0.7" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <rect x="0" y="0" width="100" height="100" rx="6" fill="url(#raw-lidar-glow)" />
+                {[5, 10, 15].map((range) => (
+                  <g key={range} className="raw-lidar-ring">
+                    <circle cx="50" cy="50" r={(range / frame.maxRangeM) * 44} />
+                    <text x={51.5 + (range / frame.maxRangeM) * 44} y="50">{range} m</text>
+                  </g>
+                ))}
+                {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
+                  const radians = ((angle - 90) * Math.PI) / 180;
+                  const x = 50 + Math.cos(radians) * 44;
+                  const y = 50 + Math.sin(radians) * 44;
+                  return (
+                    <line key={angle} className="raw-lidar-axis" x1="50" y1="50" x2={x} y2={y} />
+                  );
+                })}
+                <circle className="raw-lidar-origin" cx="50" cy="50" r="1.3" />
+                {frame.points.map((point) => {
+                  const radius = (point.rangeM / frame.maxRangeM) * 44;
+                  const radians = ((point.angleDeg - 90) * Math.PI) / 180;
+                  const x = 50 + Math.cos(radians) * radius;
+                  const y = 50 + Math.sin(radians) * radius;
+                  const size = point.source === 'reference' ? 0.26 : 0.34 + point.intensity * 0.48;
+                  return (
+                    <circle
+                      key={point.id}
+                      className={`raw-lidar-point ${point.source}`}
+                      cx={x}
+                      cy={y}
+                      r={size}
+                      style={{ '--raw-intensity': point.intensity.toFixed(2), '--raw-quality': point.quality.toFixed(2) } as CSSProperties}
+                      data-testid="raw-lidar-point"
+                      data-source={point.source}
+                    />
+                  );
+                })}
+              </svg>
+            </div>
+          </article>
+
+          <aside className="raw-lidar-side-card">
+            <div>
+              <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Çerçeve</p>
+              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">{frame.frameId}</h2>
+            </div>
+            <div className="raw-lidar-metric-grid">
+              <EvidenceRow label="Nokta" value={pointCount.toString()} />
+              <EvidenceRow label="Maks menzil" value={`${frame.maxRangeM} m`} />
+              <EvidenceRow label="Örnekleme" value={`${frame.sampleRateHz} Hz`} />
+              <EvidenceRow label="Ortalama intensity" value={`${Math.round(averageIntensity * 100)}%`} />
+              <EvidenceRow label="En güçlü dönüş" value={strongestReturn ? `${strongestReturn.rangeM.toFixed(1)} m · ${Math.round(strongestReturn.intensity * 100)}%` : 'Yok'} />
+              <EvidenceRow label="Replay" value={frame.replayOnly ? 'Açık' : 'Kapalı'} />
+            </div>
+            <p className="raw-lidar-source" data-testid="raw-lidar-source">{frame.sourceDataset}</p>
+            <p className="raw-lidar-callout">
+              Bu ekran ham sensör doğrulaması içindir. Operatör panelinde görülen anlamlandırılmış izler ayrı yazılım katmanında üretilir.
+            </p>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function SensorFusion3DView({
   stage,
   frames,
@@ -1307,6 +1500,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   const [evidenceError, setEvidenceError] = useState('');
   const [evidenceNotice, setEvidenceNotice] = useState('');
+  const [rawLidarOpen, setRawLidarOpen] = useState(false);
   const [commandResults, setCommandResults] = useState<CommandResult[]>([makeBootCommandResult()]);
 
   useEffect(() => {
@@ -1380,6 +1574,11 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const sensorFrames = apiSnapshot ? (apiSnapshot.sensorFrames ?? []) : localFrames;
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
+  const rawLidarSourceFrames = interpretedSensorFrames.length > 0 ? interpretedSensorFrames : localFrames;
+  const rawLidarFrame = useMemo(
+    () => makeRawLidarFrame(displayStage, displayRound, rawLidarSourceFrames),
+    [displayStage, displayRound, rawLidarSourceFrames],
+  );
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
   const safety = evaluateOperatorSafety({
     estop: operatorStopActive || (apiSnapshot?.safety.estop ?? false),
@@ -1607,6 +1806,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     setReplayBundle(undefined);
     setEvidenceBusy(false);
     setEvidenceError('');
+    setRawLidarOpen(false);
     setEvidenceNotice(apiBaseUrl
       ? 'Panel Aşama 1 yerel başlangıcına sıfırlandı; backend state değiştirilmedi.'
       : 'Panel Aşama 1 yerel başlangıcına sıfırlandı.');
@@ -1961,6 +2161,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     };
   }, [maintenanceSessionActive, operatorStopActive]);
 
+  if (rawLidarOpen) {
+    return <RawLidarDiagnosticPage frame={rawLidarFrame} onBack={() => setRawLidarOpen(false)} />;
+  }
+
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
       <header className="operator-header mb-3 flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
@@ -1968,20 +2172,31 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Operasyon</p>
           <h1 className="m-0 mt-1 text-3xl font-black tracking-[.04em] text-white min-[760px]:text-4xl">GÖKKALKAN OPERATÖR PANELİ</h1>
         </div>
-        <button
-          type="button"
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#25d8ff]/25 bg-white/[.06] text-[#d7efff] shadow-[0_0_18px_rgba(37,216,255,.10)] transition hover:bg-[#25d8ff]/12 disabled:opacity-50"
-          data-testid="operator-reset-button"
-          aria-label="Operatör panelini sıfırla"
-          title="Paneli sıfırla"
-          disabled={apiBusy}
-          onClick={resetOperatorPanel}
-        >
-          <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
-            <path d="M20 6v5h-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M19 11a7 7 0 1 0-2.05 4.95" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        <div className="operator-header-actions">
+          <button
+            type="button"
+            className="operator-raw-lidar-button"
+            data-testid="operator-raw-lidar-button"
+            disabled={apiBusy}
+            onClick={() => setRawLidarOpen(true)}
+          >
+            HAM LİDAR
+          </button>
+          <button
+            type="button"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#25d8ff]/25 bg-white/[.06] text-[#d7efff] shadow-[0_0_18px_rgba(37,216,255,.10)] transition hover:bg-[#25d8ff]/12 disabled:opacity-50"
+            data-testid="operator-reset-button"
+            aria-label="Operatör panelini sıfırla"
+            title="Paneli sıfırla"
+            disabled={apiBusy}
+            onClick={resetOperatorPanel}
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+              <path d="M20 6v5h-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M19 11a7 7 0 1 0-2.05 4.95" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <section className="operator-primary-grid">

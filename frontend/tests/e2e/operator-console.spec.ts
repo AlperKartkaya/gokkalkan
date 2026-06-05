@@ -249,6 +249,7 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-panel')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'GÖKKALKAN OPERATÖR PANELİ' })).toBeVisible();
   await expect(page.getByTestId('operator-reset-button')).toBeVisible();
+  await expect(page.getByTestId('operator-raw-lidar-button')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Landing’e dön' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Simülatöre dön' })).toHaveCount(0);
   await expect(page.getByText('DRY-RUN KAPALI · canlı kilit gerekli')).toHaveCount(0);
@@ -340,6 +341,28 @@ test('landing opens the dry-run real operator panel without live hardware claims
   const stageTwoAircraftColors = await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.map((target) => getComputedStyle(target).color));
   expect(stageTwoAircraftColors.every((color) => color === UNKNOWN_AIRCRAFT_GRAY)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test('operator panel opens a raw LiDAR diagnostic page without classified target labels', async ({ page }) => {
+  await page.goto('/?operator=1');
+
+  await page.getByTestId('operator-raw-lidar-button').click();
+  await expect(page.getByTestId('raw-lidar-page')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'HAM LİDAR' })).toBeVisible();
+  await expect(page.getByTestId('raw-lidar-frame-id')).toHaveText('RAW-LIDAR-S1-R1');
+  await expect(page.getByTestId('raw-lidar-source')).toContainText('Yerel ham LiDAR replay fixture');
+  await expect(page.getByTestId('raw-lidar-page')).toContainText('sınıflandırma yok');
+  expect(await page.locator('[data-testid="raw-lidar-point"]').count()).toBeGreaterThan(120);
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Düşman');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Dost');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('F16');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Helikopter');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Balistik');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('İHA');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.getByTestId('raw-lidar-back-button').click();
+  await expect(page.getByTestId('operator-panel')).toBeVisible();
 });
 
 test('operator panel final-phase layout renders dominant 3D fusion and compact mission side rail', async ({ page }) => {
