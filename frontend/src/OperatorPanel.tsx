@@ -34,6 +34,7 @@ import {
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
+import { SEMANTIC2D_RAW_LIDAR_SAMPLE } from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
@@ -320,48 +321,18 @@ function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
 
 function makeRawLidarFrame(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarFrame {
   const timestamp = frames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
-  const signalPoints = frames.flatMap((frame, frameIndex) => {
-    const pointCount = Math.round(clampNumber((frame.pointCount || 72) / 7, 9, 24));
-    const spreadDeg = clampNumber(10 - frame.quality * 4, 4, 8.5);
-    const rangeSpreadM = clampNumber(0.38 - frame.quality * 0.18, 0.12, 0.32);
-    return Array.from({ length: pointCount }, (_, index): RawLidarPoint => {
-      const centeredIndex = index - (pointCount - 1) / 2;
-      const angleWave = Math.sin((index + 1) * (frameIndex + 2.2)) * 1.15;
-      const rangeWave = Math.cos((index + 1.4) * (frameIndex + 1.6)) * rangeSpreadM;
-      return {
-        id: `raw-${stage}-${round}-${frameIndex}-${index}`,
-        angleDeg: frame.bearingDeg + centeredIndex * (spreadDeg / pointCount) + angleWave,
-        rangeM: clampNumber(frame.rangeM + rangeWave, 0.35, RAW_LIDAR_MAX_RANGE_M),
-        intensity: clampNumber(0.42 + frame.quality * 0.48 + Math.sin(index * 1.7) * 0.07, 0.24, 0.98),
-        quality: clampNumber(frame.quality + Math.cos(index * 0.9) * 0.04, 0.18, 0.99),
-        source: 'return',
-      };
-    });
-  });
-
-  const sweepPoints = Array.from({ length: 96 }, (_, index): RawLidarPoint => {
-    const angleDeg = index * 3.75;
-    const wobble = Math.sin(index * 0.91 + stage * 0.6 + round * 0.3);
+  const points = SEMANTIC2D_RAW_LIDAR_SAMPLE.points.map((point, index): RawLidarPoint => {
+    const displayRangeM = clampNumber(point.rangeM, 0.35, RAW_LIDAR_MAX_RANGE_M);
     return {
-      id: `raw-${stage}-${round}-sweep-${index}`,
-      angleDeg,
-      rangeM: clampNumber(2.4 + ((index * 1.73) % 11.2) + wobble * 0.35, 0.55, RAW_LIDAR_MAX_RANGE_M),
-      intensity: clampNumber(0.12 + Math.abs(Math.sin(index * 0.43)) * 0.32, 0.1, 0.46),
-      quality: clampNumber(0.22 + Math.abs(Math.cos(index * 0.37)) * 0.28, 0.18, 0.55),
-      source: 'noise',
+      id: `semantic2d-${SEMANTIC2D_RAW_LIDAR_SAMPLE.sequence}-${index}`,
+      angleDeg: point.angleDeg,
+      rangeM: displayRangeM,
+      originalRangeM: point.rangeM,
+      intensity: point.intensity,
+      quality: clampNumber(0.32 + point.intensity * 0.62, 0.18, 0.98),
+      source: 'recording',
     };
   });
-
-  const referencePoints = [5, 10, 15].flatMap((rangeM) => (
-    Array.from({ length: 12 }, (_, index): RawLidarPoint => ({
-      id: `raw-${stage}-${round}-ref-${rangeM}-${index}`,
-      angleDeg: index * 30,
-      rangeM,
-      intensity: 0.18,
-      quality: 0.25,
-      source: 'reference',
-    }))
-  ));
 
   return {
     frameId: `RAW-LIDAR-S${stage}-R${round}`,
@@ -369,10 +340,14 @@ function makeRawLidarFrame(stage: Stage, round: number, frames: OperatorSensorFr
     round,
     timestamp,
     replayOnly: true,
-    sourceDataset: 'Yerel ham LiDAR replay fixture; gerçek sensör adapterı aynı ham çerçeve sözleşmesine bağlanır.',
-    sampleRateHz: 10,
+    sourceDataset: `${SEMANTIC2D_RAW_LIDAR_SAMPLE.sourceName} · ${SEMANTIC2D_RAW_LIDAR_SAMPLE.sequence}/${SEMANTIC2D_RAW_LIDAR_SAMPLE.scanFile}`,
+    sourceUrl: SEMANTIC2D_RAW_LIDAR_SAMPLE.sourceUrl,
+    license: SEMANTIC2D_RAW_LIDAR_SAMPLE.license,
+    originalPointCount: SEMANTIC2D_RAW_LIDAR_SAMPLE.originalPointCount,
+    displayedPointCount: points.length,
+    sampleRateHz: SEMANTIC2D_RAW_LIDAR_SAMPLE.sampleRateHz,
     maxRangeM: RAW_LIDAR_MAX_RANGE_M,
-    points: [...referencePoints, ...sweepPoints, ...signalPoints],
+    points,
   };
 }
 
@@ -390,9 +365,10 @@ type RawLidarPoint = {
   id: string;
   angleDeg: number;
   rangeM: number;
+  originalRangeM?: number;
   intensity: number;
   quality: number;
-  source: 'return' | 'noise' | 'reference';
+  source: 'recording' | 'return' | 'noise' | 'reference';
 };
 
 type RawLidarFrame = {
@@ -402,6 +378,10 @@ type RawLidarFrame = {
   timestamp: string;
   replayOnly: boolean;
   sourceDataset: string;
+  sourceUrl: string;
+  license: string;
+  originalPointCount: number;
+  displayedPointCount: number;
   sampleRateHz: number;
   maxRangeM: number;
   points: RawLidarPoint[];
@@ -1084,6 +1064,7 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
     (strongest, point) => (!strongest || point.intensity > strongest.intensity ? point : strongest),
     undefined,
   );
+  const clippedCount = frame.points.filter((point) => (point.originalRangeM ?? point.rangeM) > frame.maxRangeM).length;
 
   return (
     <main className="raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-lidar-page">
@@ -1169,14 +1150,20 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
               <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">{frame.frameId}</h2>
             </div>
             <div className="raw-lidar-metric-grid">
-              <EvidenceRow label="Nokta" value={pointCount.toString()} />
+              <EvidenceRow label="Aşama / Tur" value={`Aşama ${frame.stage} · Tur ${frame.round}`} />
+              <EvidenceRow label="Nokta" value={`${pointCount} / ${frame.originalPointCount}`} />
               <EvidenceRow label="Maks menzil" value={`${frame.maxRangeM} m`} />
               <EvidenceRow label="Örnekleme" value={`${frame.sampleRateHz} Hz`} />
               <EvidenceRow label="Ortalama intensity" value={`${Math.round(averageIntensity * 100)}%`} />
               <EvidenceRow label="En güçlü dönüş" value={strongestReturn ? `${strongestReturn.rangeM.toFixed(1)} m · ${Math.round(strongestReturn.intensity * 100)}%` : 'Yok'} />
+              <EvidenceRow label="15 m dışı" value={`${clippedCount} nokta sınırda`} />
               <EvidenceRow label="Replay" value={frame.replayOnly ? 'Açık' : 'Kapalı'} />
+              <EvidenceRow label="Lisans" value={frame.license} />
             </div>
-            <p className="raw-lidar-source" data-testid="raw-lidar-source">{frame.sourceDataset}</p>
+            <p className="raw-lidar-source" data-testid="raw-lidar-source">
+              {frame.sourceDataset}
+              <a href={frame.sourceUrl} target="_blank" rel="noreferrer" data-testid="raw-lidar-source-link">Kaynak</a>
+            </p>
             <p className="raw-lidar-callout">
               Bu ekran ham sensör doğrulaması içindir. Operatör panelinde görülen anlamlandırılmış izler ayrı yazılım katmanında üretilir.
             </p>

@@ -249,6 +249,20 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   color: #ffe4ad;
 }
 
+.raw-lidar-source a {
+  display: inline-flex;
+  margin-left: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(72,168,255,.28);
+  background: rgba(72,168,255,.10);
+  padding: 2px 8px;
+  color: #d7efff;
+  font-size: 11px;
+  font-weight: 1000;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
 .landing-grid {
   background-image: linear-gradient(rgba(0,217,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,217,255,.04) 1px, transparent 1px);
   background-size: 42px 42px;
