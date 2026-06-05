@@ -217,6 +217,59 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: none;
 }
 
+.raw-lidar-point.classified {
+  opacity: clamp(.42, calc(.32 + var(--raw-quality) * .72), .98);
+}
+
+.raw-lidar-point.classified.semantic-background { fill: rgba(145,166,183,.45); }
+.raw-lidar-point.classified.semantic-chair { fill: #a855f7; }
+.raw-lidar-point.classified.semantic-door { fill: #48a8ff; }
+.raw-lidar-point.classified.semantic-elevator { fill: #2dd4bf; }
+.raw-lidar-point.classified.semantic-person { fill: #ff4d6d; }
+.raw-lidar-point.classified.semantic-pillar { fill: #25d8ff; }
+.raw-lidar-point.classified.semantic-sofa { fill: #43e36d; }
+.raw-lidar-point.classified.semantic-table { fill: #f7e04d; }
+.raw-lidar-point.classified.semantic-trash { fill: #ff9f1c; }
+.raw-lidar-point.classified.semantic-wall { fill: #8ec5ff; }
+
+.raw-lidar-controls {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto auto minmax(130px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(72,168,255,.16);
+  background: rgba(2,5,9,.70);
+  padding: 10px;
+}
+
+.raw-lidar-controls button {
+  min-height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(72,168,255,.30);
+  background: rgba(72,168,255,.12);
+  padding: 0 12px;
+  color: #d7efff;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+}
+
+.raw-lidar-controls input {
+  width: 100%;
+  accent-color: #25d8ff;
+}
+
+.raw-lidar-controls span {
+  color: #91a6b7;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .10em;
+}
+
 .raw-lidar-side-card {
   display: grid;
   align-content: start;
@@ -241,6 +294,106 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   font-weight: 800;
   line-height: 1.45;
 }
+
+.raw-lidar-current-frame {
+  margin: 7px 0 0;
+  color: #91a6b7;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.raw-lidar-classifier-card {
+  display: grid;
+  gap: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: linear-gradient(135deg, rgba(72,168,255,.10), rgba(255,255,255,.035));
+  padding: 12px;
+}
+
+.raw-lidar-classifier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.raw-lidar-classifier-head p {
+  margin: 0;
+  color: #25d8ff;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .14em;
+}
+
+.raw-lidar-classifier-head strong {
+  display: block;
+  margin-top: 3px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 1000;
+}
+
+.raw-lidar-classifier-head button {
+  min-height: 38px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.08);
+  padding: 0 12px;
+  color: #d7efff;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+}
+
+.raw-lidar-classifier-head button.active {
+  border-color: rgba(255,77,109,.42);
+  background: rgba(255,77,109,.16);
+  color: #ffd7de;
+  box-shadow: 0 0 18px rgba(255,77,109,.10);
+}
+
+.raw-lidar-semantic-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.semantic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  padding: 0 9px;
+  color: #eaf7ff;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.semantic-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.semantic-chip.raw { color: #25d8ff; }
+.semantic-chip.semantic-chair { color: #c084fc; }
+.semantic-chip.semantic-door { color: #48a8ff; }
+.semantic-chip.semantic-elevator { color: #5eead4; }
+.semantic-chip.semantic-person { color: #ff8fa3; }
+.semantic-chip.semantic-pillar { color: #25d8ff; }
+.semantic-chip.semantic-sofa { color: #7df59b; }
+.semantic-chip.semantic-table { color: #fff176; }
+.semantic-chip.semantic-trash { color: #ffc15e; }
+.semantic-chip.semantic-wall { color: #8ec5ff; }
 
 .raw-lidar-source a {
   display: inline-flex;
@@ -815,6 +968,20 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
   .raw-lidar-scan-frame {
     min-height: min(70vh, 560px);
+  }
+
+  .raw-lidar-controls {
+    grid-template-columns: auto auto auto;
+  }
+
+  .raw-lidar-controls input,
+  .raw-lidar-controls span {
+    grid-column: 1 / -1;
+  }
+
+  .raw-lidar-classifier-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .operator-confidence-grid {

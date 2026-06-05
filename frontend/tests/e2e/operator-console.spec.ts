@@ -343,19 +343,32 @@ test('landing opens the dry-run real operator panel without live hardware claims
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
-test('operator panel opens a raw LiDAR diagnostic page without classified target labels', async ({ page }) => {
+test('operator panel opens a raw LiDAR clip page with visual-only semantic classification', async ({ page }) => {
   await page.goto('/?operator=1');
 
   await page.getByTestId('operator-raw-lidar-button').click();
   await expect(page.getByTestId('raw-lidar-page')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'HAM LİDAR' })).toBeVisible();
   await expect(page.getByTestId('raw-lidar-frame-id')).toHaveText('RAW-LIDAR-S1-R1');
+  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('0000215.npy');
+  await expect(page.getByTestId('raw-lidar-clip-progress')).toHaveText('KARE 1/9');
   await expect(page.getByTestId('raw-lidar-source')).toContainText('Semantic2D 2D LiDAR Dataset');
+  await expect(page.getByTestId('raw-lidar-source')).toContainText('0000215.npy–0000223.npy');
   await expect(page.getByTestId('raw-lidar-source-link')).toHaveAttribute('href', 'https://huggingface.co/datasets/TempleRAIL/semantic2d');
   await expect(page.getByTestId('raw-lidar-page')).toContainText('CC BY 4.0');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Sensörün ham menzil');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Bu ekran ham sensör doğrulaması');
   expect(await page.locator('[data-testid="raw-lidar-point"]').count()).toBeGreaterThan(120);
+  await expect(page.getByTestId('raw-lidar-classification-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('raw-lidar-semantic-summary')).toContainText('Intensity');
+  await expect(page.getByTestId('raw-lidar-semantic-summary')).not.toContainText('İnsan');
+  await page.getByTestId('raw-lidar-classification-toggle').click();
+  await expect(page.getByTestId('raw-lidar-classification-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('raw-lidar-semantic-summary')).toContainText('İnsan');
+  await expect(page.locator('[data-testid="raw-lidar-point"][data-semantic-label="4"].classified').first()).toBeVisible();
+  await page.getByTestId('raw-lidar-next-frame').click();
+  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('0000216.npy');
+  await expect(page.getByTestId('raw-lidar-clip-progress')).toHaveText('KARE 2/9');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Düşman');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Dost');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('F16');
@@ -366,6 +379,8 @@ test('operator panel opens a raw LiDAR diagnostic page without classified target
 
   await page.getByTestId('raw-lidar-back-button').click();
   await expect(page.getByTestId('operator-panel')).toBeVisible();
+  await expect(page.getByTestId('operator-fire-button')).toBeVisible();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
 });
 
 test('operator panel final-phase layout renders dominant 3D fusion and compact mission side rail', async ({ page }) => {

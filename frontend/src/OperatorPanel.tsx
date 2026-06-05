@@ -34,7 +34,11 @@ import {
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
-import { SEMANTIC2D_RAW_LIDAR_SAMPLE } from './fixtures/rawLidarSemantic2dSample';
+import {
+  SEMANTIC2D_LABELS,
+  SEMANTIC2D_RAW_LIDAR_CLIP,
+  type Semantic2dLabelId,
+} from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
@@ -319,35 +323,42 @@ function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
   };
 }
 
-function makeRawLidarFrame(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarFrame {
+function makeRawLidarClip(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarClip {
   const timestamp = frames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
-  const points = SEMANTIC2D_RAW_LIDAR_SAMPLE.points.map((point, index): RawLidarPoint => {
-    const displayRangeM = clampNumber(point.rangeM, 0.35, RAW_LIDAR_MAX_RANGE_M);
-    return {
-      id: `semantic2d-${SEMANTIC2D_RAW_LIDAR_SAMPLE.sequence}-${index}`,
-      angleDeg: point.angleDeg,
-      rangeM: displayRangeM,
-      originalRangeM: point.rangeM,
-      intensity: point.intensity,
-      quality: clampNumber(0.32 + point.intensity * 0.62, 0.18, 0.98),
-      source: 'recording',
-    };
-  });
 
   return {
-    frameId: `RAW-LIDAR-S${stage}-R${round}`,
     stage,
     round,
     timestamp,
-    replayOnly: true,
-    sourceDataset: `${SEMANTIC2D_RAW_LIDAR_SAMPLE.sourceName} · ${SEMANTIC2D_RAW_LIDAR_SAMPLE.sequence}/${SEMANTIC2D_RAW_LIDAR_SAMPLE.scanFile}`,
-    sourceUrl: SEMANTIC2D_RAW_LIDAR_SAMPLE.sourceUrl,
-    license: SEMANTIC2D_RAW_LIDAR_SAMPLE.license,
-    originalPointCount: SEMANTIC2D_RAW_LIDAR_SAMPLE.originalPointCount,
-    displayedPointCount: points.length,
-    sampleRateHz: SEMANTIC2D_RAW_LIDAR_SAMPLE.sampleRateHz,
+    sourceDataset: `${SEMANTIC2D_RAW_LIDAR_CLIP.sourceName} · ${SEMANTIC2D_RAW_LIDAR_CLIP.sequence}/${SEMANTIC2D_RAW_LIDAR_CLIP.frameStart}–${SEMANTIC2D_RAW_LIDAR_CLIP.frameEnd}`,
+    sourceUrl: SEMANTIC2D_RAW_LIDAR_CLIP.sourceUrl,
+    license: SEMANTIC2D_RAW_LIDAR_CLIP.license,
+    sampleRateHz: SEMANTIC2D_RAW_LIDAR_CLIP.sampleRateHz,
     maxRangeM: RAW_LIDAR_MAX_RANGE_M,
-    points,
+    frames: SEMANTIC2D_RAW_LIDAR_CLIP.frames.map((recordedFrame, frameIndex): RawLidarFrame => {
+      const points = recordedFrame.points.map((point, pointIndex): RawLidarPoint => {
+        const displayRangeM = clampNumber(point.rangeM, 0.35, RAW_LIDAR_MAX_RANGE_M);
+        return {
+          id: `semantic2d-${SEMANTIC2D_RAW_LIDAR_CLIP.sequence}-${recordedFrame.frameFile}-${pointIndex}`,
+          angleDeg: point.angleDeg,
+          rangeM: displayRangeM,
+          originalRangeM: point.rangeM,
+          intensity: point.intensity,
+          quality: clampNumber(0.32 + point.intensity * 0.62, 0.18, 0.98),
+          semanticLabel: point.label as Semantic2dLabelId,
+          source: 'recording',
+        };
+      });
+
+      return {
+        frameId: `RAW-LIDAR-S${stage}-R${round}`,
+        clipFrameFile: `${recordedFrame.frameFile}.npy`,
+        clipFrameIndex: frameIndex,
+        originalPointCount: SEMANTIC2D_RAW_LIDAR_CLIP.originalPointCount,
+        displayedPointCount: points.length,
+        points,
+      };
+    }),
   };
 }
 
@@ -368,23 +379,29 @@ type RawLidarPoint = {
   originalRangeM?: number;
   intensity: number;
   quality: number;
+  semanticLabel: Semantic2dLabelId;
   source: 'recording' | 'return' | 'noise' | 'reference';
 };
 
 type RawLidarFrame = {
   frameId: string;
+  clipFrameFile: string;
+  clipFrameIndex: number;
+  originalPointCount: number;
+  displayedPointCount: number;
+  points: RawLidarPoint[];
+};
+
+type RawLidarClip = {
   stage: Stage;
   round: number;
   timestamp: string;
-  replayOnly: boolean;
   sourceDataset: string;
   sourceUrl: string;
   license: string;
-  originalPointCount: number;
-  displayedPointCount: number;
   sampleRateHz: number;
   maxRangeM: number;
-  points: RawLidarPoint[];
+  frames: RawLidarFrame[];
 };
 
 type SensorGlResources = {
@@ -1055,16 +1072,64 @@ function OperatorTrackScene({
   );
 }
 
-function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBack: () => void }) {
-  const pointCount = frame.points.length;
+function rawLidarSemanticClass(label: Semantic2dLabelId) {
+  switch (label) {
+    case 1: return 'chair';
+    case 2: return 'door';
+    case 3: return 'elevator';
+    case 4: return 'person';
+    case 5: return 'pillar';
+    case 6: return 'sofa';
+    case 7: return 'table';
+    case 8: return 'trash';
+    case 9: return 'wall';
+    default: return 'background';
+  }
+}
+
+function RawLidarDiagnosticPage({ clip, onBack }: { clip: RawLidarClip; onBack: () => void }) {
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [classificationEnabled, setClassificationEnabled] = useState(false);
+  const frame = clip.frames[frameIndex] ?? clip.frames[0];
+  const pointCount = frame?.points.length ?? 0;
   const averageIntensity = pointCount === 0
     ? 0
     : frame.points.reduce((sum, point) => sum + point.intensity, 0) / pointCount;
-  const strongestReturn = frame.points.reduce<RawLidarPoint | undefined>(
+  const strongestReturn = frame?.points.reduce<RawLidarPoint | undefined>(
     (strongest, point) => (!strongest || point.intensity > strongest.intensity ? point : strongest),
     undefined,
   );
-  const clippedCount = frame.points.filter((point) => (point.originalRangeM ?? point.rangeM) > frame.maxRangeM).length;
+  const clippedCount = frame?.points.filter((point) => (point.originalRangeM ?? point.rangeM) > clip.maxRangeM).length ?? 0;
+  const semanticCounts = useMemo(() => {
+    const counts = new Map<Semantic2dLabelId, number>();
+    for (const point of frame?.points ?? []) {
+      counts.set(point.semanticLabel, (counts.get(point.semanticLabel) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .filter(([label]) => label !== 0)
+      .sort((a, b) => b[1] - a[1]);
+  }, [frame]);
+  const personCount = semanticCounts.find(([label]) => label === 4)?.[1] ?? 0;
+
+  useEffect(() => {
+    setFrameIndex(0);
+    setPlaying(false);
+  }, [clip]);
+
+  useEffect(() => {
+    if (!playing || clip.frames.length < 2) return undefined;
+    const playbackMs = Math.max(180, Math.round(1000 / Math.min(clip.sampleRateHz, 3)));
+    const timer = window.setInterval(() => {
+      setFrameIndex((current) => (current + 1) % clip.frames.length);
+    }, playbackMs);
+    return () => window.clearInterval(timer);
+  }, [clip.frames.length, clip.sampleRateHz, playing]);
+
+  function moveFrame(direction: -1 | 1) {
+    setPlaying(false);
+    setFrameIndex((current) => (current + direction + clip.frames.length) % clip.frames.length);
+  }
 
   return (
     <main className="raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-lidar-page">
@@ -1105,8 +1170,8 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
                 <rect x="0" y="0" width="100" height="100" rx="6" fill="url(#raw-lidar-glow)" />
                 {[5, 10, 15].map((range) => (
                   <g key={range} className="raw-lidar-ring">
-                    <circle cx="50" cy="50" r={(range / frame.maxRangeM) * 44} />
-                    <text x={51.5 + (range / frame.maxRangeM) * 44} y="50">{range} m</text>
+                    <circle cx="50" cy="50" r={(range / clip.maxRangeM) * 44} />
+                    <text x={51.5 + (range / clip.maxRangeM) * 44} y="50">{range} m</text>
                   </g>
                 ))}
                 {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
@@ -1118,48 +1183,98 @@ function RawLidarDiagnosticPage({ frame, onBack }: { frame: RawLidarFrame; onBac
                   );
                 })}
                 <circle className="raw-lidar-origin" cx="50" cy="50" r="1.3" />
-                {frame.points.map((point) => {
-                  const radius = (point.rangeM / frame.maxRangeM) * 44;
+                {frame?.points.map((point) => {
+                  const radius = (point.rangeM / clip.maxRangeM) * 44;
                   const radians = ((point.angleDeg - 90) * Math.PI) / 180;
                   const x = 50 + Math.cos(radians) * radius;
                   const y = 50 + Math.sin(radians) * radius;
                   const size = point.source === 'reference' ? 0.26 : 0.34 + point.intensity * 0.48;
+                  const semanticClass = rawLidarSemanticClass(point.semanticLabel);
                   return (
                     <circle
                       key={point.id}
-                      className={`raw-lidar-point ${point.source}`}
+                      className={`raw-lidar-point ${point.source} ${classificationEnabled ? `classified semantic-${semanticClass}` : ''}`}
                       cx={x}
                       cy={y}
                       r={size}
                       style={{ '--raw-intensity': point.intensity.toFixed(2), '--raw-quality': point.quality.toFixed(2) } as CSSProperties}
                       data-testid="raw-lidar-point"
                       data-source={point.source}
+                      data-semantic-label={point.semanticLabel}
+                      data-semantic-name={SEMANTIC2D_LABELS[point.semanticLabel]}
                     />
                   );
                 })}
               </svg>
+            </div>
+            <div className="raw-lidar-controls" data-testid="raw-lidar-clip-controls">
+              <button type="button" data-testid="raw-lidar-play-toggle" onClick={() => setPlaying((current) => !current)}>
+                {playing ? 'DURAKLAT' : 'OYNAT'}
+              </button>
+              <button type="button" data-testid="raw-lidar-prev-frame" onClick={() => moveFrame(-1)}>‹</button>
+              <input
+                type="range"
+                min="0"
+                max={Math.max(0, clip.frames.length - 1)}
+                value={frameIndex}
+                aria-label="LiDAR klip karesi"
+                data-testid="raw-lidar-frame-slider"
+                onChange={(event) => {
+                  setPlaying(false);
+                  setFrameIndex(Number(event.currentTarget.value));
+                }}
+              />
+              <button type="button" data-testid="raw-lidar-next-frame" onClick={() => moveFrame(1)}>›</button>
+              <span data-testid="raw-lidar-clip-progress">KARE {frameIndex + 1}/{clip.frames.length}</span>
             </div>
           </article>
 
           <aside className="raw-lidar-side-card">
             <div>
               <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Çerçeve</p>
-              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">{frame.frameId}</h2>
+              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">{frame?.frameId}</h2>
+              <p className="raw-lidar-current-frame" data-testid="raw-lidar-current-frame">{frame?.clipFrameFile}</p>
             </div>
             <div className="raw-lidar-metric-grid">
-              <EvidenceRow label="Aşama / Tur" value={`Aşama ${frame.stage} · Tur ${frame.round}`} />
-              <EvidenceRow label="Nokta" value={`${pointCount} / ${frame.originalPointCount}`} />
-              <EvidenceRow label="Maks menzil" value={`${frame.maxRangeM} m`} />
-              <EvidenceRow label="Örnekleme" value={`${frame.sampleRateHz} Hz`} />
+              <EvidenceRow label="Aşama / Tur" value={`Aşama ${clip.stage} · Tur ${clip.round}`} />
+              <EvidenceRow label="Klip" value={`${clip.frames[0]?.clipFrameFile ?? '—'} → ${clip.frames[clip.frames.length - 1]?.clipFrameFile ?? '—'}`} />
+              <EvidenceRow label="Nokta" value={`${pointCount} / ${frame?.originalPointCount ?? 0}`} />
+              <EvidenceRow label="Maks menzil" value={`${clip.maxRangeM} m`} />
+              <EvidenceRow label="Örnekleme" value={`${clip.sampleRateHz} Hz`} />
               <EvidenceRow label="Ortalama intensity" value={`${Math.round(averageIntensity * 100)}%`} />
               <EvidenceRow label="En güçlü dönüş" value={strongestReturn ? `${strongestReturn.rangeM.toFixed(1)} m · ${Math.round(strongestReturn.intensity * 100)}%` : 'Yok'} />
               <EvidenceRow label="15 m dışı" value={`${clippedCount} nokta sınırda`} />
-              <EvidenceRow label="Replay" value={frame.replayOnly ? 'Açık' : 'Kapalı'} />
-              <EvidenceRow label="Lisans" value={frame.license} />
+              <EvidenceRow label="Lisans" value={clip.license} />
+            </div>
+            <div className="raw-lidar-classifier-card" data-testid="raw-lidar-classifier-card">
+              <div className="raw-lidar-classifier-head">
+                <div>
+                  <p>GÜVENLİK ALGILAMA</p>
+                  <strong>{classificationEnabled && personCount > 0 ? `${personCount} insan noktası` : 'Ham nokta bulutu'}</strong>
+                </div>
+                <button
+                  type="button"
+                  className={classificationEnabled ? 'active' : ''}
+                  data-testid="raw-lidar-classification-toggle"
+                  aria-pressed={classificationEnabled}
+                  onClick={() => setClassificationEnabled((current) => !current)}
+                >
+                  SINIFLANDIRMA {classificationEnabled ? 'AÇIK' : 'KAPALI'}
+                </button>
+              </div>
+              <div className="raw-lidar-semantic-summary" data-testid="raw-lidar-semantic-summary">
+                {classificationEnabled ? semanticCounts.map(([label, count]) => (
+                  <span key={label} className={`semantic-chip semantic-${rawLidarSemanticClass(label)}`} data-testid={`raw-lidar-semantic-${label}`}>
+                    {SEMANTIC2D_LABELS[label]} <b>{count}</b>
+                  </span>
+                )) : (
+                  <span className="semantic-chip raw">Intensity</span>
+                )}
+              </div>
             </div>
             <p className="raw-lidar-source" data-testid="raw-lidar-source">
-              {frame.sourceDataset}
-              <a href={frame.sourceUrl} target="_blank" rel="noreferrer" data-testid="raw-lidar-source-link">Kaynak</a>
+              {clip.sourceDataset}
+              <a href={clip.sourceUrl} target="_blank" rel="noreferrer" data-testid="raw-lidar-source-link">Kaynak</a>
             </p>
           </aside>
         </section>
@@ -1556,8 +1671,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
   const rawLidarSourceFrames = interpretedSensorFrames.length > 0 ? interpretedSensorFrames : localFrames;
-  const rawLidarFrame = useMemo(
-    () => makeRawLidarFrame(displayStage, displayRound, rawLidarSourceFrames),
+  const rawLidarClip = useMemo(
+    () => makeRawLidarClip(displayStage, displayRound, rawLidarSourceFrames),
     [displayStage, displayRound, rawLidarSourceFrames],
   );
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
@@ -2143,7 +2258,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   }, [maintenanceSessionActive, operatorStopActive]);
 
   if (rawLidarOpen) {
-    return <RawLidarDiagnosticPage frame={rawLidarFrame} onBack={() => setRawLidarOpen(false)} />;
+    return <RawLidarDiagnosticPage clip={rawLidarClip} onBack={() => setRawLidarOpen(false)} />;
   }
 
   return (
