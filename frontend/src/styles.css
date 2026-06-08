@@ -176,6 +176,22 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   background-size: 34px 34px;
 }
 
+.raw-lidar-zone-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  border: 1px solid rgba(205,218,230,.24);
+  border-radius: 999px;
+  background: rgba(2,5,9,.72);
+  padding: 7px 10px;
+  color: #d7e1ea;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .12em;
+  pointer-events: none;
+}
+
 .raw-lidar-scan {
   width: min(100%, 76vh);
   max-height: 100%;
@@ -183,20 +199,39 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: drop-shadow(0 0 24px rgba(37,216,255,.10));
 }
 
+.raw-lidar-zoom-layer {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transition: transform .16s ease;
+}
+
+.raw-lidar-ring path,
 .raw-lidar-ring circle {
   fill: none;
-  stroke: rgba(174,225,255,.22);
-  stroke-width: .32;
-  stroke-dasharray: 1.4 1.2;
+  stroke: rgba(190,203,216,.34);
+  stroke-width: .38;
+  stroke-dasharray: 1.5 1.2;
 }
 
 .raw-lidar-ring text {
-  fill: rgba(215,239,255,.72);
+  fill: rgba(255,226,171,.86);
   font-size: 2.2px;
   font-weight: 900;
   paint-order: stroke;
   stroke: rgba(2,5,9,.88);
   stroke-width: .45;
+}
+
+.raw-lidar-rear-mask {
+  fill: rgba(0,0,0,.44);
+  stroke: rgba(255,255,255,.05);
+  stroke-width: .25;
+}
+
+.raw-lidar-engagement-zone {
+  fill: rgba(190,203,216,.055);
+  stroke: rgba(190,203,216,.20);
+  stroke-width: .24;
 }
 
 .raw-lidar-axis {
@@ -230,6 +265,23 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   filter: none;
 }
 
+.raw-lidar-point.aircraft {
+  fill: #ffbb42;
+  opacity: .94;
+  stroke: rgba(255,255,255,.45);
+  stroke-width: .16;
+}
+
+.raw-lidar-point.aircraft.target-f16 { fill: #ffcf5a; }
+.raw-lidar-point.aircraft.target-helikopter { fill: #25d8ff; }
+.raw-lidar-point.aircraft.target-balistik { fill: #ff6b6b; }
+.raw-lidar-point.aircraft.target-iha { fill: #b6f36a; }
+
+.raw-lidar-point.environment {
+  fill: rgba(124,151,172,.52);
+  opacity: clamp(.18, calc(.16 + var(--raw-quality) * .46), .62);
+}
+
 .raw-lidar-point.classified {
   opacity: clamp(.42, calc(.32 + var(--raw-quality) * .72), .98);
 }
@@ -249,7 +301,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: auto auto minmax(130px, 1fr) auto auto;
+  grid-template-columns: auto auto minmax(130px, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
   margin-top: 12px;
@@ -283,17 +335,34 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   letter-spacing: .10em;
 }
 
+.raw-lidar-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.045);
+  padding: 4px;
+}
+
+.raw-lidar-zoom-controls button {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
+.raw-lidar-zoom-controls span {
+  min-width: 42px;
+  text-align: center;
+  color: #d7efff;
+}
+
 .raw-lidar-side-card {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 10px;
   border-radius: 18px;
-  padding: 18px;
-}
-
-.raw-lidar-metric-grid {
-  display: grid;
-  gap: 8px;
+  padding: 14px;
 }
 
 .raw-lidar-source {
@@ -309,44 +378,64 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .raw-lidar-current-frame {
-  margin: 7px 0 0;
+  margin: 5px 0 0;
   color: #91a6b7;
   font-size: 12px;
   font-weight: 900;
   letter-spacing: .08em;
 }
 
-.raw-lidar-clip-picker {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.raw-lidar-frame-card {
+  min-width: 0;
 }
 
-.raw-lidar-clip-picker button {
-  min-height: 38px;
-  border-radius: 999px;
-  border: 1px solid rgba(72,168,255,.22);
-  background: rgba(72,168,255,.08);
-  color: #cbe9ff;
+.raw-lidar-reading-card {
+  display: grid;
+  gap: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(37,216,255,.14);
+  background: rgba(37,216,255,.055);
+  padding: 10px;
+}
+
+.raw-lidar-reading-card p {
+  margin: 0 0 2px;
+  color: #25d8ff;
   font-size: 11px;
   font-weight: 1000;
-  letter-spacing: .10em;
+  letter-spacing: .14em;
+  text-transform: uppercase;
 }
 
-.raw-lidar-clip-picker button.active {
-  border-color: rgba(255,187,66,.45);
-  background: rgba(255,187,66,.14);
-  color: #ffe4ad;
-  box-shadow: 0 0 18px rgba(255,187,66,.10);
+.raw-lidar-reading-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.raw-lidar-reading-card span {
+  color: #91a6b7;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.raw-lidar-reading-card strong {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 1000;
+  text-align: right;
 }
 
 .raw-lidar-classifier-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   border-radius: 16px;
   border: 1px solid rgba(255,255,255,.10);
   background: linear-gradient(135deg, rgba(72,168,255,.10), rgba(255,255,255,.035));
-  padding: 12px;
+  padding: 10px;
 }
 
 .raw-lidar-classifier-head {
@@ -368,7 +457,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   display: block;
   margin-top: 3px;
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 1000;
 }
 
@@ -393,20 +482,39 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .raw-lidar-semantic-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.raw-lidar-semantic-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(2,5,9,.26);
+  padding: 7px;
+}
+
+.semantic-group-title {
+  flex: 0 0 100%;
+  color: #91a6b7;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .14em;
+  text-transform: uppercase;
 }
 
 .semantic-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
+  min-height: 26px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.06);
-  padding: 0 9px;
+  padding: 0 8px;
   color: #eaf7ff;
   font-size: 11px;
   font-weight: 1000;
@@ -422,6 +530,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .semantic-chip.raw { color: #25d8ff; }
+.semantic-chip.target-f16 { color: #ffcf5a; }
+.semantic-chip.target-helikopter { color: #25d8ff; }
+.semantic-chip.target-balistik { color: #ff8b8b; }
+.semantic-chip.target-iha { color: #b6f36a; }
 .semantic-chip.semantic-chair { color: #c084fc; }
 .semantic-chip.semantic-door { color: #48a8ff; }
 .semantic-chip.semantic-elevator { color: #5eead4; }

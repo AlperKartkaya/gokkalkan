@@ -377,40 +377,106 @@ test('operator panel opens a raw LiDAR clip page with visual-only semantic class
 
   await page.getByTestId('operator-raw-lidar-button').click();
   await expect(page.getByTestId('raw-lidar-page')).toBeVisible();
+  await expect(page.getByTestId('raw-lidar-page')).toHaveAttribute('data-clip-id', 'corridor');
   await expect(page.getByRole('heading', { name: 'HAM LİDAR' })).toBeVisible();
-  await expect(page.getByTestId('raw-lidar-frame-id')).toHaveText('RAW-LIDAR-S1-R1');
-  await expect(page.getByTestId('raw-lidar-clip-crowd')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('raw-lidar-clip-corridor')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('0005546.npy');
+  await expect(page.getByTestId('raw-lidar-frame-id')).toHaveText('Menzil Taraması');
+  await expect(page.getByTestId('raw-lidar-clip-picker')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('KALABALIK');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('KORİDOR');
+  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('KARE 01 / 09');
   await expect(page.getByTestId('raw-lidar-clip-progress')).toHaveText('KARE 1/9');
-  await expect(page.getByTestId('raw-lidar-source')).toContainText('Semantic2D 2D LiDAR Dataset');
-  await expect(page.getByTestId('raw-lidar-source')).toContainText('0005546.npy–0005554.npy');
-  await expect(page.getByTestId('raw-lidar-source-link')).toHaveAttribute('href', 'https://huggingface.co/datasets/TempleRAIL/semantic2d');
-  await expect(page.getByTestId('raw-lidar-page')).toContainText('CC BY 4.0');
+  await expect(page.getByTestId('raw-lidar-range-model')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Ön angajman bandı');
+  await expect(page.getByTestId('raw-lidar-zone-label')).toContainText('ÖN ATIŞ BÖLGESİ');
+  await expect(page.getByTestId('raw-lidar-engagement-zone')).toBeVisible();
+  await expect(page.getByTestId('raw-lidar-rear-mask')).toBeVisible();
+  await expect(page.getByTestId('raw-lidar-reading-card')).toContainText('LiDAR hedef izi');
+  await expect(page.getByTestId('raw-lidar-reading-card')).toContainText('En yakın hedef');
+  await expect(page.getByTestId('raw-lidar-reading-card')).toContainText('Sinyal');
+  await expect(page.getByTestId('raw-lidar-reading-card')).toContainText('hava hedefi');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Ham görünüm');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Ön 15 m');
+  await expect(page.getByTestId('raw-lidar-density-card')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-operator-metrics')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Nokta yoğunluğu');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Sınır');
+  await expect(page.getByTestId('raw-lidar-source')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-source-link')).toHaveCount(0);
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Semantic2D 2D LiDAR Dataset');
+  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('CC BY 4.0');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Sensörün ham menzil');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Bu ekran ham sensör doğrulaması');
   expect(await page.locator('[data-testid="raw-lidar-point"]').count()).toBeGreaterThan(120);
+  const visibleRanges = await page.locator('[data-testid="raw-lidar-point"]').evaluateAll((points) => points.map((point) => Number(point.getAttribute('data-range-m') ?? '0')));
+  expect(Math.max(...visibleRanges)).toBeGreaterThan(15);
+  const frontPoints = await page.locator('[data-testid="raw-lidar-point"][data-front-engagement="true"]').evaluateAll((points) => points.map((point) => ({
+    range: Number(point.getAttribute('data-range-m') ?? '0'),
+    rawClass: point.getAttribute('data-raw-class'),
+    targetType: point.getAttribute('data-target-type'),
+  })));
+  expect(frontPoints.length).toBeGreaterThan(20);
+  expect(frontPoints.every((point) => point.rawClass === 'aircraft' && point.targetType && point.range <= 15)).toBe(true);
+  const frontMean = frontPoints.reduce((sum, point) => sum + point.range, 0) / frontPoints.length;
+  expect(frontMean).toBeGreaterThan(7.5);
+  expect(frontMean).toBeLessThan(12.5);
+  const environmentRanges = await page.locator('[data-testid="raw-lidar-point"][data-raw-class="environment"]').evaluateAll((points) => points.map((point) => Number(point.getAttribute('data-range-m') ?? '0')));
+  expect(environmentRanges.some((range) => range > 15)).toBe(true);
+  expect(await page.locator('[data-testid="raw-lidar-point"][data-front-engagement="true"][data-raw-class="environment"]').count()).toBe(0);
+  const scatteredOuterRanges = environmentRanges.filter((range) => range > 15 && range < 18);
+  expect(new Set(scatteredOuterRanges.map((range) => range.toFixed(1))).size).toBeGreaterThan(5);
+  await expect(page.getByTestId('raw-lidar-svg')).not.toContainText('5 m');
+  await expect(page.getByTestId('raw-lidar-svg')).not.toContainText('10 m');
+  await expect(page.getByTestId('raw-lidar-svg')).not.toContainText('15 m');
+  await expect(page.getByTestId('raw-lidar-zoom-layer')).toHaveAttribute('data-zoom', '0.85');
+  await expect(page.getByTestId('raw-lidar-zoom-level')).toHaveText('85%');
+  await expect(page.getByTestId('raw-lidar-zoom-reset')).toBeDisabled();
+  await page.getByTestId('raw-lidar-zoom-in').click();
+  await page.getByTestId('raw-lidar-zoom-in').click();
+  await page.getByTestId('raw-lidar-zoom-in').click();
+  await expect(page.getByTestId('raw-lidar-zoom-layer')).toHaveAttribute('data-zoom', '1.00');
+  await expect(page.getByTestId('raw-lidar-zoom-level')).toHaveText('100%');
+  await expect(page.getByTestId('raw-lidar-zoom-in')).toBeDisabled();
+  await page.getByTestId('raw-lidar-zoom-reset').click();
+  await expect(page.getByTestId('raw-lidar-zoom-layer')).toHaveAttribute('data-zoom', '0.85');
+  await page.getByTestId('raw-lidar-zoom-out').click();
+  await expect(page.getByTestId('raw-lidar-zoom-layer')).toHaveAttribute('data-zoom', '0.80');
+  await expect(page.getByTestId('raw-lidar-zoom-level')).toHaveText('80%');
+  await page.getByTestId('raw-lidar-zoom-reset').click();
   await expect(page.getByTestId('raw-lidar-classification-toggle')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTestId('raw-lidar-semantic-summary')).toContainText('Intensity');
+  await expect(page.getByTestId('raw-lidar-semantic-summary')).toContainText('Hedef kümeleri hazır');
   await expect(page.getByTestId('raw-lidar-semantic-summary')).not.toContainText('İnsan');
+  const classifierBox = await page.getByTestId('raw-lidar-classifier-card').boundingBox();
+  const viewport = page.viewportSize();
+  expect(classifierBox).not.toBeNull();
+  expect(classifierBox!.y + classifierBox!.height).toBeLessThan((viewport?.height ?? 720) - 24);
   await page.getByTestId('raw-lidar-classification-toggle').click();
   await expect(page.getByTestId('raw-lidar-classification-toggle')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('raw-lidar-semantic-summary')).toContainText('İnsan');
-  await expect(page.locator('[data-testid="raw-lidar-point"][data-semantic-label="4"].classified').first()).toBeVisible();
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('Hava hedefleri');
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('Savaş Uçağı / F16');
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('%82');
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('Helikopter');
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('Balistik Füze');
+  await expect(page.getByTestId('raw-lidar-aircraft-group')).toContainText('Mini/Micro İHA');
+  await expect(page.getByTestId('raw-lidar-other-objects-group')).toContainText('Diğer objeler');
+  await expect(page.getByTestId('raw-lidar-other-objects-group')).toContainText('İnsan');
+  await expect(page.getByTestId('raw-lidar-other-objects-group')).toContainText('Kapı');
+  await expect(page.getByTestId('raw-lidar-semantic-summary')).not.toContainText('Uzak');
+  const classifiedRanges = await page.locator('[data-testid="raw-lidar-point"].classified').evaluateAll((points) => points.map((point) => ({
+    range: Number(point.getAttribute('data-range-m') ?? '0'),
+    front: point.getAttribute('data-front-engagement'),
+    rawClass: point.getAttribute('data-raw-class'),
+    className: point.getAttribute('class') ?? '',
+  })));
+  expect(classifiedRanges.length).toBeGreaterThan(0);
+  expect(classifiedRanges.some((point) => point.rawClass === 'aircraft' && point.front === 'true' && point.range <= 15)).toBe(true);
+  expect(classifiedRanges.some((point) => point.rawClass === 'environment' && point.front === 'false' && point.range > 15 && point.className.includes('semantic-'))).toBe(true);
+  expect(classifiedRanges.filter((point) => point.rawClass === 'environment').every((point) => point.range > 15)).toBe(true);
+  expect(await page.locator('[data-testid="raw-lidar-point"].classified.semantic-person').count()).toBeGreaterThanOrEqual(6);
   await page.getByTestId('raw-lidar-next-frame').click();
-  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('0005547.npy');
+  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('KARE 02 / 09');
   await expect(page.getByTestId('raw-lidar-clip-progress')).toHaveText('KARE 2/9');
-  await page.getByTestId('raw-lidar-clip-corridor').click();
-  await expect(page.getByTestId('raw-lidar-clip-crowd')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTestId('raw-lidar-clip-corridor')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('raw-lidar-current-frame')).toHaveText('0000215.npy');
-  await expect(page.getByTestId('raw-lidar-source')).toContainText('0000215.npy–0000223.npy');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Düşman');
   await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Dost');
-  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('F16');
-  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Helikopter');
-  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('Balistik');
-  await expect(page.getByTestId('raw-lidar-page')).not.toContainText('İHA');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.getByTestId('raw-lidar-back-button').click();
