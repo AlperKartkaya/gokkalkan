@@ -29,6 +29,8 @@ import logging
 import sys
 import threading
 import time
+import os
+import datetime
 
 # hardware_adapter modülünü proje kökünden içe aktar
 sys.path.insert(0, "backend/src")
@@ -116,6 +118,14 @@ class McuSimulator:
         self._running: bool    = False
         self._lock             = threading.Lock()
 
+        os.makedirs("telemetry_data", exist_ok=True)
+        self.log_file_path = "telemetry_data/vcan_logs.txt"
+
+    def _log_event(self, message: str) -> None:
+        timestamp = datetime.datetime.now().isoformat()
+        with open(self.log_file_path, "a", encoding="utf-8") as f:
+            f.write(f"[{timestamp}] {message}\n")
+
     # ------------------------------------------------------------------
     # CAN bus kurulumu
     # ------------------------------------------------------------------
@@ -169,26 +179,33 @@ class McuSimulator:
                     self.pan_deg  = parsed["panDeg"]
                     self.tilt_deg = parsed["tiltDeg"]
                     if self.verbose:
-                        print(
-                            f"\n  ← PanTilt: pan={self.pan_deg:+.2f}°  "
-                            f"tilt={self.tilt_deg:+.2f}°  "
-                            f"rate={parsed['rateDegPerSec']:.1f}°/s  "
-                            f"deadman={parsed['deadmanActive']}"
-                        )
+                        msg = (f"PanTilt: pan={self.pan_deg:+.2f}°  "
+                               f"tilt={self.tilt_deg:+.2f}°  "
+                               f"rate={parsed['rateDegPerSec']:.1f}°/s  "
+                               f"deadman={parsed['deadmanActive']}")
+                        print(f"\n  ← {msg}")
+                        self._log_event(msg)
                 else:
                     print("\n  [UYARI] PanTilt paketi checksum hatası!")
+                    self._log_event("PanTilt paketi checksum hatası!")
 
             elif arb_id == CAN_ID_FIRE_CMD:
                 if data and data[0] == 0x01:
                     self.fire_count += 1
                     stage = data[1] if len(data) > 1 else "?"
-                    print(f"\n  🔥 ATEŞ KOMUTU #{self.fire_count} alındı — Aşama {stage}")
+                    msg = f"ATEŞ KOMUTU #{self.fire_count} alındı — Aşama {stage}"
+                    print(f"\n  🔥 {msg}")
+                    self._log_event(msg)
                 else:
-                    print("\n  ⛔ Ateş iptal komutu alındı.")
+                    msg = "Ateş iptal komutu alındı."
+                    print(f"\n  ⛔ {msg}")
+                    self._log_event(msg)
 
             elif arb_id == CAN_ID_SYS_CMD:
                 arm = bool(data[0]) if data else False
-                print(f"\n  ⚙ Sistem komutu: {'ARM' if arm else 'DISARM'}")
+                msg = f"Sistem komutu: {'ARM' if arm else 'DISARM'}"
+                print(f"\n  ⚙ {msg}")
+                self._log_event(msg)
 
     # ------------------------------------------------------------------
     # TX — periyodik durum paketi (Pico → RPi5)
@@ -232,7 +249,9 @@ class McuSimulator:
                 is_extended_id=False,
             )
             self._bus.send(frame)  # type: ignore[attr-defined]
-            print(f"\n  {'🔴 E-STOP AKTİF' if active else '🟢 E-Stop pasif'} — CAN olayı gönderildi.")
+            msg = f"{'E-STOP AKTİF' if active else 'E-Stop pasif'} — CAN olayı gönderildi."
+            print(f"\n  {'🔴' if active else '🟢'} {msg}")
+            self._log_event(msg)
         except Exception as exc:
             logger.warning("E-Stop olayı gönderilemedi: %s", exc)
 
