@@ -61,7 +61,7 @@ The planned system communicates with lower-level hardware and must satisfy the m
 
 Documented stack direction:
 - Python is the primary expected implementation language.
-- GUI: PySide6 / Qt for Python.
+- GUI: React / Vite (Web technologies wrapped for desktop if needed).
 - Perception: OpenCV first; Picamera2, model files, Hailo, YOLO, or DeepSORT-style approaches only when justified by real target data and latency/accuracy needs.
 - Communication: `pySerial` and/or `python-can` depending on the MCU interface; ROS2 is optional unless the project actually adds a ROS workspace.
 - Testing: pytest.

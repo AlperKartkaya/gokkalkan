@@ -1236,9 +1236,9 @@ type AppSurface = 'landing' | 'simulator' | 'operator';
 
 function initialSurface(): AppSurface {
   const params = new URLSearchParams(window.location.search);
-  if (params.has('operator')) return 'operator';
+  if (params.has('landing')) return 'landing';
   if (params.has('console')) return 'simulator';
-  return 'landing';
+  return 'operator';
 }
 
 export default function App() {
