@@ -126,17 +126,47 @@ def main() -> None:
     except ImportError:
         pass
 
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
     default_host = os.environ.get("OPERATOR_API_HOST", "127.0.0.1")
     default_port = int(os.environ.get("OPERATOR_API_PORT", 8088))
 
-    parser = argparse.ArgumentParser(description="Gökkalkan dry-run operator API server")
+    parser = argparse.ArgumentParser(description="Gökkalkan operator API server")
     parser.add_argument("--host", default=default_host)
     parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--telemetry-jsonl", default=None, help="JSONL telemetri yolu (varsayılan: telemetry_data/operator-api-dry-run.jsonl)")
+    parser.add_argument("--vcan", action="store_true", help="vCAN üzerinden CanMcuAdapter kullan (mcu_simulator ile haberleşmek için)")
     args = parser.parse_args()
-    server = build_http_server(args.host, args.port, telemetry_jsonl=args.telemetry_jsonl)
-    print(f"Gökkalkan dry-run operator API listening on http://{args.host}:{args.port}")
-    print("Fiziksel çıkış yok: hardware adapter dry-run modundadır.")
+    
+    service = None
+    if args.vcan:
+        from .hardware_adapter import CanMcuAdapter
+        hardware = CanMcuAdapter(channel="vcan0", bustype="virtual")
+        hardware.start()
+        
+        # Mac OS'ta virtual bus process'ler arası çalışmadığı için simülatörü de aynı process'te başlatıyoruz
+        import sys
+        import threading
+        sys.path.insert(0, "backend/hardware_mock")
+        try:
+            from mcu_simulator import McuSimulator
+            sim = McuSimulator(channel="vcan0", bustype="virtual", verbose=True)
+            if sim._open():
+                sim._running = True
+                threading.Thread(target=sim._rx_loop, daemon=True, name="SIM-RX").start()
+                threading.Thread(target=sim._tx_status_loop, daemon=True, name="SIM-TX").start()
+                print("Dahili MCU Simülatörü (Mac uyumluluğu için) başlatıldı. Loglar vcan_logs.txt'ye yazılacak.")
+        except ImportError:
+            pass
+
+        service = OperatorService(hardware=hardware, dry_run=False)
+        print("Hardware adapter: CanMcuAdapter (vcan0)")
+    else:
+        print("Hardware adapter: DryRunHardwareAdapter (Fiziksel çıkış yok)")
+        
+    server = build_http_server(args.host, args.port, service=service, telemetry_jsonl=args.telemetry_jsonl)
+    print(f"Gökkalkan operator API listening on http://{args.host}:{args.port}")
     print(f"Telemetry JSONL: {server.RequestHandlerClass.service.telemetry.path}")
     try:
         server.serve_forever()

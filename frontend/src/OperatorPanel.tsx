@@ -1889,8 +1889,9 @@ function SensorFusion3DView({
     beginPointerDrag(event, event.currentTarget);
   };
 
-  const handleTargetPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+  const handleTargetPointerDown = (event: PointerEvent<HTMLButtonElement>, trackId: string) => {
     event.stopPropagation();
+    onSelect(trackId);
     beginPointerDrag(event, viewRef.current);
   };
 
@@ -1974,7 +1975,7 @@ function SensorFusion3DView({
         return (
           <button
             key={frame.frameId}
-            className={`sensor-3d-target ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${shot ? 'is-shot' : ''} ${point.visible ? '' : 'is-off-axis'}`}
+            className={`sensor-3d-target pointer-events-auto ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${shot ? 'is-shot' : ''} ${point.visible ? '' : 'is-off-axis'}`}
             data-testid={`operator-sensor-3d-target-${frame.trackId}`}
             data-track-id={frame.trackId}
             data-affiliation={frame.friendFoe}
@@ -1985,7 +1986,7 @@ function SensorFusion3DView({
             data-color-confidence={hostilityConfidence(frame).toFixed(2)}
             style={{ left: `${point.left}%`, top: `${point.top}%` }}
             aria-label={`${frame.trackId} ${unknown ? 'kimlik bekliyor' : targetLabel[frame.targetType]} ${frame.rangeM.toFixed(1)} metre`}
-            onPointerDown={handleTargetPointerDown}
+            onPointerDown={(e) => handleTargetPointerDown(e, frame.trackId)}
             onClick={() => onSelect(frame.trackId)}
           />
         );
@@ -2121,40 +2122,50 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     }
 
     let cancelled = false;
-    setApiBusy(true);
-    Promise.all([
-      fetchOperatorSnapshot(apiBaseUrl),
-      fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
-        if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
-        return undefined;
-      }),
-    ])
-      .then(([snapshot, readiness]) => {
-        if (cancelled) return;
-        setApiSnapshot(snapshot);
-        setReadinessReport(readiness);
-        setApiError('');
-        if (readiness) setReadinessError('');
-        setMode(snapshot.mode);
-        setStage(snapshot.stage);
-        setRound(snapshot.round);
-        if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
-        if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
-          setSelectedTrackId(snapshot.tracks[0].trackId);
-        }
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setApiSnapshot(undefined);
-        setReadinessReport(undefined);
-        setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
-      })
-      .finally(() => {
-        if (!cancelled) setApiBusy(false);
-      });
+    let timer: number;
+
+    const poll = () => {
+      setApiBusy(true);
+      Promise.all([
+        fetchOperatorSnapshot(apiBaseUrl),
+        fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
+          if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
+          return undefined;
+        }),
+      ])
+        .then(([snapshot, readiness]) => {
+          if (cancelled) return;
+          setApiSnapshot(snapshot);
+          setReadinessReport(readiness);
+          setApiError('');
+          if (readiness) setReadinessError('');
+          setMode(snapshot.mode);
+          setStage(snapshot.stage);
+          setRound(snapshot.round);
+          if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
+          if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
+            setSelectedTrackId(snapshot.tracks[0].trackId);
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setApiSnapshot(undefined);
+          setReadinessReport(undefined);
+          setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setApiBusy(false);
+            timer = window.setTimeout(poll, 300);
+          }
+        });
+    };
+
+    poll();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [apiBaseUrl, selectedTrackId]);
 
