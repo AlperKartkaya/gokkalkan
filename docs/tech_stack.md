@@ -100,17 +100,21 @@ Temel alt bileşenler:
 
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
 
+**Mevcut durum:** `mcu_simulator.py` çalışır durumda. Sanal CAN (vcan0/virtual) üzerinden gelen komutları alır, pan/tilt durumunu ASCII olarak görselleştirir, E-stop simüle eder ve periyodik 0x200 durum paketi gönderir. Gerçek Pico firmware yazılmadan CAN protokolü test edilebilir.
+
 ### 4.3. `perception/` — Algı, Takip ve Sınıflandırma
 
 `perception/` kamera verisinden hedef adaylarını üretir. Şartname hedeflerin maket, renk/şekil ve balonla temsil edileceğini söylediği için ilk tercih basit, açıklanabilir ve test edilebilir görüntü işleme olmalıdır; yapay zekâ modeli ancak gerçek hedef görselleri ve saha testleri bunu gerektirirse eklenmelidir.
 
+**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim), `frame_processor.py` (HSV renk filtresi + CentroidTracker), `perception_bridge.py` (10Hz poll → POST /tracks/update). Aşama 2 renk-nötr, Aşama 3 kırmızı=Düşman/mavi=Dost.
+
 Önerilen öncelik:
 
 1. Kamera kalibrasyonu, görüntü sabitleme ve gecikme ölçümü.
-2. Renk/şekil tabanlı hedef aday çıkarımı.
-3. Basit takip: merkez noktası, hız tahmini, hedef geçmişi.
-4. Aşama 2 için sınıflandırmasız takip ve önceliklendirme.
-5. Aşama 3 için dost-düşman ayrımı, hedef tipi ve menzil kapısı.
+2. Renk/şekil tabanlı hedef aday çıkarımı. ✅ Uygulandı.
+3. Basit takip: merkez noktası, hız tahmini, hedef geçmişi. ✅ CentroidTracker uygulandı.
+4. Aşama 2 için sınıflandırmasız takip ve önceliklendirme. ✅ Uygulandı.
+5. Aşama 3 için dost-düşman ayrımı, hedef tipi ve menzil kapısı. ✅ Renk sınıflaması uygulandı; LiDAR menzili TBD.
 6. Gerekiyorsa YOLO/DeepSORT/Hailo gibi model tabanlı yaklaşım.
 
 ### 4.4. `frontend/` — Simülatör ve Operatör Arayüzleri
@@ -156,7 +160,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | Python içi queue, ZeroMQ/WebSocket veya REST adapter; seçim entegrasyona göre | Saha gecikmesi ölçülmeden kesin protokol dayatılmamalı |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | UART/RS422/CAN/Ethernet TBD | Elektronik seçim netleşince sabitlenir |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | CAN bus 500kbps | Elektronik seçim netleşince sabitlendi |
 | Sensor Adapter → Backend/Perception | radar/LiDAR ölçümü, sağlık, zaman damgası | Donanıma göre seri, Ethernet veya SDK adapter | Şimdilik soyut `SensorFrame` |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
@@ -165,13 +169,13 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 
 | Arayüz | Durum | KTR’de yazılacak bilgi |
 | --- | --- | --- |
-| Ana güç | TBD | Batarya/güç dağıtım kartı seçilince nominal gerilim, sigorta ve regülasyon bilgisi yazılacak |
-| Logic güç | TBD | MCU/sensör seviyelerine göre 5 V / 3.3 V regülasyon ihtiyacı belirtilecek |
-| Acil Durdur | Zorunlu | UI’dan bağımsız fiziksel kesme/disable hattı ve backend SafetyState bildirimi açıklanacak |
-| MCU haberleşmesi | TBD | UART/RS422/CAN/Ethernet kararı ve mesaj çerçevesi açıklanacak |
-| Kamera | TBD | USB/CSI/Ethernet kamera seçimine göre veri hattı ve frame rate ölçümü yazılacak |
-| Radar/LiDAR | TBD | Seçilen sensörün güç, veri ve zaman damgası arayüzü adapter ile anlatılacak |
-| İmha hattı | Güvenlik-kritik | Patlayıcı içermeyen imha mekanizması; yalnız Safety Gate + hardware interlock sonrası enable edilir |
+| Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
+| Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
+| Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
+| MCU haberleşmesi | **Onaylandı** | CAN bus 500kbps; SN65HVD230 (×3) transceiver; ISO 11898-2; Mesaj haritası: 0x100 pan/tilt komutu, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop olayı |
+| Kamera | **Onaylandı** | Raspberry Pi Camera Module 3 (12MP, OT AF, HDR), CSI bağlantı, Picamera2 API |
+| Radar/LiDAR | TBD | 2D LiDAR olasılıklı; seçilen sensörün güç, veri ve zaman damgası arayüzü adapter ile anlatılacak |
+| İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
 
