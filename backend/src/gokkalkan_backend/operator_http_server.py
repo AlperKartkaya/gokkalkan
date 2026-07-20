@@ -36,6 +36,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._send_json(self.operator_service.telemetry_export())
         elif path == "/replay":
             self._send_json(self.operator_service.replay())
+        elif path == "/hardware/health":
+            self._send_json(self.operator_service.hardware.health_check())
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 
@@ -52,6 +54,21 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._send_json(self.operator_service.handle_fire_intent(payload))
         elif path == "/telemetry/reset":
             self._send_json(self.operator_service.reset_telemetry())
+        elif path == "/tracks/update":
+            # Perception veya sensör adapter'ından canlı track güncellemesi
+            tracks = payload.get("tracks", [])
+            source = str(payload.get("source", "perception"))
+            self._send_json(self.operator_service.update_tracks(tracks, source))
+        elif path == "/estop":
+            # Test ve harici tetikleyici için E-Stop endpoint'i
+            # Üretimde bu endpoint hakem/operatör kilidi gerektirir.
+            active = bool(payload.get("active", True))
+            self.operator_service.set_estop(active)
+            self._send_json({
+                "ok": True,
+                "estop": active,
+                "safety": self.operator_service.evaluate_safety("ModeRequest").to_dict(),
+            })
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 

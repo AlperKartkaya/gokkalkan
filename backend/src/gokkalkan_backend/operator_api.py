@@ -1,9 +1,12 @@
-"""Dry-run operator API service for Gökkalkan.
+"""Dry-run ve gerçek donanım operatör API servisi — Gökkalkan.
 
-This module is intentionally dependency-free. It models the first backend-side
-contract behind the real operator panel without driving motors or an imha line.
-UI commands are high-level intent only; Safety Gate evaluation happens here
-before the dry-run hardware adapter boundary.
+Bu modül bağımlılık içermez. Gerçek operatör paneli arkasındaki ilk
+backend sözleşmesini modellemek için tasarlanmıştır. UI komutları yüksek
+seviyeli niyet olarak gelir; Safety Gate değerlendirmesi burada yapılır.
+
+HardwareAdapterBase:
+  DryRunHardwareAdapter  — geliştirme/test, fiziksel çıkış yok
+  CanMcuAdapter          — CAN bus üzerinden Pico RP2040 (bkz. hardware_adapter.py)
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from itertools import count
 from math import isfinite
 from typing import Any, Callable, Literal
 
+from .hardware_adapter import HardwareAdapterBase
 from .telemetry_log import JsonlTelemetryStore
 
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
@@ -268,8 +272,12 @@ class SafetyState:
         }
 
 
-class DryRunHardwareAdapter:
-    """Hardware adapter boundary that never creates physical output."""
+class DryRunHardwareAdapter(HardwareAdapterBase):
+    """Fiziksel çıkış üretmeyen geliştirme/test donanım adaptörü.
+
+    HardwareAdapterBase sözleşmesini uygular; tüm komutları kaydeder
+    ve physicalOutput=False döndürür.
+    """
 
     def __init__(self, clock: Clock = utc_now) -> None:
         self._clock = clock
@@ -278,8 +286,8 @@ class DryRunHardwareAdapter:
     def execute(self, command: dict[str, Any]) -> dict[str, Any]:
         result = {
             "adapter": "hardware_mock.dry_run",
-            "commandId": command["commandId"],
-            "kind": command["kind"],
+            "commandId": command.get("commandId", f"DRY-{len(self.commands)+1:05d}"),
+            "kind": command.get("kind", "Unknown"),
             "accepted": True,
             "completed": True,
             "physicalOutput": False,
@@ -289,11 +297,46 @@ class DryRunHardwareAdapter:
         self.commands.append({"command": command, "result": result})
         return result
 
+    def health_check(self) -> dict[str, Any]:
+        return {
+            "adapter": "hardware_mock.dry_run",
+            "busConnected": False,
+            "picoReachable": False,
+            "dryRun": True,
+            "physicalOutputEnabled": False,
+            "commandCount": len(self.commands),
+        }
+
+    def close(self) -> None:
+        pass
+
 
 class OperatorService:
-    """Stateful dry-run backend service for the real operator panel."""
+    """Stateful backend service — dry-run ve gerçek donanım modlarını destekler.
 
-    def __init__(self, clock: Clock = utc_now, hardware: DryRunHardwareAdapter | None = None, telemetry: JsonlTelemetryStore | None = None) -> None:
+    Gerçek donanım bağlamak için:
+        from gokkalkan_backend.hardware_adapter import CanMcuAdapter, GpioEStopMonitor
+        adapter = CanMcuAdapter(channel="can0", bustype="socketcan")
+        monitor = GpioEStopMonitor(service_callback=None)  # callback sonra set edilir
+        service = OperatorService(hardware=adapter, dry_run=False)
+        monitor._callback = service.set_estop
+        adapter._estop_cb = monitor.on_can_estop
+        adapter.start()
+        monitor.start()
+    """
+
+    def __init__(
+        self,
+        clock: Clock = utc_now,
+        hardware: HardwareAdapterBase | None = None,
+        telemetry: JsonlTelemetryStore | None = None,
+        dry_run: bool = True,
+        # Pan/tilt yazılım limitleri (derece); None = sınır yok
+        pan_min_deg: float | None = None,
+        pan_max_deg: float | None = None,
+        tilt_min_deg: float | None = None,
+        tilt_max_deg: float | None = None,
+    ) -> None:
         self._clock = clock
         self._ids = count(1)
         self.stage: Stage = 3
@@ -305,15 +348,25 @@ class OperatorService:
         self.backend_connected = True
         self.perception_connected = False
         self.sensor_adapter_connected = False
-        self.dry_run = True
+        self.dry_run = dry_run
         self.live_arm_enabled = False
-        self.hardware = hardware or DryRunHardwareAdapter(clock=clock)
+        self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.command_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
-        self._append_event("telemetry", "BOOT", "Dry-run backend API hazır; fiziksel çıkış yok.", {})
+        # Pan/tilt yazılım sınır alanları
+        self.pan_min_deg  = pan_min_deg
+        self.pan_max_deg  = pan_max_deg
+        self.tilt_min_deg = tilt_min_deg
+        self.tilt_max_deg = tilt_max_deg
+        boot_msg = (
+            "Canlı donanım modunda başlatıldı; fiziksel çıkış Safety Gate sonrası aktif."
+            if not dry_run
+            else "Dry-run backend API hazır; fiziksel çıkış yok."
+        )
+        self._append_event("telemetry", "BOOT", boot_msg, {"dryRun": dry_run})
 
     def _tracks_for_stage(self, stage: Stage, round_no: int) -> list[DryRunTrack]:
         now = self._clock()
@@ -699,10 +752,12 @@ class OperatorService:
         self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.command_results = []
         self.events = []
-        self.hardware.commands = []
+        # DryRunHardwareAdapter'ın .commands listesini sıfırla (varsa)
+        if hasattr(self.hardware, "commands"):
+            self.hardware.commands = []
         self._ids = count(1)
         self.telemetry.reset()
-        self._append_event("telemetry", "RESET", "Dry-run telemetri sıfırlandı; fiziksel çıkış yok.", {})
+        self._append_event("telemetry", "RESET", "Telemetri sıfırlandı; fiziksel çıkış yok.", {})
         return {"ok": True, "physicalOutputEnabled": False, "telemetry": self.telemetry.metadata(), "state": self.snapshot()}
 
     def evaluate_safety(self, kind: CommandKind, target: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> SafetyState:
@@ -735,6 +790,8 @@ class OperatorService:
         elif not dry_run and not live_arm_enabled:
             block = "BLOCKED_ARMING"
         elif kind == "ManualAimCommand" and not self.motion_zone_ok:
+            block = "BLOCKED_MOTION_ZONE"
+        elif kind == "ManualAimCommand" and not self._pantilt_within_soft_limits(payload):
             block = "BLOCKED_MOTION_ZONE"
         elif kind == "FireIntent" and not self.fire_zone_ok:
             block = "BLOCKED_FIRE_ZONE"
@@ -824,6 +881,101 @@ class OperatorService:
             self.telemetry.append("hardware_result", hardware_result)
         self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
+
+    def _pantilt_within_soft_limits(self, payload: dict[str, Any]) -> bool:
+        """Pan/tilt yazılım limit kontrolü.
+
+        ManualAimCommand payload'ındaki delta'ları mevcut MCU pozisyonuna ekleyerek
+        hedef açının soft limitler içinde kalıp kalmadığını doğrular.
+        hardware.health_check() çağrısından mevcut pozisyon alınır;
+        adapter bağlı değilse veya limit tanımlanmamışsa True döner.
+        """
+        try:
+            hc = self.hardware.health_check()
+            mcu = hc.get("mcuStatus", {})
+            cur_pan  = float(mcu.get("panDeg",  0.0))
+            cur_tilt = float(mcu.get("tiltDeg", 0.0))
+        except Exception:
+            return True   # adapter erişilemezse bloklama
+
+        new_pan  = cur_pan  + float(payload.get("panDeltaDeg",  0.0))
+        new_tilt = cur_tilt + float(payload.get("tiltDeltaDeg", 0.0))
+
+        if self.pan_min_deg  is not None and new_pan  < self.pan_min_deg:
+            return False
+        if self.pan_max_deg  is not None and new_pan  > self.pan_max_deg:
+            return False
+        if self.tilt_min_deg is not None and new_tilt < self.tilt_min_deg:
+            return False
+        if self.tilt_max_deg is not None and new_tilt > self.tilt_max_deg:
+            return False
+        return True
+
+    def set_estop(self, active: bool) -> None:
+        """E-Stop durumunu dışarıdan güncelle.
+
+        CAN üzerinden gelen Pico bildirimi veya GPIO interrupt'ı
+        bu yöntemi çağırır. Thread-safe: sadece bool ataması.
+        """
+        prev = self.estop
+        self.estop = active
+        if active != prev:
+            self._append_event(
+                "safety",
+                "ESTOP_CHANGE",
+                f"E-Stop {'aktif' if active else 'pasif'} — harici sinyal.",
+                {"active": active, "source": "gpio_or_can"},
+            )
+
+    def update_tracks(self, tracks_data: list[dict[str, Any]], source: str = "perception") -> dict[str, Any]:
+        """Perception veya sensör adapter'ından gelen canlı track listesini güncelle.
+
+        Endpoint: POST /tracks/update
+        Body: {"source": "perception", "tracks": [...]}
+
+        Her track dict en az şu alanları içermelidir:
+          trackId, targetType, friendFoe, rangeM, bearingDeg, confidence
+        Eksik alanlar güvenli varsayılanlarla doldurulur.
+        """
+        if not isinstance(tracks_data, list):
+            return {"ok": False, "error": "tracks bir liste olmalıdır."}
+
+        now = self._clock()
+        updated: list[DryRunTrack] = []
+        for raw in tracks_data:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                track = DryRunTrack(
+                    trackId    = str(raw.get("trackId", f"LIVE-{now}")),
+                    stage      = self.stage,
+                    round      = self.round,
+                    targetType = str(raw.get("targetType", "Mini/Micro İHA")),
+                    friendFoe  = str(raw.get("friendFoe",  "Bilinmeyen")),
+                    rangeM     = float(raw.get("rangeM",    0.0)),
+                    bearingDeg = float(raw.get("bearingDeg", 0.0)),
+                    confidence = float(raw.get("confidence", 0.5)),
+                    source     = "perception",
+                    updatedAt  = now,
+                )
+                updated.append(track)
+            except (TypeError, ValueError) as exc:
+                return {"ok": False, "error": f"Geçersiz track verisi: {exc}"}
+
+        self.tracks = updated
+        self.perception_connected = True
+        self._append_event(
+            "perception",
+            "TRACKS_UPDATE",
+            f"{len(updated)} track güncellendi (kaynak={source}).",
+            {"count": len(updated), "source": source},
+        )
+        return {
+            "ok": True,
+            "count": len(updated),
+            "source": source,
+            "perceptionConnected": True,
+        }
 
     def _find_track(self, track_id: str) -> DryRunTrack | None:
         return next((track for track in self.tracks if track.trackId == track_id), None)
