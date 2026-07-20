@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -119,9 +120,18 @@ def build_http_server(
 
 
 def main() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    default_host = os.environ.get("OPERATOR_API_HOST", "127.0.0.1")
+    default_port = int(os.environ.get("OPERATOR_API_PORT", 8088))
+
     parser = argparse.ArgumentParser(description="Gökkalkan dry-run operator API server")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8088)
+    parser.add_argument("--host", default=default_host)
+    parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--telemetry-jsonl", default=None, help="JSONL telemetri yolu (varsayılan: telemetry_data/operator-api-dry-run.jsonl)")
     args = parser.parse_args()
     server = build_http_server(args.host, args.port, telemetry_jsonl=args.telemetry_jsonl)
