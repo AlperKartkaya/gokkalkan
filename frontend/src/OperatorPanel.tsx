@@ -42,6 +42,9 @@ import {
 } from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
 import { MissionHeader } from './components/MissionHeader';
+import { SafetyAuthorityPanel } from './components/SafetyAuthorityPanel';
+import { HardwareHealthBadge } from './components/HardwareHealthBadge';
+import { sendOperatorEStop } from './operatorApiClient';
 
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
@@ -2686,6 +2689,23 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     });
   };
 
+  /**
+   * handleEStop — yazılım E-Stop tetikleyici (Adım 4b)
+   *
+   * Yerel state'i hemen kilitler, ardından backend'e POST /estop gönderir.
+   * Fiziksel mantar buton bağımsız birincil güvencedir; UI ikincildir.
+   */
+  const handleEStop = async () => {
+    triggerOperatorStop();
+    if (apiBaseUrl) {
+      try {
+        await sendOperatorEStop(apiBaseUrl, { active: true });
+      } catch {
+        // Backend erişilemezse yerel kilit yeterli; hata sessizce görmezden gelinir.
+      }
+    }
+  };
+
   const resumeOperatorStop = () => {
     if (!operatorStopActive) return;
     setOperatorStopActive(false);
@@ -2903,14 +2923,11 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       <ConfidencePanel stage={displayStage} frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />
 
       <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Emniyet kilitleri">
-          <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Emniyet</h2>
-          <div className="mt-3 grid gap-2 text-sm" data-testid="operator-safety-state">
-            <EvidenceRow label="Acil Durdur" value={safety.estop ? 'AKTİF' : 'Pasif'} />
-            <EvidenceRow label="Atış alanı" value={safety.fireZoneOk ? 'Uygun' : 'Kilitli'} />
-            <EvidenceRow label="Hedef kapısı" value={safety.targetGateOk ? 'Uygun' : 'Dost/bilinmeyen/menzil dışı'} />
-          </div>
-        </section>
+        <SafetyAuthorityPanel
+            safety={safety}
+            onEStop={handleEStop}
+            eStopBusy={apiBusy}
+          />
 
         <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer" open={maintenanceOpen} onToggle={(event) => setMaintenanceOpen(event.currentTarget.open)}>
           <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">Bakım / Diagnostik</summary>
@@ -2962,6 +2979,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           </div>
         </section>
       </section>
+
+      <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} />
 
       <details className="mt-3 rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
         <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">
