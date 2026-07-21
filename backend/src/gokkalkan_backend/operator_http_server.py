@@ -70,6 +70,12 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
                 "estop": active,
                 "safety": self.operator_service.evaluate_safety("ModeRequest").to_dict(),
             })
+        elif path == "/maintenance":
+            # Şartname v1.3: bakım isteği başlat
+            self._send_json(self.operator_service.handle_maintenance_request(payload))
+        elif path == "/maintenance/end":
+            # Bakım süresini sonlandır
+            self._send_json(self.operator_service.maintenance_end())
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 

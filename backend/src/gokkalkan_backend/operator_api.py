@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from itertools import count
 from math import isfinite
 from typing import Any, Callable, Literal
+import time as _time
 
 from .hardware_adapter import HardwareAdapterBase
 from .telemetry_log import JsonlTelemetryStore
@@ -45,6 +46,11 @@ VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked"
 ENGAGEMENT_MODES: set[str] = {"autonomous", "engagement"}
 MAX_MANUAL_AIM_DELTA_DEG = 10.0
 MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30.0
+# Şartname v1.3: toplam bakım bütçesi 10 dakika (600 saniye), her istek min 30 sn
+MAINTENANCE_BUDGET_SEC = 600
+MAINTENANCE_MIN_REQUEST_SEC = 30
+# Şartname: Aşama 1 görev süresi 5 dakika (300 saniye)
+STAGE1_TIME_LIMIT_SEC = 300
 READINESS_SCORE: dict[ReadinessStatus, float] = {
     "ready": 1.0,
     "partial": 0.55,
@@ -361,6 +367,13 @@ class OperatorService:
         self.pan_max_deg  = pan_max_deg
         self.tilt_min_deg = tilt_min_deg
         self.tilt_max_deg = tilt_max_deg
+        # Şartname v1.3 — bakım bütçesi (saniye)
+        self.maintenance_budget_sec: float = MAINTENANCE_BUDGET_SEC
+        self.maintenance_used_sec: float = 0.0
+        self._maintenance_started_at: float | None = None  # monotonic timestamp
+        # Şartname — görev timer'ı (Aşama 1: 300 sn)
+        self.mission_started_at: float | None = None  # monotonic timestamp
+        self.mission_time_limit_sec: int = STAGE1_TIME_LIMIT_SEC
         boot_msg = (
             "Canlı donanım modunda başlatıldı; fiziksel çıkış Safety Gate sonrası aktif."
             if not dry_run
@@ -531,9 +544,44 @@ class OperatorService:
             "physicalOutputEnabled": False,
         }
 
+    def _mission_timer(self) -> dict[str, Any]:
+        """Görev timer durumunu hesapla.
+
+        Yalnız Aşama 1'de zaman sınırı şartname tarafından tanımlanmıştır (300 sn).
+        Diğer aşamalarda missionTimeLimitSec=None ve missionRemainingSeconds=None döner.
+        """
+        has_limit = self.stage == 1
+        elapsed = 0.0
+        if self.mission_started_at is not None:
+            elapsed = max(0.0, _time.monotonic() - self.mission_started_at)
+        remaining: float | None = None
+        if has_limit:
+            remaining = max(0.0, self.mission_time_limit_sec - elapsed)
+        return {
+            "missionElapsedSec": round(elapsed, 1),
+            "missionRemainingSeconds": round(remaining, 1) if remaining is not None else None,
+            "missionTimeLimitSec": self.mission_time_limit_sec if has_limit else None,
+            "missionTimerRunning": self.mission_started_at is not None,
+        }
+
+    def _maintenance_state(self) -> dict[str, Any]:
+        """Şartname v1.3 bakım bütçesi durumu."""
+        in_maintenance = self.mode == "maintenance" and self._maintenance_started_at is not None
+        current_elapsed = 0.0
+        if in_maintenance and self._maintenance_started_at is not None:
+            current_elapsed = max(0.0, _time.monotonic() - self._maintenance_started_at)
+        used = self.maintenance_used_sec + current_elapsed
+        remaining = max(0.0, self.maintenance_budget_sec - used)
+        return {
+            "maintenanceBudgetSec": self.maintenance_budget_sec,
+            "maintenanceUsedSec": round(used, 1),
+            "maintenanceRemainingBudgetSec": round(remaining, 1),
+            "maintenanceMinRequestSec": MAINTENANCE_MIN_REQUEST_SEC,
+        }
+
     def snapshot(self) -> dict[str, Any]:
         selected = self.tracks[0] if self.tracks else None
-        return {
+        result = {
             "app": "gokkalkan-operator-api",
             "version": 1,
             "mode": self.mode,
@@ -550,6 +598,9 @@ class OperatorService:
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
         }
+        result.update(self._mission_timer())
+        result.update(self._maintenance_state())
+        return result
 
     def sensor_frames_snapshot(self) -> dict[str, Any]:
         return {
@@ -756,6 +807,10 @@ class OperatorService:
         if hasattr(self.hardware, "commands"):
             self.hardware.commands = []
         self._ids = count(1)
+        # Bakım bütçesi ve görev timer'ını sıfırla
+        self.maintenance_used_sec = 0.0
+        self._maintenance_started_at = None
+        self.mission_started_at = None
         self.telemetry.reset()
         self._append_event("telemetry", "RESET", "Telemetri sıfırlandı; fiziksel çıkış yok.", {})
         return {"ok": True, "physicalOutputEnabled": False, "telemetry": self.telemetry.metadata(), "state": self.snapshot()}
@@ -829,6 +884,49 @@ class OperatorService:
         self._append_event("mode", "ModeRequest", result["message"], {"requestedMode": requested, "safety": safety.to_dict(), "result": result})
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
+    def handle_maintenance_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Bakım isteği — Şartname v1.3: toplam bütçe 600 sn, istek başı min 30 sn.
+
+        Kabul koşulları:
+        - Kalan bütçe >= MAINTENANCE_MIN_REQUEST_SEC
+        - Sistem zaten maintenance modunda değil
+        - E-Stop aktif değil
+        """
+        if self.estop:
+            return {"ok": False, "blocked": True, "reason": "BLOCKED_ESTOP",
+                    "message": "Acil Durdur aktif; bakım isteği reddedildi."}
+        if self.mode == "maintenance":
+            return {"ok": False, "blocked": True, "reason": "ALREADY_MAINTENANCE",
+                    "message": "Sistem zaten bakım modunda."}
+        maint = self._maintenance_state()
+        if maint["maintenanceRemainingBudgetSec"] < MAINTENANCE_MIN_REQUEST_SEC:
+            return {"ok": False, "blocked": True, "reason": "MAINTENANCE_BUDGET_EXHAUSTED",
+                    "message": f"Bakım bütçesi tükendi ({maint['maintenanceUsedSec']:.0f}/{self.maintenance_budget_sec:.0f} sn kullanıldı)."}
+        prev_mode = self.mode
+        self.mode = "maintenance"
+        self._maintenance_started_at = _time.monotonic()
+        self._append_event("maintenance", "MAINTENANCE_START",
+                           f"Bakım modu başlatıldı (önceki mod: {prev_mode}).",
+                           {"prevMode": prev_mode, "maintenanceState": maint})
+        return {"ok": True, "blocked": False, "maintenanceState": maint, "state": self.snapshot()}
+
+    def maintenance_end(self) -> dict[str, Any]:
+        """Bakım süresini sonlandır; bütçeyi güncelle ve safe moda dön.
+
+        En az MAINTENANCE_MIN_REQUEST_SEC kadar süre kayıt edilir.
+        """
+        if self.mode != "maintenance" or self._maintenance_started_at is None:
+            return {"ok": False, "reason": "NOT_IN_MAINTENANCE", "message": "Sistem bakım modunda değil."}
+        elapsed = max(MAINTENANCE_MIN_REQUEST_SEC, _time.monotonic() - self._maintenance_started_at)
+        self.maintenance_used_sec += elapsed
+        self._maintenance_started_at = None
+        self.mode = "safe"
+        self._append_event("maintenance", "MAINTENANCE_END",
+                           f"Bakım sona erdi ({elapsed:.1f} sn); safe moda dönüldü.",
+                           {"elapsedSec": elapsed, "totalUsedSec": self.maintenance_used_sec})
+        return {"ok": True, "elapsedSec": round(elapsed, 1),
+                "maintenanceState": self._maintenance_state(), "state": self.snapshot()}
+
     def handle_stage_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         safety = self.evaluate_safety("StageRequest", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
@@ -842,6 +940,12 @@ class OperatorService:
             self.mode = stage_expected_mode(self.stage)
             self.tracks = self._tracks_for_stage(self.stage, self.round)
             self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
+            # Şartname: Aşama 1 başlayınca görev timer'ı sıfırla ve başlat
+            if self.stage == 1:
+                self.mission_started_at = _time.monotonic()
+                self.mission_time_limit_sec = STAGE1_TIME_LIMIT_SEC
+            else:
+                self.mission_started_at = None
         result = self._command_result("StageRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
         self._append_event(
             "mission",

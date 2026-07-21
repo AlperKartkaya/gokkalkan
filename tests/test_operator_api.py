@@ -315,5 +315,135 @@ class OperatorHttpServerFactoryTest(unittest.TestCase):
                 server.server_close()
 
 
+class MaintenanceBudgetTest(unittest.TestCase):
+    """Şartname v1.3: bakım bütçesi ve timer testleri (Adım 1)."""
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.telemetry_path = Path(self.tempdir.name) / "maint-test.jsonl"
+        self.telemetry = JsonlTelemetryStore(self.telemetry_path, clock=fixed_clock)
+        self.hardware = DryRunHardwareAdapter(clock=fixed_clock)
+        self.service = OperatorService(clock=fixed_clock, hardware=self.hardware, telemetry=self.telemetry)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def test_initial_snapshot_includes_maintenance_fields(self) -> None:
+        snap = self.service.snapshot()
+        self.assertIn("maintenanceBudgetSec", snap)
+        self.assertIn("maintenanceUsedSec", snap)
+        self.assertIn("maintenanceRemainingBudgetSec", snap)
+        self.assertEqual(snap["maintenanceBudgetSec"], 600)
+        self.assertEqual(snap["maintenanceUsedSec"], 0.0)
+        self.assertEqual(snap["maintenanceRemainingBudgetSec"], 600.0)
+
+    def test_maintenance_request_switches_mode(self) -> None:
+        # Autonomous moddan bakıma geç
+        self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test",
+                                          "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        result = self.service.handle_maintenance_request({})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["blocked"])
+        self.assertEqual(self.service.mode, "maintenance")
+
+    def test_maintenance_request_blocked_when_budget_exhausted(self) -> None:
+        # Bütçeyi tüket
+        self.service.maintenance_used_sec = 590.0  # 600 - 590 = 10 sn kaldı < 30 sn min
+        result = self.service.handle_maintenance_request({})
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["reason"], "MAINTENANCE_BUDGET_EXHAUSTED")
+        self.assertNotEqual(self.service.mode, "maintenance")
+
+    def test_maintenance_request_blocked_during_estop(self) -> None:
+        self.service.set_estop(True)
+        result = self.service.handle_maintenance_request({})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "BLOCKED_ESTOP")
+
+    def test_maintenance_end_charges_minimum_30s(self) -> None:
+        self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test",
+                                          "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        self.service.handle_maintenance_request({})
+        # Anında end → min 30 sn uygulanmalı
+        result = self.service.maintenance_end()
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["elapsedSec"], 30)
+        self.assertEqual(self.service.mode, "safe")
+        self.assertGreaterEqual(self.service.maintenance_used_sec, 30)
+
+    def test_maintenance_end_when_not_in_maintenance_fails(self) -> None:
+        result = self.service.maintenance_end()
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "NOT_IN_MAINTENANCE")
+
+    def test_reset_telemetry_clears_maintenance_budget(self) -> None:
+        self.service.maintenance_used_sec = 120.0
+        self.service.reset_telemetry()
+        self.assertEqual(self.service.maintenance_used_sec, 0.0)
+
+
+class MissionTimerTest(unittest.TestCase):
+    """Şartname: Aşama 1 görev timer'ı testleri (Adım 2)."""
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.telemetry_path = Path(self.tempdir.name) / "timer-test.jsonl"
+        self.telemetry = JsonlTelemetryStore(self.telemetry_path, clock=fixed_clock)
+        self.service = OperatorService(clock=fixed_clock, hardware=DryRunHardwareAdapter(clock=fixed_clock),
+                                       telemetry=self.telemetry)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def test_initial_snapshot_includes_mission_timer_fields(self) -> None:
+        snap = self.service.snapshot()
+        self.assertIn("missionElapsedSec", snap)
+        self.assertIn("missionRemainingSeconds", snap)
+        self.assertIn("missionTimeLimitSec", snap)
+        self.assertIn("missionTimerRunning", snap)
+
+    def test_stage1_timer_starts_on_stage_request(self) -> None:
+        self.service.handle_stage_request({"stage": 1, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        snap = self.service.snapshot()
+        self.assertTrue(snap["missionTimerRunning"])
+        self.assertEqual(snap["missionTimeLimitSec"], 300)
+        self.assertIsNotNone(snap["missionRemainingSeconds"])
+        self.assertLessEqual(snap["missionRemainingSeconds"], 300)
+
+    def test_stage2_has_no_time_limit(self) -> None:
+        self.service.handle_stage_request({"stage": 2, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        snap = self.service.snapshot()
+        self.assertFalse(snap["missionTimerRunning"])
+        self.assertIsNone(snap["missionTimeLimitSec"])
+        self.assertIsNone(snap["missionRemainingSeconds"])
+
+    def test_stage3_has_no_time_limit(self) -> None:
+        snap = self.service.snapshot()  # başlangıçta stage 3
+        self.assertIsNone(snap["missionTimeLimitSec"])
+        self.assertIsNone(snap["missionRemainingSeconds"])
+
+    def test_timer_resets_on_stage_change(self) -> None:
+        # Önce Aşama 1 başlat
+        self.service.handle_stage_request({"stage": 1, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        self.assertTrue(self.service.snapshot()["missionTimerRunning"])
+        # Aşama 2'ye geç → timer durmalı
+        self.service.handle_stage_request({"stage": 2, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        snap = self.service.snapshot()
+        self.assertFalse(snap["missionTimerRunning"])
+
+    def test_reset_telemetry_clears_mission_timer(self) -> None:
+        self.service.handle_stage_request({"stage": 1, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        self.service.reset_telemetry()
+        self.assertIsNone(self.service.mission_started_at)
+        snap = self.service.snapshot()
+        self.assertFalse(snap["missionTimerRunning"])
+
+
 if __name__ == "__main__":
     unittest.main()
