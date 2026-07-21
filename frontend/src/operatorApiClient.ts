@@ -186,6 +186,71 @@ export async function resetOperatorTelemetry(baseUrl: string): Promise<OperatorT
   return requestJson<OperatorTelemetryResetResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/telemetry/reset`, {});
 }
 
+// ── Adım 3: Eksik endpoint'ler ──────────────────────────────────────────────
+
+export interface OperatorEStopResponse {
+  ok: boolean;
+  estop: boolean;
+  safety: import('./operatorContracts').OperatorSafetyState;
+}
+
+export interface HardwareHealthResponse {
+  adapter: string;
+  busConnected: boolean;
+  picoReachable: boolean;
+  dryRun: boolean;
+  physicalOutputEnabled: boolean;
+  commandCount?: number;
+  // CanMcuAdapter'dan gelen ek alanlar
+  mcuStatus?: Record<string, unknown>;
+  lastHeartbeatAt?: string;
+}
+
+export interface TracksUpdatePayload {
+  source: 'perception' | 'radar-lidar' | 'fused' | 'dry-run';
+  tracks: Array<{
+    trackId: string;
+    targetType?: string;
+    friendFoe?: string;
+    rangeM: number;
+    bearingDeg: number;
+    confidence: number;
+  }>;
+}
+
+export interface TracksUpdateResponse {
+  ok: boolean;
+  count: number;
+  source: string;
+  perceptionConnected: boolean;
+  error?: string;
+}
+
+/** POST /estop — yazılım E-Stop tetikleyici (ikincil güvence; fiziksel buton birincildir). */
+export async function sendOperatorEStop(baseUrl: string, payload: { active: boolean }): Promise<OperatorEStopResponse> {
+  return requestJson<OperatorEStopResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/estop`, payload);
+}
+
+/** GET /hardware/health — CAN bağlantısı ve Pico MCU durumu. */
+export async function fetchHardwareHealth(baseUrl: string): Promise<HardwareHealthResponse> {
+  return requestJson<HardwareHealthResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/hardware/health`);
+}
+
+/** POST /tracks/update — Perception bridge veya sensör adapter'ından canlı track besleme. */
+export async function sendTracksUpdate(baseUrl: string, payload: TracksUpdatePayload): Promise<TracksUpdateResponse> {
+  return requestJson<TracksUpdateResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/tracks/update`, payload);
+}
+
+/** POST /maintenance — Şartname v1.3: bakım modu başlat (bütçe kontrolü backend tarafında). */
+export async function sendMaintenanceRequest(baseUrl: string): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance`, {});
+}
+
+/** POST /maintenance/end — Bakım süresini sonlandır; safe moda dön. */
+export async function sendMaintenanceEnd(baseUrl: string): Promise<Record<string, unknown>> {
+  return requestJson<Record<string, unknown>>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance/end`, {});
+}
+
 async function requestJson<T>(url: string, body?: unknown): Promise<T> {
   const response = await fetch(url, {
     method: body ? 'POST' : 'GET',
