@@ -52,6 +52,13 @@ export interface OperatorApiSnapshot {
   events: OperatorTelemetryEvent[];
   physicalOutputEnabled: boolean;
   telemetry?: OperatorTelemetryMetadata;
+  maintenanceBudgetSec?: number;
+  maintenanceUsedSec?: number;
+  maintenanceRemainingBudgetSec?: number;
+  missionElapsedSec?: number;
+  missionRemainingSeconds?: number;
+  missionTimeLimitSec?: number;
+  missionTimerRunning?: boolean;
 }
 
 export interface HardwareResult {

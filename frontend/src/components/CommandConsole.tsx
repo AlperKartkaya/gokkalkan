@@ -14,6 +14,7 @@ export function CommandConsole({
   onTriggerOperatorStop,
   onOpenMaintenance,
   stageRoundLimit,
+  children,
 }: {
   displayStage: Stage;
   displayRound: number;
@@ -28,6 +29,7 @@ export function CommandConsole({
   onTriggerOperatorStop: () => void;
   onOpenMaintenance: () => void;
   stageRoundLimit: (stage: Stage) => number;
+  children?: React.ReactNode;
 }) {
   return (
     <>
@@ -62,6 +64,8 @@ export function CommandConsole({
           ))}
         </div>
       </section>
+
+      {children}
 
       <section className="operator-action-strip rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 mt-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
         <div className="operator-action-buttons">

@@ -30,7 +30,6 @@ import {
   type OperatorReplayBundle,
   type OperatorReadinessItem,
   type OperatorReadinessReport,
-  type OperatorReadinessStatus,
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
@@ -42,6 +41,9 @@ import {
 } from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
 import { MissionHeader } from './components/MissionHeader';
+import { CommandConsole } from './components/CommandConsole';
+import { ReadinessDashboard } from './components/ReadinessDashboard';
+import { EventStream } from './components/EventStream';
 import { SafetyAuthorityPanel } from './components/SafetyAuthorityPanel';
 import { HardwareHealthBadge } from './components/HardwareHealthBadge';
 import { sendOperatorEStop } from './operatorApiClient';
@@ -187,20 +189,6 @@ function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame
       },
     ];
   });
-}
-
-const readinessCopy: Record<OperatorReadinessStatus, string> = {
-  ready: 'Hazır',
-  partial: 'Kısmi',
-  tbd: 'TBD',
-  blocked: 'Kilitli',
-};
-
-function readinessTone(status: OperatorReadinessStatus) {
-  if (status === 'ready') return 'border-[#33e68c]/30 bg-[#33e68c]/10 text-[#bfffe0]';
-  if (status === 'partial') return 'border-[#ffbb42]/30 bg-[#ffbb42]/10 text-[#ffe4ad]';
-  if (status === 'blocked') return 'border-[#ff4757]/30 bg-[#ff4757]/10 text-[#ffbdc4]';
-  return 'border-[#48a8ff]/30 bg-[#48a8ff]/10 text-[#cbe9ff]';
 }
 
 function operatorXForRange(range: number) {
@@ -1127,12 +1115,6 @@ function overlayPointsEqual(a: SensorOverlayPoint[], b: SensorOverlayPoint[]) {
   });
 }
 
-function commandLabel(result: CommandResult) {
-  if (result.kind === 'FireIntent') return 'FireIntent';
-  if (result.kind === 'ManualAimCommand') return 'ManualAimCommand';
-  if (result.kind === 'StageRequest') return 'StageRequest';
-  return 'ModeRequest';
-}
 
 function shortRecordPayload(record: OperatorTelemetryLogRecord) {
   const value = record.payload ? JSON.stringify(record.payload) : record.raw ?? 'payload yok';
@@ -2822,6 +2804,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         onRawLidarOpen={() => setRawLidarOpen(true)}
         onRawCameraOpen={() => setRawCameraOpen(true)}
         onReset={resetOperatorPanel}
+        missionRemainingSeconds={apiSnapshot?.missionRemainingSeconds}
       />
 
       <section className="operator-primary-grid">
@@ -2837,86 +2820,30 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         </section>
 
         <aside className="operator-side-rail">
-          <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-stage-control" aria-label="Aşama ve tur kontrolü">
-            <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görev</p>
-            <h2 className="m-0 mt-1 text-2xl font-black">Aşama / Tur</h2>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {([1, 2, 3] as const).map((item) => (
-                <button
-                  key={item}
-                  className={`rounded-lg border px-3 py-2 text-sm font-black ${displayStage === item ? 'border-[#33e68c]/40 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
-                  disabled={apiBusy}
-                  onClick={() => recordStage(item, 1)}
-                >
-                  Aşama {item}
-                </button>
-              ))}
-            </div>
-            <div
-              className="operator-round-grid mt-3"
-              style={{ '--round-count': stageRoundLimit(displayStage) } as CSSProperties}
-            >
-              {Array.from({ length: stageRoundLimit(displayStage) }, (_, index) => index + 1).map((item) => (
-                <button
-                  key={item}
-                  className={`rounded-full border px-1.5 py-1 text-[11px] font-black ${displayRound === item ? 'border-[#ffbb42]/40 bg-[#ffbb42]/14 text-[#ffe4ad]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
-                  disabled={apiBusy}
-                  onClick={() => recordStage(displayStage, item)}
-                >
-                  Tur {item}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <OperatorTrackScene
-            compact
-            stage={displayStage}
-            tracks={visibleTracks}
-            selectedTrackId={selectedTrackId}
-            shotTrackIds={shotTrackIds}
-            onSelect={setSelectedTrackId}
-          />
-
-          <section className="operator-action-strip rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
-            <div className="operator-action-buttons">
-              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5" data-testid="fire-cluster">
-                <button
-                  className={`min-h-16 w-full rounded-xl px-3 text-base font-black ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_18px_42px_rgba(255,71,87,.28)] fire-ready-pulse' : 'bg-white/[.08] text-[#91a6b7]'}`}
-                  disabled={!fireReady || apiBusy}
-                  data-testid="operator-fire-button"
-                  onClick={sendFireIntent}
-                >
-                  ATEŞ
-                </button>
-                <p className="m-0 mt-1 truncate text-center text-[11px] font-bold text-[#ffe4ad]">{fireCaption}</p>
-              </div>
-
-              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
-                <button
-                  className="min-h-16 w-full rounded-xl border border-[#ff4757]/35 bg-[#ff4757]/14 px-3 text-base font-black text-[#ffd3d7]"
-                  data-testid="operator-stop-button"
-                  disabled={operatorStopActive || apiBusy}
-                  onClick={triggerOperatorStop}
-                >
-                  ACİL DURDUR
-                </button>
-                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#ffbdc4]">{operatorStopActive ? 'AKTİF' : 'Hazır'}</p>
-              </div>
-
-              <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5">
-                <button
-                  className="min-h-16 w-full rounded-xl border border-[#48a8ff]/30 bg-[#48a8ff]/10 px-3 text-base font-black text-[#d7efff]"
-                  data-testid="operator-maintenance-button"
-                  disabled={!maintenanceReady}
-                  onClick={openMaintenance}
-                >
-                  BAKIM
-                </button>
-                <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91cfff]">{maintenanceStatusCopy}</p>
-              </div>
-            </div>
-          </section>
+          <CommandConsole
+            displayStage={displayStage}
+            displayRound={displayRound}
+            apiBusy={apiBusy}
+            fireReady={fireReady}
+            fireCaption={fireCaption}
+            operatorStopActive={operatorStopActive}
+            maintenanceReady={maintenanceReady}
+            maintenanceStatusCopy={maintenanceStatusCopy}
+            onRecordStage={recordStage}
+            onSendFireIntent={sendFireIntent}
+            onTriggerOperatorStop={triggerOperatorStop}
+            onOpenMaintenance={openMaintenance}
+            stageRoundLimit={stageRoundLimit}
+          >
+            <OperatorTrackScene
+              compact
+              stage={displayStage}
+              tracks={visibleTracks}
+              selectedTrackId={selectedTrackId}
+              shotTrackIds={shotTrackIds}
+              onSelect={setSelectedTrackId}
+            />
+          </CommandConsole>
         </aside>
       </section>
 
@@ -2929,55 +2856,14 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
             eStopBusy={apiBusy}
           />
 
-        <details className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" data-testid="operator-maintenance-drawer" open={maintenanceOpen} onToggle={(event) => setMaintenanceOpen(event.currentTarget.open)}>
-          <summary className="cursor-pointer list-none text-xl font-black text-[#ffe4ad]">Bakım / Diagnostik</summary>
-          <div className="mt-3 grid gap-2">
-            <AdapterRow
-              label="Perception Adapter"
-              item={readinessById.perception_adapter}
-              fallback="Kamera/model çıktısı TrackState sözleşmesine bağlanacak; canlı sınıflandırma adapterı TBD."
-            />
-            <AdapterRow
-              label="Radar/LiDAR Adapter"
-              item={readinessById.radar_lidar_adapter}
-              fallback="Menzil/açı/kalite protokolü seçilen sensöre göre TBD."
-            />
-            <AdapterRow
-              label="MCU / Hardware Protocol"
-              item={readinessById.hardware_adapter}
-              fallback="UART/RS422/CAN/Ethernet ve mesaj çerçevesi elektronik ekibiyle netleşecek."
-            />
-            <AdapterRow
-              label="Canlı Arming / Interlock"
-              item={readinessById.live_arming}
-              fallback="İki aşamalı arming, hakem/operatör kilidi ve fiziksel interlock tamamlanmadan kapalı."
-            />
-          </div>
-          <div className="mt-3 grid gap-2 text-sm">
-            <EvidenceRow label="API base" value={config.apiBaseUrl} />
-            <EvidenceRow label="Komut endpointleri" value="POST /stage · POST /mode · POST /fire-intent" />
-            <EvidenceRow label="Kanıt endpointleri" value="GET /sensor-frames · GET /readiness · GET /telemetry/export · GET /replay" />
-          </div>
-          <div className="mt-3 grid gap-2 text-sm" data-testid="operator-lidar-diagnostics">
-            <EvidenceRow label="LiDAR viewer" value="Dış diagnostic / görev UI değil" />
-            <EvidenceRow label="RPLIDAR / Livox" value="Kalibrasyon · firmware · ham point cloud" />
-            <EvidenceRow label="Operasyon verisi" value="SDK/driver → SensorFrame → Backend" />
-          </div>
-        </details>
+        <ReadinessDashboard
+          maintenanceOpen={maintenanceOpen}
+          setMaintenanceOpen={setMaintenanceOpen}
+          readinessById={readinessById}
+          config={config}
+        />
 
-        <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
-          <h2 className="m-0 text-xl font-black">Olay akışı</h2>
-          <div className="mt-3 grid max-h-80 gap-2 overflow-auto pr-1">
-            {commandResults.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz komut sonucu yok.</p>}
-            {commandResults.map((result) => (
-              <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
-                <b className={result.accepted ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{commandLabel(result)} · {result.accepted ? 'Kabul' : 'Blok'}</b>
-                <p className="m-0 mt-1 text-[#c8d8e2]">{result.message}</p>
-                <small className="mt-1 block text-[#91a6b7]">{result.createdAt}</small>
-              </article>
-            ))}
-          </div>
-        </section>
+        <EventStream commandResults={commandResults} />
       </section>
 
       <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} />
@@ -3054,16 +2940,3 @@ function EvidenceRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AdapterRow({ label, item }: { label: string; item: OperatorReadinessItem | undefined; fallback: string }) {
-  const status = item?.status ?? 'tbd';
-  return (
-    <article className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <b className="text-white">{label}</b>
-        <span className={`rounded-full border px-2 py-1 text-[11px] font-black uppercase tracking-[.08em] ${readinessTone(status)}`}>
-          {readinessCopy[status]}
-        </span>
-      </div>
-    </article>
-  );
-}

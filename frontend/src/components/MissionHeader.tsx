@@ -10,6 +10,7 @@ export function MissionHeader({
   onRawLidarOpen,
   onRawCameraOpen,
   onReset,
+  missionRemainingSeconds,
 }: {
   apiBusy: boolean;
   config: OperatorPanelConfig;
@@ -19,7 +20,10 @@ export function MissionHeader({
   onRawLidarOpen: () => void;
   onRawCameraOpen: () => void;
   onReset: () => void;
+  missionRemainingSeconds?: number;
 }) {
+  const isTimeCritical = missionRemainingSeconds !== undefined && missionRemainingSeconds <= 30;
+
   return (
     <header className="operator-header mb-3 flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
       <div className="min-w-0">
@@ -31,6 +35,14 @@ export function MissionHeader({
           <span className="text-xs text-[#25d8ff] font-bold">MOD: {mode.toUpperCase()}</span>
           <span className="text-xs text-[#25d8ff] font-bold">AŞAMA: {stage} TUR: {round}</span>
         </div>
+        
+        {missionRemainingSeconds !== undefined && (
+          <div className={`flex flex-col text-right justify-center rounded-lg px-2 border ${isTimeCritical ? 'border-[#ff4757]/60 bg-[#ff4757]/20 animate-pulse' : 'border-[#48a8ff]/30 bg-[#48a8ff]/10'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isTimeCritical ? 'text-[#ffbdc4]' : 'text-[#bfe7ff]'}`}>Süre</span>
+            <span className={`text-sm font-black ${isTimeCritical ? 'text-[#ff4757]' : 'text-white'}`}>{missionRemainingSeconds}s</span>
+          </div>
+        )}
+
         <div className="flex flex-col text-right">
           <span className="text-xs font-bold text-[#ffbb42]">{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
           <span className="text-xs font-bold text-[#bfffe0]">BAĞLANTI: {config.connectionState}</span>
