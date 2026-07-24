@@ -17,9 +17,16 @@ from itertools import count
 from math import isfinite
 import threading
 import time as _time
+import shutil
 from typing import Any, Callable, Literal
 
 from .hardware_adapter import HardwareAdapterBase
+from .safety_gate import (
+    ForbiddenZone,
+    LiveArmController,
+    SafetyInputs,
+    evaluate_safety as evaluate_pure_safety,
+)
 from .telemetry_log import JsonlTelemetryStore
 
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
@@ -41,6 +48,7 @@ BlockReason = Literal[
     "BLOCKED_BACKEND",
     "BLOCKED_SENSOR",
     "BLOCKED_INVALID_COMMAND",
+    "BLOCKED_ZONE_CONFIG",
 ]
 
 VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked", "maintenance"}
@@ -71,6 +79,7 @@ BLOCK_COPY: dict[BlockReason, str] = {
     "BLOCKED_BACKEND": "Backend bağlantısı yok; gerçek komut gönderilemez.",
     "BLOCKED_SENSOR": "Perception veya sensör adapter sağlığı doğrulanmadı.",
     "BLOCKED_INVALID_COMMAND": "Komut alanları güvenli sınırlar içinde değil.",
+    "BLOCKED_ZONE_CONFIG": "Yasak bölge yapılandırması geçersiz; komut fail-closed reddedildi.",
 }
 
 
@@ -261,6 +270,7 @@ class SafetyState:
     liveArmEnabled: bool
     blockReason: BlockReason
     explanation: str
+    decisionSnapshot: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -276,6 +286,7 @@ class SafetyState:
             "liveArmEnabled": self.liveArmEnabled,
             "blockReason": self.blockReason,
             "explanation": self.explanation,
+            "decisionSnapshot": self.decisionSnapshot,
         }
 
 
@@ -337,6 +348,14 @@ class OperatorService:
         pan_max_deg: float | None = None,
         tilt_min_deg: float | None = None,
         tilt_max_deg: float | None = None,
+        motion_forbidden_zones: tuple[ForbiddenZone, ...] = (),
+        fire_forbidden_zones: tuple[ForbiddenZone, ...] = (),
+        arm_hold_seconds: float = 2.0,
+        arm_timeout_seconds: float = 3.0,
+        physical_interlock_ok: bool = False,
+        backend_readiness_ok: bool = False,
+        disk_min_free_bytes: int = 0,
+        lidar_stale_seconds: float = 0.3,
     ) -> None:
         self._clock = clock
         self._ids = count(1)
@@ -356,6 +375,28 @@ class OperatorService:
         if self.runtime_mode not in {"SIM", "HIL", "LIVE"}:
             raise ValueError(f"Geçersiz runtime mode: {self.runtime_mode}")
         self.live_arm_enabled = False
+        self.arm_controller = LiveArmController(
+            hold_seconds=arm_hold_seconds,
+            timeout_seconds=arm_timeout_seconds,
+        )
+        self.physical_interlock_ok = physical_interlock_ok
+        self.backend_readiness_ok = backend_readiness_ok
+        self.pico_safe = dry_run
+        self.pico_state = "SAFE" if dry_run else "UNKNOWN"
+        self.pico_heartbeat_ok = dry_run
+        self.can_ok = dry_run
+        self.encoder_ok = dry_run
+        self.camera_ok = dry_run
+        self.track_ok = dry_run
+        self.lidar_ok = dry_run
+        self.disk_ok = True
+        self.disk_min_free_bytes = disk_min_free_bytes
+        self.lidar_stale_seconds = lidar_stale_seconds
+        self._last_lidar_update_monotonic: float | None = None
+        self.estop_physical_active = False
+        self.estop_reset_required = False
+        self.motion_forbidden_zones = motion_forbidden_zones
+        self.fire_forbidden_zones = fire_forbidden_zones
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
@@ -613,6 +654,7 @@ class OperatorService:
             "dryRun": self.dry_run,
             "runtimeMode": self.runtime_mode,
             "liveArmEnabled": self.live_arm_enabled,
+            "arm": self.arm_controller.snapshot(),
             "tracks": [track.to_dict() for track in self.tracks],
             "sensorFrames": [frame.to_dict() for frame in self.sensor_frames],
             "sensorHealth": self._sensor_health(),
@@ -671,10 +713,10 @@ class OperatorService:
             self._readiness_item(
                 "safety_gate",
                 "Safety Gate",
-                "partial",
+                "ready",
                 "Backend",
-                "Acil durdurma, mod, dost/düşman, menzil ve dry-run arming kontrolleri backend tarafında uygulanıyor.",
-                "Gerçek Acil Durdur, yasak alan ve hakem/operatör kilit girişleri elektronik arayüzle bağlanacak.",
+                "Saf karar/input snapshot, fail-closed sağlık matrisi, sürümlü yasak bölgeler, hold-to-arm ve kontrollü E-Stop reset uygulanıyor.",
+                "Gerçek Acil Durdur, interlock ve saha sağlık girişlerini HIL kabulünde doğrula.",
                 "SafetyState, HardwareCommand",
             ),
             self._readiness_item(
@@ -718,8 +760,8 @@ class OperatorService:
                 "Hardware Adapter",
                 "partial",
                 "Backend + Elektronik",
-                "Klasik CAN v0 codec, CanMcuAdapter ve Pico simülatörü çalışıyor; physicalOutput=false.",
-                "Sürümlü CAN ICD v1, Pico firmware ve imha hattı interlock mesajlarını tamamla.",
+                "CAN v1 CRC/sequence/command-tag/ACK codec'i, firmware sağlık/encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği hazır.",
+                "Pico'yu flashla; gerçek CAN controller/transceiver, E-Stop ve imha hattı interlock'unu HIL'de doğrula.",
                 "HardwareCommand, HardwareResult",
             ),
             self._readiness_item(
@@ -873,27 +915,64 @@ class OperatorService:
         elif kind == "StageRequest":
             command_payload_ok = stage_request_payload_ok(payload)
 
-        block: BlockReason = "ALLOWED"
-        if self.estop:
-            block = "BLOCKED_ESTOP"
-        elif not self.backend_connected:
-            block = "BLOCKED_BACKEND"
-        elif not dry_run and not live_arm_enabled:
-            block = "BLOCKED_ARMING"
-        elif kind == "ManualAimCommand" and not self.motion_zone_ok:
-            block = "BLOCKED_MOTION_ZONE"
-        elif kind == "ManualAimCommand" and not self._pantilt_within_soft_limits(payload):
-            block = "BLOCKED_MOTION_ZONE"
-        elif kind == "FireIntent" and not self.fire_zone_ok:
-            block = "BLOCKED_FIRE_ZONE"
-        elif not mode_ok:
-            block = "BLOCKED_MODE"
-        elif kind in {"ManualAimCommand", "FireIntent", "StageRequest"} and not command_payload_ok:
+        current_pan, current_tilt, position_valid = self._current_position()
+        target_pan = current_pan
+        target_tilt = current_tilt
+        if kind == "ManualAimCommand":
+            try:
+                target_pan += float(payload.get("panDeltaDeg", 0.0))
+                target_tilt += float(payload.get("tiltDeltaDeg", 0.0))
+            except (TypeError, ValueError):
+                position_valid = False
+        if kind == "FireIntent" and target:
+            try:
+                target_pan = float(target.get("bearingDeg", current_pan))
+            except (TypeError, ValueError):
+                position_valid = False
+
+        action = "motion" if kind == "ManualAimCommand" else "fire" if kind == "FireIntent" else "other"
+        soft_limits_ok = (
+            self._position_within_soft_limits(target_pan, target_tilt)
+            if action == "motion"
+            else True
+        )
+        inputs = SafetyInputs(
+            action=action,
+            runtime_mode=self.runtime_mode,
+            estop_latched=self.estop,
+            backend_ok=self.backend_connected,
+            arm_state=self.arm_controller.state if not dry_run else "ARMED",
+            physical_interlock_ok=self.physical_interlock_ok if not dry_run else True,
+            pico_heartbeat_ok=self.pico_heartbeat_ok,
+            can_ok=self.can_ok,
+            encoder_ok=self.encoder_ok,
+            camera_ok=self.camera_ok or self.perception_connected,
+            track_ok=self.track_ok or self.perception_connected,
+            lidar_ok=self.lidar_ok or self.sensor_adapter_connected,
+            disk_ok=self.disk_ok,
+            mode_ok=mode_ok,
+            payload_ok=command_payload_ok,
+            target_gate_ok=target_gate_ok,
+            position_valid=position_valid,
+            target_pan_deg=target_pan,
+            target_tilt_deg=target_tilt,
+            soft_limits_ok=soft_limits_ok
+            and (self.motion_zone_ok if action == "motion" else True)
+            and (self.fire_zone_ok if action == "fire" else True),
+            motion_zones=self.motion_forbidden_zones,
+            fire_zones=self.fire_forbidden_zones,
+        )
+        try:
+            decision = evaluate_pure_safety(inputs)
+        except Exception as exc:
+            decision = None
             block = "BLOCKED_INVALID_COMMAND"
-        elif not target_gate_ok:
-            block = "BLOCKED_TARGET_GATE"
-        elif not dry_run and (not self.perception_connected or not self.sensor_adapter_connected):
-            block = "BLOCKED_SENSOR"
+            explanation = f"Safety Gate değerlendirme hatası; fail-closed: {type(exc).__name__}"
+            snapshot: dict[str, Any] = {"error": type(exc).__name__}
+        else:
+            block = decision.reason_code
+            explanation = decision.explanation
+            snapshot = decision.input_snapshot
 
         return SafetyState(
             estop=self.estop,
@@ -906,8 +985,9 @@ class OperatorService:
             sensorAdapterConnected=self.sensor_adapter_connected,
             dryRun=dry_run,
             liveArmEnabled=live_arm_enabled,
-            blockReason=block,
-            explanation=BLOCK_COPY[block],
+            blockReason=block,  # type: ignore[arg-type]
+            explanation=explanation,
+            decisionSnapshot=snapshot,
         )
 
     def handle_mode_request(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1028,6 +1108,33 @@ class OperatorService:
         self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
+    def _current_position(self) -> tuple[float, float, bool]:
+        if self.dry_run:
+            return (0.0, 0.0, True)
+        try:
+            health = self.hardware.health_check()
+            status = health.get("mcuStatus")
+            if not isinstance(status, dict):
+                return (0.0, 0.0, False)
+            pan = float(status["panDeg"])
+            tilt = float(status["tiltDeg"])
+            return (pan, tilt, isfinite(pan) and isfinite(tilt))
+        except (KeyError, TypeError, ValueError, RuntimeError):
+            return (0.0, 0.0, False)
+
+    def _position_within_soft_limits(self, pan: float, tilt: float) -> bool:
+        if not isfinite(pan) or not isfinite(tilt):
+            return False
+        if self.pan_min_deg is not None and pan < self.pan_min_deg:
+            return False
+        if self.pan_max_deg is not None and pan > self.pan_max_deg:
+            return False
+        if self.tilt_min_deg is not None and tilt < self.tilt_min_deg:
+            return False
+        if self.tilt_max_deg is not None and tilt > self.tilt_max_deg:
+            return False
+        return True
+
     def _pantilt_within_soft_limits(self, payload: dict[str, Any]) -> bool:
         """Pan/tilt yazılım limit kontrolü.
 
@@ -1042,7 +1149,7 @@ class OperatorService:
             cur_pan  = float(mcu.get("panDeg",  0.0))
             cur_tilt = float(mcu.get("tiltDeg", 0.0))
         except Exception:
-            return True   # adapter erişilemezse bloklama
+            return False
 
         new_pan  = cur_pan  + float(payload.get("panDeltaDeg",  0.0))
         new_tilt = cur_tilt + float(payload.get("tiltDeltaDeg", 0.0))
@@ -1057,7 +1164,7 @@ class OperatorService:
             return False
         return True
 
-    def set_estop(self, active: bool) -> None:
+    def set_estop(self, active: bool, *, physical: bool = True) -> None:
         """Mission Core owner thread'inde E-Stop durumunu güncelle.
 
         CAN/GPIO callback'leri bu yöntemi doğrudan çağırmaz; Mission Core
@@ -1065,14 +1172,168 @@ class OperatorService:
         """
         self._require_owner()
         prev = self.estop
-        self.estop = active
-        if active != prev:
+        if physical:
+            self.estop_physical_active = active
+        if active:
+            self.estop = True
+            self.estop_reset_required = True
+            self.disarm("ESTOP_ACTIVE")
+        # Physical release only removes the signal.  The latch stays active
+        # until reset_estop verifies Pico SAFE and records an operator identity.
+        if self.estop != prev or active:
             self._append_event(
                 "safety",
                 "ESTOP_CHANGE",
                 f"E-Stop {'aktif' if active else 'pasif'} — harici sinyal.",
-                {"active": active, "source": "gpio_or_can"},
+                {"active": active, "source": "gpio_or_can" if physical else "software"},
             )
+
+    def reset_estop(self, operator_id: str) -> dict[str, Any]:
+        self._require_owner()
+        allowed = (
+            bool(operator_id.strip())
+            and not self.estop_physical_active
+            and self.pico_safe
+            and self.pico_state in {"SAFE", "READY"}
+            and self.estop_reset_required
+        )
+        if allowed:
+            self.estop = False
+            self.estop_reset_required = False
+        self._append_event(
+            "safety",
+            "ESTOP_RESET",
+            "E-Stop mandalı kontrollü olarak temizlendi." if allowed else "E-Stop reset koşulları sağlanmadı.",
+            {"accepted": allowed, "operatorId": operator_id},
+        )
+        return {"ok": allowed, "estop": self.estop, "physicalOutput": False}
+
+    def arm_hold(self, operator_holding: bool, operator_id: str) -> dict[str, Any]:
+        self._require_owner()
+        previously_armed = self.live_arm_enabled
+        if not operator_id.strip():
+            self.disarm("MISSING_OPERATOR_ID")
+        else:
+            self.arm_controller.hold(
+                _time.monotonic(),
+                operator_holding=operator_holding,
+                physical_interlock_ok=self.physical_interlock_ok,
+                readiness_ok=self.backend_readiness_ok and self._all_live_health_ok(),
+                pico_safe=self.pico_safe,
+            )
+        self.live_arm_enabled = self.arm_controller.state == "ARMED"
+        if self.live_arm_enabled and not previously_armed:
+            result = self.hardware.execute(
+                {"kind": "SysCmd", "payload": {"arm": True}, "commandId": self._active_command_id}
+            )
+            self.telemetry.append("hardware_result", result)
+            if not result.get("accepted", False):
+                self.arm_controller.disarm("PICO_ARM_ACK_FAILED", fault=True)
+                self.live_arm_enabled = False
+        return {"ok": self.live_arm_enabled, "arm": self.arm_controller.snapshot(), "physicalOutput": False}
+
+    def disarm(self, reason: str = "OPERATOR_DISARM") -> dict[str, Any]:
+        self._require_owner()
+        was_armed = self.live_arm_enabled
+        self.arm_controller.disarm(reason)
+        self.live_arm_enabled = False
+        if was_armed:
+            result = self.hardware.execute(
+                {"kind": "SysCmd", "payload": {"arm": False}, "commandId": self._active_command_id}
+            )
+            self.telemetry.append("hardware_result", result)
+        return {"ok": True, "arm": self.arm_controller.snapshot(), "physicalOutput": False}
+
+    def _all_live_health_ok(self) -> bool:
+        return all(
+            (
+                self.pico_heartbeat_ok,
+                self.can_ok,
+                self.encoder_ok,
+                self.camera_ok or self.perception_connected,
+                self.track_ok or self.perception_connected,
+                self.lidar_ok or self.sensor_adapter_connected,
+                self.disk_ok,
+            )
+        )
+
+    def update_safety_health(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Trusted Mission Core input; intentionally not a public HTTP endpoint."""
+        self._require_owner()
+        names = (
+            "physical_interlock_ok", "backend_readiness_ok", "pico_safe",
+            "pico_heartbeat_ok", "can_ok", "encoder_ok", "camera_ok",
+            "track_ok", "lidar_ok", "disk_ok",
+        )
+        for name in names:
+            if name in payload:
+                setattr(self, name, bool(payload[name]))
+        if "pico_state" in payload:
+            self.pico_state = str(payload["pico_state"]).upper()
+        was_armed = self.live_arm_enabled
+        self.arm_controller.tick(
+            _time.monotonic(),
+            prerequisites_ok=(
+                self.physical_interlock_ok
+                and self.backend_readiness_ok
+                and self.pico_safe
+                and self._all_live_health_ok()
+            ),
+        )
+        self.live_arm_enabled = self.arm_controller.state == "ARMED"
+        if was_armed and not self.live_arm_enabled:
+            result = self.hardware.execute(
+                {"kind": "SysCmd", "payload": {"arm": False}, "commandId": self._active_command_id}
+            )
+            self.telemetry.append("hardware_result", result)
+        return {"ok": True, "arm": self.arm_controller.snapshot(), "physicalOutput": False}
+
+    def refresh_hardware_health(self) -> None:
+        """Poll the adapter on the owner thread and drop arm on any failure."""
+
+        self._require_owner()
+        if self.dry_run:
+            return
+        try:
+            health = self.hardware.health_check()
+            status = health.get("mcuStatus", {})
+            if not isinstance(status, dict):
+                status = {}
+            self.can_ok = bool(health.get("busConnected", False))
+            self.pico_heartbeat_ok = bool(health.get("picoReachable", False))
+            self.encoder_ok = bool(health.get("encoderOk", status.get("encoderOk", False)))
+            self.pico_state = str(status.get("state", "")).upper()
+            self.pico_safe = (
+                self.pico_state in {"SAFE", "READY", "ARMED", "FIRING"}
+                and not bool(status.get("estopActive", True))
+                and int(status.get("faultCode", status.get("errorCode", 1))) == 0
+            )
+        except Exception:
+            self.can_ok = self.pico_heartbeat_ok = self.encoder_ok = self.pico_safe = False
+        try:
+            telemetry_parent = self.telemetry.path.parent
+            telemetry_parent.mkdir(parents=True, exist_ok=True)
+            self.disk_ok = shutil.disk_usage(telemetry_parent).free >= self.disk_min_free_bytes
+        except OSError:
+            self.disk_ok = False
+        if self._last_lidar_update_monotonic is not None:
+            self.lidar_ok = (
+                _time.monotonic() - self._last_lidar_update_monotonic
+                <= self.lidar_stale_seconds
+            )
+        before = self.live_arm_enabled
+        self.arm_controller.tick(
+            _time.monotonic(),
+            prerequisites_ok=(
+                self.physical_interlock_ok
+                and self.backend_readiness_ok
+                and self.pico_safe
+                and self._all_live_health_ok()
+            ),
+        )
+        self.live_arm_enabled = self.arm_controller.state == "ARMED"
+        if before and not self.live_arm_enabled:
+            self.hardware.execute({"kind": "SysCmd", "payload": {"arm": False}})
 
     def update_tracks(self, tracks_data: list[dict[str, Any]], source: str = "perception") -> dict[str, Any]:
         """Perception veya sensör adapter'ından gelen canlı track listesini güncelle.
@@ -1112,6 +1373,12 @@ class OperatorService:
 
         self.tracks = updated
         self.perception_connected = True
+        self.camera_ok = True
+        self.track_ok = bool(updated)
+        if "lidar" in source.lower() or "sensor" in source.lower():
+            self.sensor_adapter_connected = True
+            self.lidar_ok = bool(updated)
+            self._last_lidar_update_monotonic = _time.monotonic()
         self._append_event(
             "perception",
             "TRACKS_UPDATE",
@@ -1136,8 +1403,10 @@ class OperatorService:
         self._require_owner()
         changed = self.perception_connected != healthy
         self.perception_connected = healthy
+        self.camera_ok = healthy
+        self.track_ok = healthy
         if not healthy:
-            self.live_arm_enabled = False
+            self.disarm("PERCEPTION_UNHEALTHY")
         if changed:
             self._append_event(
                 "perception",

@@ -6,14 +6,16 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü**. Aşama 1/2/3 senaryolarını görselleştirir.
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. JSONL telemetri, Safety Gate ve görev endpoint’leri aktiftir.
-- `backend/hardware_mock/` — **Pico MCU simülatörü** (`mcu_simulator.py`). Gerçek Pico olmadan tam CAN protokol testi.
+- `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
+- `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi ve CAN v1 codec çekirdeği.
 - `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.
-- İmalat öncesi sıradaki işler; Pico firmware, canlı arm/interlock zinciri,
-  gerçek kamera/TFA50-L adapter’ları, HIL ve uçtan uca fault-injection
-  testleridir. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
+- Faz 4–5 yazılımı; saf/fail-closed Safety Gate, canlı arm/E-Stop reset zinciri,
+  CAN v1 ICD ve Pico firmware çekirdeğiyle tamamlanmıştır. Sıradaki işler gerçek
+  kamera/TFA50-L adapter’ları, dijital ikiz, HIL ve uçtan uca fault-injection
+  kanıtlarıdır. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
 
 ## Komut Zinciri
 
@@ -109,11 +111,19 @@ cd frontend && npm install && npm run dev
 | `/manual-aim` | POST | Manuel pan/tilt komutu niyeti |
 | `/fire-intent` | POST | Ateş niyeti |
 | `/tracks/update` | **POST** | Perception bridge track besleme |
-| `/estop` | **POST** | E-Stop tetikle / temizle |
+| `/estop` | **POST** | E-Stop mandalını tetikle; HTTP ile temizlenemez |
+| `/estop/reset` | **POST** | Fiziksel bırakma + Pico SAFE sonrası kontrollü reset |
+| `/arm/hold` | **POST** | Kimlikli hold-to-arm keepalive |
+| `/arm/disarm` | **POST** | Canlı arm yetkisini düşür |
 | `/telemetry/export` | GET | JSONL telemetri dışa aktarma |
 | `/replay` | GET | Komut/olay tekrar oynatma |
 | `/readiness` | GET | Final fazı hazırlık raporu |
 | `/sensor-frames` | GET | Radar/LiDAR biçimli replay verisi |
+
+LIVE profilinde bütün `POST` istekleri `Authorization: Bearer …` ve
+`X-Operator-Id` başlıklarını taşır; kimlik komut envelope/telemetri kaydına
+girer. SIM/HIL geliştirme akışları bu kimlik kapısını fiziksel yetki olarak
+kullanmaz.
 
 ## Testler
 
@@ -129,6 +139,11 @@ cd frontend && npm install && npm run dev
 
 # Frontend tip kontrolü
 cd frontend && npm run typecheck && npm run build
+
+# Pico firmware host çekirdeği
+cmake -S firmware/pico -B build/firmware-host -G Ninja
+cmake --build build/firmware-host
+ctest --test-dir build/firmware-host --output-on-failure
 ```
 
 ## Önemli Dokümanlar
@@ -140,6 +155,7 @@ cd frontend && npm run typecheck && npm run build
 - `docs/adr/` — kabul edilmiş çalışma ortamı, CAN ve kamera/LiDAR kararları.
 - `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
   geriye uyumluluk politikası.
+- `docs/can_icd_v1.md` — sürümlü CAN frame, CRC, sequence ve ACK/NACK sözleşmesi.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
 - `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.

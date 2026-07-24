@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 import signal
@@ -38,6 +39,7 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
     service: OperatorService | None = None
     core: MissionCore | None = None
     allowed_origins: tuple[str, ...] = ("*",)
+    operator_token: str | None = None
     server_version = "GokkalkanOperatorApi/0.1"
 
     def handle(self) -> None:
@@ -104,7 +106,12 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        if not self._authorize_mutation():
+            return
         payload = self._read_json()
+        operator_id = self.headers.get("X-Operator-Id", "").strip()
+        if operator_id:
+            payload["operatorId"] = operator_id
         if path == "/mode":
             self._submit("ModeRequest", payload)
         elif path == "/stage":
@@ -129,11 +136,19 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
                 source=str(payload.get("source", "perception")),
             )
         elif path == "/estop":
-            self._submit(
-                "EStopChange",
-                {"active": bool(payload.get("active", True)), **payload},
-                source="operator-estop-http",
-            )
+            if bool(payload.get("active", True)):
+                self._submit("EStopChange", {"active": True, **payload}, source="operator-estop-http")
+            else:
+                self._send_json(
+                    {"error": "physical_reset_required", "detail": "HTTP E-Stop temizleyemez."},
+                    HTTPStatus.CONFLICT,
+                )
+        elif path == "/estop/reset":
+            self._submit("EStopReset", payload)
+        elif path == "/arm/hold":
+            self._submit("ArmHold", payload)
+        elif path == "/arm/disarm":
+            self._submit("Disarm", payload)
         elif path == "/maintenance":
             self._submit("MaintenanceStart", payload)
         elif path == "/maintenance/end":
@@ -212,6 +227,23 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             assert isinstance(response, dict)
             self._send_json(response)
 
+    def _authorize_mutation(self) -> bool:
+        """LIVE mutations require both an operator identity and bearer token."""
+
+        if self.operator_service.runtime_mode != "LIVE":
+            return True
+        expected = self.operator_token or ""
+        supplied = self.headers.get("Authorization", "")
+        operator_id = self.headers.get("X-Operator-Id", "").strip()
+        token = supplied.removeprefix("Bearer ").strip() if supplied.startswith("Bearer ") else ""
+        if not expected or not operator_id or not hmac.compare_digest(token, expected):
+            self._send_json(
+                {"error": "unauthorized", "detail": "LIVE komutları kimlik ve token gerektirir."},
+                HTTPStatus.UNAUTHORIZED,
+            )
+            return False
+        return True
+
     def _stream_state(self) -> None:
         query = urlparse(self.path).query
         try:
@@ -285,7 +317,7 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type, Idempotency-Key, Last-Event-ID",
+            "Content-Type, Idempotency-Key, Last-Event-ID, Authorization, X-Operator-Id",
         )
         self.end_headers()
         self.wfile.write(body)
@@ -298,6 +330,7 @@ def build_http_server(
     telemetry_jsonl: str | None = None,
     allowed_origins: tuple[str, ...] = ("*",),
     core: MissionCore | None = None,
+    operator_token: str | None = None,
 ) -> ThreadingHTTPServer:
     class BoundHandler(OperatorApiHandler):
         pass
@@ -306,6 +339,7 @@ def build_http_server(
     BoundHandler.service = service or OperatorService(telemetry=telemetry)
     BoundHandler.core = core or MissionCore(BoundHandler.service)
     BoundHandler.allowed_origins = allowed_origins
+    BoundHandler.operator_token = operator_token
 
     class CoreHttpServer(ThreadingHTTPServer):
         daemon_threads = True
@@ -426,6 +460,12 @@ def main(argv: list[str] | None = None) -> None:
                 "pan_max_deg": settings.safety.pan_max_deg,
                 "tilt_min_deg": settings.safety.tilt_min_deg,
                 "tilt_max_deg": settings.safety.tilt_max_deg,
+                "motion_forbidden_zones": settings.safety.motion_forbidden_zones,
+                "fire_forbidden_zones": settings.safety.fire_forbidden_zones,
+                "arm_hold_seconds": settings.safety.arm_hold_ms / 1000.0,
+                "arm_timeout_seconds": settings.safety.arm_timeout_ms / 1000.0,
+                "disk_min_free_bytes": settings.telemetry.min_free_bytes,
+                "lidar_stale_seconds": settings.sensors.lidar_stale_ms / 1000.0,
             },
         )
     except RuntimeConfigurationError as exc:
@@ -453,6 +493,11 @@ def main(argv: list[str] | None = None) -> None:
         settings.api.port,
         service=service,
         allowed_origins=settings.api.allowed_origins,
+        operator_token=(
+            Path(settings.live.operator_token_file).read_text(encoding="utf-8").strip()
+            if runtime_mode == "LIVE" and settings.live.operator_token_file
+            else None
+        ),
     )
     print(
         "Gökkalkan operator API listening on "

@@ -20,8 +20,8 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 | --- | --- | --- | --- | --- | --- | --- |
 | `SYS-DIM-100` | txt 468–469 | Her sistem boyutu 100 cm’den küçük | Mekanik CAD | Ölçüm tutanağı | Final manifest | Mekanik ölçüm bekliyor |
 | `SYS-RANGE-5-10-15` | txt 475–480 | 5/10/15 m hedef imha | Mission Core, perception, TFA50-L | `LID-005`, `REL-003` | Range + `FireIntent`, `VID-Y2/Y6` | HIL/fiziksel bekliyor |
-| `SAFE-MOTION-ZONE` | txt 491–495 | Harekete yasak alan | Backend Safety Gate | `test_soft_limit_blocks_out_of_range_aim`; `SAFE-013` | `BLOCKED_MOTION_ZONE` | Yazılım kısmi |
-| `SAFE-FIRE-ZONE` | txt 491–495 | Atışa yasak alan | Backend Safety Gate | `SAFE-013`, `SAFE-017` | `BLOCKED_FIRE_ZONE` | Yazılım kısmi |
+| `SAFE-MOTION-ZONE` | txt 491–495 | Harekete yasak alan | Backend Safety Gate | `tests/test_phase4_safety.py`; `SAFE-013` | `BLOCKED_MOTION_ZONE` | Unit doğrulandı; fiziksel bekliyor |
+| `SAFE-FIRE-ZONE` | txt 491–495 | Atışa yasak alan | Backend Safety Gate | `tests/test_phase4_safety.py`; `SAFE-013/017` | `BLOCKED_FIRE_ZONE` | Unit doğrulandı; fiziksel bekliyor |
 | `SAFE-ENERGY` | txt 496–504 | Güvenlik uygulanmadan enerji verilmemesi | ADR-001/002, runtime gate, fiziksel interlock | `tests/test_runtime_mode.py` | BOOT `runtimeMode`, readiness | Yazılım kapısı var; fiziksel bekliyor |
 | `SAFE-ESTOP` | txt 636–637 ve PDF §6 | Güvenli konumda kablolu Acil Durdur | Pico + emniyet rölesi + Backend | `test_set_estop_blocks_all_commands`, `test_estop_endpoint_activates_and_blocks`, `SAFE-015/017` | `ESTOP_CHANGE`, `VID-Y3/Y4` | Mock doğrulandı; HIL bekliyor |
 | `SAFE-CLIENT-AUTHORITY` | mimari türetim | UI güvenlik modunu gevşetemez | `OperatorService`, runtime factory | `test_live_service_ignores_client_dry_run_override`, `tests/test_runtime_mode.py` | BOOT/runtime audit | Unit doğrulandı |
@@ -37,7 +37,7 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 | `STAGE-1` | txt 578–585, 615–617 | Durağan hedef, iki eksen, Manuel Mod | Backend/frontend/perception | Stage 1 scenario ve timer testleri | Stage/Manual/Fire, `VID-Y2` | Mock doğrulandı; fiziksel bekliyor |
 | `STAGE-2` | txt 589–595, 617–620 | Otonom tespit/takip; parkurdan çıkmadan imha | Backend/frontend/perception | Stage 2 scenario | Track/Fire/round | Mock doğrulandı |
 | `STAGE-3` | txt 599–605, 621–623 | Doğru hedefi doğru menzilde otonom imha | Backend/perception/TFA50-L | target/range gate ve scenario testleri | Classification/range/Fire | Mock kısmi; gerçek sensör bekliyor |
-| `ZERO-REFERENCE` | txt 624–627 | Başlangıçta yaw/elev 0° | Pico/encoder calibration | `FW-007`, HIL zero testi | MCU status + calibration hash | HIL bekliyor |
+| `ZERO-REFERENCE` | txt 624–627 | Başlangıçta yaw/elev 0° | Pico/encoder calibration | `tests/test_phase5_firmware.py`, HIL zero testi | CAN v1 encoder status | Host doğrulandı; HIL bekliyor |
 | `MAINT-BUDGET` | txt 628–635 | Toplam 10 dk; istek başına en az 30 sn | Backend maintenance state | `MaintenanceBudgetTest` | `MAINTENANCE_START/END` | Unit doğrulandı |
 
 ## Görev Kabiliyeti Gösterimi Videosu

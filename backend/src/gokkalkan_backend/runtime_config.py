@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tomllib
+import ipaddress
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, TypeVar
 
 from .runtime_mode import RuntimeLaunchConfig, RuntimeMode
+from .safety_gate import ForbiddenZone
 
 T = TypeVar("T")
 
@@ -67,6 +69,11 @@ class SafetySettings:
     tilt_max_deg: float
     command_timeout_ms: int
     live_output_enabled: bool
+    zone_schema_version: int = 1
+    motion_forbidden_zones: tuple[ForbiddenZone, ...] = ()
+    fire_forbidden_zones: tuple[ForbiddenZone, ...] = ()
+    arm_hold_ms: int = 2000
+    arm_timeout_ms: int = 3000
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +165,30 @@ def _parse_origins(api: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(item.strip() for item in raw)
 
 
+def _parse_zones(table: Mapping[str, Any], key: str) -> tuple[ForbiddenZone, ...]:
+    raw = table.get(key, [])
+    if not isinstance(raw, list):
+        raise RuntimeConfigError(f"safety.{key} must be a list")
+    zones: list[ForbiddenZone] = []
+    for index, value in enumerate(raw):
+        if not isinstance(value, dict):
+            raise RuntimeConfigError(f"safety.{key}[{index}] must be a table")
+        try:
+            zone = ForbiddenZone(
+                name=str(value["name"]),
+                pan_min_deg=float(value["pan_min_deg"]),
+                pan_max_deg=float(value["pan_max_deg"]),
+                tilt_min_deg=float(value["tilt_min_deg"]),
+                tilt_max_deg=float(value["tilt_max_deg"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeConfigError(f"invalid safety.{key}[{index}]") from exc
+        if not zone.name.strip() or not zone.valid():
+            raise RuntimeConfigError(f"invalid safety.{key}[{index}] geometry")
+        zones.append(zone)
+    return tuple(zones)
+
+
 def _validate_settings(settings: RuntimeSettings) -> None:
     if settings.schema_version != 1:
         raise RuntimeConfigError(
@@ -190,6 +221,13 @@ def _validate_settings(settings: RuntimeSettings) -> None:
         50,
         10_000,
     )
+    if settings.safety.zone_schema_version != 1:
+        raise RuntimeConfigError("unsupported safety.zone_schema_version")
+    _bounded("safety.arm_hold_ms", settings.safety.arm_hold_ms, 250, 10_000)
+    _bounded("safety.arm_timeout_ms", settings.safety.arm_timeout_ms, 500, 30_000)
+    for zone in (*settings.safety.motion_forbidden_zones, *settings.safety.fire_forbidden_zones):
+        if not zone.valid():
+            raise RuntimeConfigError(f"invalid forbidden zone geometry: {zone.name}")
     _bounded("telemetry.max_bytes", settings.telemetry.max_bytes, 1_048_576, 2**40)
     _bounded(
         "telemetry.min_free_bytes",
@@ -226,6 +264,15 @@ def _validate_settings(settings: RuntimeSettings) -> None:
             raise RuntimeConfigError("LIVE profile cannot use wildcard CORS origin")
         if virtual_can:
             raise RuntimeConfigError("LIVE profile requires a physical CAN channel")
+        try:
+            loopback = (
+                settings.api.host == "localhost"
+                or ipaddress.ip_address(settings.api.host).is_loopback
+            )
+        except ValueError:
+            loopback = False
+        if not loopback:
+            raise RuntimeConfigError("LIVE API host must be loopback")
         required_live = {
             "live.interlock_provider": settings.live.interlock_provider,
             "live.readiness_provider": settings.live.readiness_provider,
@@ -278,6 +325,11 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
             tilt_max_deg=_required(safety, "tilt_max_deg", float),
             command_timeout_ms=_required(safety, "command_timeout_ms", int),
             live_output_enabled=_required(safety, "live_output_enabled", bool),
+            zone_schema_version=int(safety.get("zone_schema_version", 1)),
+            motion_forbidden_zones=_parse_zones(safety, "motion_forbidden_zones"),
+            fire_forbidden_zones=_parse_zones(safety, "fire_forbidden_zones"),
+            arm_hold_ms=int(safety.get("arm_hold_ms", 2000)),
+            arm_timeout_ms=int(safety.get("arm_timeout_ms", 3000)),
         ),
         telemetry=TelemetrySettings(
             path=Path(_required(telemetry, "path", str)),

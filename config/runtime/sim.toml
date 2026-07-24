@@ -18,6 +18,17 @@ pan_max_deg = 75.0
 tilt_min_deg = -10.0
 tilt_max_deg = 45.0
 command_timeout_ms = 750
+zone_schema_version = 1
+arm_hold_ms = 2000
+arm_timeout_ms = 3000
+motion_forbidden_zones = [
+  { name = "rear-left", pan_min_deg = -180.0, pan_max_deg = -75.0, tilt_min_deg = -90.0, tilt_max_deg = 90.0 },
+  { name = "rear-right", pan_min_deg = 75.0, pan_max_deg = 180.0, tilt_min_deg = -90.0, tilt_max_deg = 90.0 },
+]
+fire_forbidden_zones = [
+  { name = "rear-left", pan_min_deg = -180.0, pan_max_deg = -75.0, tilt_min_deg = -90.0, tilt_max_deg = 90.0 },
+  { name = "rear-right", pan_min_deg = 75.0, pan_max_deg = 180.0, tilt_min_deg = -90.0, tilt_max_deg = 90.0 },
+]
 live_output_enabled = false
 
 [telemetry]

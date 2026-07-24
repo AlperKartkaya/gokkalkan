@@ -45,6 +45,7 @@ from gokkalkan_backend.hardware_adapter import (
     pack_status,
     unpack_pantilt_cmd,
 )
+from firmware_model import FirmwareModel
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -113,6 +114,8 @@ class McuSimulator:
         self.estop:     bool  = False
         self.fire_count: int  = 0
         self.cmd_count:  int  = 0
+        self.firmware = FirmwareModel()
+        self.firmware.boot_complete()
 
         self._bus: object      = None
         self._running: bool    = False
@@ -172,10 +175,15 @@ class McuSimulator:
 
         with self._lock:
             self.cmd_count += 1
+            self.firmware.update_inputs(
+                now_ms=int(time.monotonic() * 1000),
+                estop_active=self.estop,
+                heartbeat=True,
+            )
 
             if arb_id == CAN_ID_PANTILT_CMD:
                 parsed = unpack_pantilt_cmd(data)
-                if parsed:
+                if parsed and self.firmware.state == "ARMED":
                     self.pan_deg  = parsed["panDeg"]
                     self.tilt_deg = parsed["tiltDeg"]
                     if self.verbose:
@@ -186,11 +194,11 @@ class McuSimulator:
                         print(f"\n  ← {msg}")
                         self._log_event(msg)
                 else:
-                    print("\n  [UYARI] PanTilt paketi checksum hatası!")
-                    self._log_event("PanTilt paketi checksum hatası!")
+                    print("\n  [UYARI] PanTilt paketi bozuk veya firmware durumu uygun değil!")
+                    self._log_event("PanTilt reddedildi: CRC/state")
 
             elif arb_id == CAN_ID_FIRE_CMD:
-                if data and data[0] == 0x01:
+                if data and data[0] == 0x01 and self.firmware.command("FIRE") == "FIRING":
                     self.fire_count += 1
                     stage = data[1] if len(data) > 1 else "?"
                     msg = f"ATEŞ KOMUTU #{self.fire_count} alındı — Aşama {stage}"
@@ -203,6 +211,7 @@ class McuSimulator:
 
             elif arb_id == CAN_ID_SYS_CMD:
                 arm = bool(data[0]) if data else False
+                self.firmware.command("ARM" if arm else "DISARM")
                 msg = f"Sistem komutu: {'ARM' if arm else 'DISARM'}"
                 print(f"\n  ⚙ {msg}")
                 self._log_event(msg)
@@ -226,8 +235,8 @@ class McuSimulator:
                     pan_centideg=pan_c,
                     tilt_centideg=tilt_c,
                     estop_active=estop,
-                    motion_ok=not estop,
-                    fire_ready=not estop,
+                    motion_ok=not estop and self.firmware.state in {"READY", "ARMED", "FIRING"},
+                    fire_ready=not estop and self.firmware.state == "ARMED",
                 )
                 frame = can.Message(
                     arbitration_id=CAN_ID_STATUS,
@@ -273,11 +282,15 @@ class McuSimulator:
                 with self._lock:
                     self.estop = not self.estop
                     active = self.estop
+                    if active:
+                        self.firmware.fault("ESTOP_ACTIVE")
                 self._send_estop_event(active)
             elif key == "r":
                 with self._lock:
                     self.pan_deg  = 0.0
                     self.tilt_deg = 0.0
+                    if not self.estop:
+                        self.firmware.command("RESET")
                 print("\n  Pozisyon sıfırlandı.")
 
     # ------------------------------------------------------------------

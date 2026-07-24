@@ -355,6 +355,7 @@ class MissionCore:
                         timeout=0.05
                     )
                 except queue.Empty:
+                    self.service.refresh_hardware_health()
                     self._check_perception_timeout()
                     self._publish_timed_snapshot_if_needed()
                     continue
@@ -379,6 +380,7 @@ class MissionCore:
                     self._publish_snapshot()
                 finally:
                     self._queue.task_done()
+                self.service.refresh_hardware_health()
                 self._check_perception_timeout()
         finally:
             with self._lock:
@@ -488,7 +490,10 @@ class MissionCore:
                 )
             if envelope.kind == "EStopChange":
                 active = bool(payload.get("active", True))
-                self.service.set_estop(active)
+                self.service.set_estop(
+                    active,
+                    physical=envelope.source != "operator-estop-http",
+                )
                 return {
                     "ok": True,
                     "estop": active,
@@ -497,6 +502,19 @@ class MissionCore:
                     ).to_dict(),
                     "physicalOutput": False,
                 }
+            if envelope.kind == "EStopReset":
+                return self.service.reset_estop(str(payload.get("operatorId", "")))
+            if envelope.kind == "ArmHold":
+                return self.service.arm_hold(
+                    bool(payload.get("holding", False)),
+                    str(payload.get("operatorId", "")),
+                )
+            if envelope.kind == "Disarm":
+                return self.service.disarm(str(payload.get("reason", "OPERATOR_DISARM")))
+            if envelope.kind == "SafetyHealthUpdate":
+                if not envelope.source.startswith(("can-", "runtime-", "mission-core")):
+                    raise MessageContractError("safety health updates require a trusted source")
+                return self.service.update_safety_health(payload)
             if envelope.kind == "PerceptionHealth":
                 healthy = bool(payload.get("healthy", False))
                 if healthy:

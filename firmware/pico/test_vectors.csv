@@ -1,0 +1,11 @@
+# name,initial,command,input,expected_state,expected_reason,outputs
+boot,BOOT,BOOT_COMPLETE,ok,SAFE,BOOT_COMPLETE,0
+ready,SAFE,HEARTBEAT,ok,READY,READY,0
+arm,READY,ARM,ok,ARMED,ARMED,1
+fire,ARMED,FIRE,ok,FIRING,FIRING,1
+disarm,ARMED,DISARM,ok,SAFE,SAFE_STOP,0
+estop,ARMED,HEARTBEAT,estop,FAULT,ESTOP_ACTIVE,0
+encoder_disconnect,ARMED,HEARTBEAT,encoder_disconnected,FAULT,ENCODER_DISCONNECTED,0
+encoder_overflow,ARMED,HEARTBEAT,encoder_overflow,FAULT,ENCODER_OVERFLOW,0
+direction_fault,ARMED,HEARTBEAT,direction_fault,FAULT,ENCODER_DIRECTION,0
+deviation_fault,ARMED,HEARTBEAT,deviation_fault,FAULT,ENCODER_DEVIATION,0

@@ -1,6 +1,6 @@
 # ADR-002 — MCU ve Saha Haberleşmesi
 
-- Durum: **Kabul edildi**
+- Durum: **v1 ile güncellendi; fiziksel HIL kabulü bekliyor**
 - Tarih: **25.07.2026**
 - İlgili işler: `ADR-002`, `FW-001`–`FW-007`, `SAFE-002`
 
@@ -32,7 +32,7 @@ bir gereksinim yoktur.
 - CAN-FD kullanılmaz. Yeni bant genişliği ihtiyacı ölçülürse denetleyici,
   transceiver ve ICD birlikte değiştirilmeden CAN-FD etiketi kullanılamaz.
 
-### ICD v0 — mevcut host/simülatör sözleşmesi
+### ICD v0 — tarihsel host/simülatör sözleşmesi
 
 Tüm çok baytlı sayılar big-endian, açı ve hız birimi `0.01°`’dir.
 
@@ -46,8 +46,8 @@ Tüm çok baytlı sayılar big-endian, açı ve hız birimi `0.01°`’dir.
 
 Bu tablo mevcut backend ve simülatörün test edilen sözleşmesidir. Sequence,
 command ID, ACK/NACK ve protokol sürümü henüz v0’da yoktur; `FW-004` bunları
-geriye uyumsuzluğu açıkça yöneten sürümlü ICD v1’de tamamlar. v0 fiziksel LIVE
-release için yeterli kabul edilmez.
+geriye uyumsuzluğu açıkça yöneten [`docs/can_icd_v1.md`](../can_icd_v1.md) sözleşmesinde tamamlanmıştır. v0 fiziksel LIVE
+release için yeterli kabul edilmez ve yeni LIVE adapter yolu v1 ACK bekler.
 
 ### Hata davranışı
 

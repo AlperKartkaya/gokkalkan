@@ -132,6 +132,8 @@ def build_runtime_service(
         telemetry=telemetry,
         dry_run=False,
         runtime_mode="LIVE",
+        physical_interlock_ok=live_preflight.physical_interlock_ready,
+        backend_readiness_ok=live_preflight.backend_readiness_ok,
         **options,
     )
 

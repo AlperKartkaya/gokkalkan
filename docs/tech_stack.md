@@ -106,7 +106,12 @@ REST polling kullanır. Ayrıntılar: ADR-004 ve `docs/message_contracts.md`.
 
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
 
-**Mevcut durum:** `mcu_simulator.py` çalışır durumda. Sanal CAN (vcan0/virtual) üzerinden gelen komutları alır, pan/tilt durumunu ASCII olarak görselleştirir, E-stop simüle eder ve periyodik 0x200 durum paketi gönderir. Gerçek Pico firmware yazılmadan CAN protokolü test edilebilir.
+**Mevcut durum:** `mcu_simulator.py`, ortak firmware güvenlik modelini kullanarak
+E-Stop/FAULT sırasında komutları reddeder. `docs/can_icd_v1.md`,
+`can_protocol.py` ve `firmware/pico/` altında CRC, sequence, command tag,
+ACK/NACK, encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği vardır.
+Bu, fiziksel Pico flash/CAN/E-Stop/motor hattı kabulünün tamamlandığı anlamına
+gelmez; söz konusu kanıtlar imalat sonrası HIL ve saha testinde üretilecektir.
 
 ### 4.3. `perception/` — Algı, Takip ve Sınıflandırma
 
@@ -171,7 +176,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002; v0 codec fiziksel LIVE release için yeterli değildir |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002 + `can_icd_v1.md`; fiziksel HIL kabulü bekliyor |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri

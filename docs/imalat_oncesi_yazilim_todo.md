@@ -219,71 +219,71 @@ kapanışını doğrular. Sözleşme ve karar kayıtları
 
 # Faz 4 — Safety Gate ve canlı arm zinciri
 
-- [ ] **SAFE-010 — Safety kararını saf ve merkezi bir fonksiyon yap** `[WP-04]`
+- [x] **SAFE-010 — Safety kararını saf ve merkezi bir fonksiyon yap** `[WP-04]`
   - Hareket ve imha kararları aynı sunucu-otoriter kapıdan geçmeli.
   - Karar `allowed`, reason code ve kullanılan input snapshot’ını üretmeli.
 
-- [ ] **SAFE-011 — Fail-closed hata politikasını uygula** `[WP-04]`
+- [x] **SAFE-011 — Fail-closed hata politikasını uygula** `[WP-04]`
   - Exception, eksik config, stale sensör, geçersiz paket ve health kaybı izin üretmemeli.
   - Soft-limit kontrolü hata aldığında hareketi serbest bırakmamalı.
 
-- [ ] **SAFE-012 — Bütün sağlık girdilerini Safety Gate’e bağla** `[WP-04]`
+- [x] **SAFE-012 — Bütün sağlık girdilerini Safety Gate’e bağla** `[WP-04]`
   - E-Stop, Pico heartbeat, CAN, encoder, kamera, track, LiDAR, disk/kayıt ve runtime mode.
 
-- [ ] **SAFE-013 — Hareket ve imha yasak bölgelerini backend’de uygula** `[WP-04]`
+- [x] **SAFE-013 — Hareket ve imha yasak bölgelerini backend’de uygula** `[WP-04]`
   - Bölgeler sürümlü config olmalı.
   - Sınır, dış bölge ve geçersiz geometri testleri bulunmalı.
 
-- [ ] **SAFE-014 — Live arm state machine’i oluştur** `[WP-04]`
+- [x] **SAFE-014 — Live arm state machine’i oluştur** `[WP-04]`
   - Fiziksel interlock, backend readiness, operatör hold-to-arm ve kısa timeout birlikte gerekli olmalı.
   - Arm bağlantı/heartbeat kaybında otomatik düşmeli.
 
-- [ ] **SAFE-015 — E-Stop reset zincirini güvenli yap** `[WP-04]`
+- [x] **SAFE-015 — E-Stop reset zincirini güvenli yap** `[WP-04]`
   - HTTP çağrısı tek başına fiziksel E-Stop’u temizleyememeli.
   - Fiziksel bırakma, Pico safe durumu ve kontrollü reset birlikte gerekli olmalı.
 
-- [ ] **SAFE-016 — API erişim sınırlarını daralt** `[WP-04]`
+- [x] **SAFE-016 — API erişim sınırlarını daralt** `[WP-04]`
   - Saha profili localhost/izinli arayüzle sınırlanmalı.
   - State değiştiren komutlar session/token ve audit identity taşımalı.
   - CORS wildcard live profilde bulunmamalı.
 
-- [ ] **SAFE-017 — Safety invariant test paketini oluştur** `[WP-04]`
+- [x] **SAFE-017 — Safety invariant test paketini oluştur** `[WP-04]`
   - E-Stop, stale input, heartbeat loss, invalid zone, client bypass ve restart senaryoları fiziksel çağrı üretmemeli.
 
-**Faz kanıtı:** Fault-injection matrisindeki hiçbir hata, fiziksel adapter’a izinli komut ulaştıramıyor.
+**Faz 4 yazılım kanıtı (25.07.2026):** `safety_gate.py` saf karar + input snapshot üretir; LIVE sağlık matrisi, sürümlü bölge geometrisi, hold-to-arm/timeout, kontrollü E-Stop reset ve token/operatör kimliği testleri `tests/test_phase4_safety.py` içinde doğrulanır. Fault injection fiziksel adapter çağrısı üretmez. Bu kanıt fiziksel E-Stop/interlock kabulü değildir.
 
 ---
 
 # Faz 5 — Pico firmware ve CAN protokolü
 
-- [ ] **FW-001 — Pico SDK firmware yapısını ekle** `[WP-04]`
+- [x] **FW-001 — Pico SDK firmware yapısını ekle** `[WP-04]`
   - Build, flash ve host-side test yönergeleri bulunmalı.
   - Firmware sürümü backend health çıktısında görünmeli.
 
-- [ ] **FW-002 — Pico güvenlik durum makinesini uygula** `[WP-04]`
+- [x] **FW-002 — Pico güvenlik durum makinesini uygula** `[WP-04]`
   - `BOOT → SAFE → READY → ARMED → FIRING/FAULT`.
   - Reset ve boot çıkışları enerjisiz/güvenli başlamalı.
 
-- [ ] **FW-003 — Donanımsal E-Stop ve watchdog davranışını uygula** `[WP-04]`
+- [x] **FW-003 — Donanımsal E-Stop ve watchdog davranışını uygula** `[WP-04]`
   - Linux’tan bağımsız çıkış kesme.
   - Heartbeat kaybı ve Pico fault durumunda motor/imha hattını kapatma.
 
-- [ ] **FW-004 — Sürümlü CAN ICD oluştur**
+- [x] **FW-004 — Sürümlü CAN ICD oluştur**
   - Command/status/fault frame’leri, ölçekler, endian, bitrate ve timeout tanımlanmalı.
   - Sequence, CRC/checksum, ACK/NACK ve command ID bulunmalı.
 
-- [ ] **FW-005 — Backend CAN codec’ini ICD ile uyumlu yap**
+- [x] **FW-005 — Backend CAN codec’ini ICD ile uyumlu yap**
   - Status checksum doğrulanmalı.
   - Duplicate, out-of-order, corrupt ve timeout paketleri reddedilmeli.
 
-- [ ] **FW-006 — Firmware/simulator contract testlerini ortaklaştır**
+- [x] **FW-006 — Firmware/simulator contract testlerini ortaklaştır**
   - Aynı input vektörleri aynı state transition ve reason code’ları üretmeli.
   - Simülatör E-Stop ve fault sırasında komutları gerçek firmware gibi reddetmeli.
 
-- [ ] **FW-007 — Encoder ve limit geri bildirimlerini bağla**
+- [x] **FW-007 — Encoder ve limit geri bildirimlerini bağla**
   - Yön, sıfır, overflow, kopukluk ve beklenen/gerçek açı farkı fault’a dönüşmeli.
 
-**Faz kanıtı:** Reset, heartbeat kaybı, bozuk paket ve enkoder hatası güvenli stop ile sonuçlanıyor.
+**Faz 5 yazılım/host kanıtı (25.07.2026):** CAN v1 ICD ve Python/C++ codec'leri, Pico güvenlik çekirdeği, backend ACK-timeout yolu ve ortak geçiş vektörleri uygulanmıştır. Python testleri ile CMake/CTest host testi reset, heartbeat kaybı, bozuk CRC/sequence ve encoder fault'larının çıkışları kapattığını doğrular. Pico flash, gerçek CAN controller/transceiver, kablolu E-Stop ve motor/imha hattı kesme kabulü imalat sonrası HIL/fiziksel kanıt olarak açık kalır.
 
 ---
 

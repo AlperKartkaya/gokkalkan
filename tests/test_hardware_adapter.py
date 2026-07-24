@@ -292,9 +292,11 @@ class TestOperatorServiceHardwareIntegration(unittest.TestCase):
         self.assertFalse(result["result"]["accepted"])
         self.assertEqual(result["result"]["safetyBlockReason"], "BLOCKED_ESTOP")
 
-    def test_set_estop_clears_correctly(self) -> None:
+    def test_set_estop_requires_controlled_reset(self) -> None:
         self.service.set_estop(True)
         self.service.set_estop(False)
+        self.assertTrue(self.service.estop)
+        self.assertTrue(self.service.reset_estop("test-operator")["ok"])
         self.assertFalse(self.service.estop)
 
     def test_set_estop_logs_event(self) -> None:
@@ -415,10 +417,11 @@ class TestNewHttpEndpoints(unittest.TestCase):
         self.assertTrue(result["estop"])
         self.assertEqual(result["safety"]["blockReason"], "BLOCKED_ESTOP")
 
-        # Geri al
-        self._post("/estop", {"active": False})
+        # HTTP tek başına mandalı temizleyemez.
+        with self.assertRaises(Exception):
+            self._post("/estop", {"active": False})
         state = self._get("/state")
-        self.assertFalse(state["safety"]["estop"])
+        self.assertTrue(state["safety"]["estop"])
 
 
 if __name__ == "__main__":
