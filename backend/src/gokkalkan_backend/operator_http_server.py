@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
+import threading
+from pathlib import Path
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -13,15 +16,20 @@ from urllib.parse import urlparse
 from .operator_api import OperatorService
 from .runtime_mode import (
     RuntimeConfigurationError,
-    RuntimeLaunchConfig,
     build_runtime_service,
     runtime_summary,
+)
+from .runtime_config import (
+    RuntimeConfigError,
+    default_profile_path,
+    load_runtime_config,
 )
 from .telemetry_log import JsonlTelemetryStore
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
     service: OperatorService | None = None
+    allowed_origins: tuple[str, ...] = ("*",)
     server_version = "GokkalkanOperatorApi/0.1"
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming convention
@@ -110,7 +118,12 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         self.send_response(int(status))
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if "*" in self.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        elif origin in self.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -122,16 +135,18 @@ def build_http_server(
     port: int = 8088,
     service: OperatorService | None = None,
     telemetry_jsonl: str | None = None,
+    allowed_origins: tuple[str, ...] = ("*",),
 ) -> ThreadingHTTPServer:
     class BoundHandler(OperatorApiHandler):
         pass
 
     telemetry = JsonlTelemetryStore(telemetry_jsonl) if telemetry_jsonl else None
     BoundHandler.service = service or OperatorService(telemetry=telemetry)
+    BoundHandler.allowed_origins = allowed_origins
     return ThreadingHTTPServer((host, port), BoundHandler)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -141,52 +156,107 @@ def main() -> None:
     import logging
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    default_host = os.environ.get("OPERATOR_API_HOST", "127.0.0.1")
-    default_port = int(os.environ.get("OPERATOR_API_PORT", 8088))
-
     parser = argparse.ArgumentParser(description="Gökkalkan operator API server")
-    parser.add_argument("--host", default=default_host)
-    parser.add_argument("--port", type=int, default=default_port)
-    parser.add_argument("--telemetry-jsonl", default=None, help="JSONL telemetri yolu (varsayılan: telemetry_data/operator-api-dry-run.jsonl)")
+    parser.add_argument(
+        "--config",
+        default=os.environ.get("GOKKALKAN_RUNTIME_CONFIG"),
+        help="Doğrulanan runtime TOML dosyası.",
+    )
+    parser.add_argument("--host", default=os.environ.get("OPERATOR_API_HOST"))
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ["OPERATOR_API_PORT"])
+        if os.environ.get("OPERATOR_API_PORT")
+        else None,
+    )
+    parser.add_argument(
+        "--telemetry-jsonl",
+        default=None,
+        help="Config içindeki JSONL telemetri yolunu güvenli geliştirme için değiştir.",
+    )
     parser.add_argument(
         "--runtime-mode",
         choices=("SIM", "HIL", "LIVE"),
-        default=os.environ.get("GOKKALKAN_RUNTIME_MODE", "SIM").upper(),
-        help="Çalışma profili; varsayılan SIM ve fiziksel çıkışsızdır.",
+        default=None,
+        help="Config seçimi kısayolu; varsayılan SIM ve fiziksel çıkışsızdır.",
     )
-    parser.add_argument("--can-channel", default=os.environ.get("GOKKALKAN_CAN_CHANNEL", "vcan0"))
-    parser.add_argument("--can-bustype", default=os.environ.get("GOKKALKAN_CAN_BUSTYPE", "virtual"))
-    parser.add_argument("--can-bitrate", type=int, default=int(os.environ.get("GOKKALKAN_CAN_BITRATE", "500000")))
+    parser.add_argument("--can-channel", default=os.environ.get("GOKKALKAN_CAN_CHANNEL"))
+    parser.add_argument("--can-bustype", default=os.environ.get("GOKKALKAN_CAN_BUSTYPE"))
+    parser.add_argument(
+        "--can-bitrate",
+        type=int,
+        default=int(os.environ["GOKKALKAN_CAN_BITRATE"])
+        if os.environ.get("GOKKALKAN_CAN_BITRATE")
+        else None,
+    )
     parser.add_argument(
         "--vcan",
         action="store_true",
         help="Geriye uyumlu HIL kısayolu; yalnız sanal CAN kullanır.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    runtime_mode = "HIL" if args.vcan else args.runtime_mode
+    environment_mode = os.environ.get("GOKKALKAN_RUNTIME_MODE", "").upper() or None
+    selected_mode = (
+        "HIL"
+        if args.vcan
+        else args.runtime_mode
+        or (None if args.config else environment_mode)
+    )
+    config_path = (
+        Path(args.config)
+        if args.config
+        else default_profile_path(selected_mode or "SIM")
+    )
+    try:
+        settings = load_runtime_config(config_path)
+    except RuntimeConfigError as exc:
+        parser.error(str(exc))
+    runtime_mode = selected_mode or settings.profile
+    if settings.profile != runtime_mode:
+        parser.error(
+            f"runtime mode {runtime_mode} does not match config profile {settings.profile}"
+        )
     if args.vcan:
         args.can_channel = "vcan0"
         args.can_bustype = "virtual"
-    telemetry = JsonlTelemetryStore(args.telemetry_jsonl) if args.telemetry_jsonl else None
-    config = RuntimeLaunchConfig(
-        mode=runtime_mode,
-        can_channel=args.can_channel,
-        can_bustype=args.can_bustype,
-        can_bitrate=args.can_bitrate,
-        live_output_enabled=os.environ.get("GOKKALKAN_LIVE_OUTPUT_ENABLED") == "1",
+    try:
+        settings = settings.with_cli_overrides(
+            host=args.host,
+            port=args.port,
+            can_channel=args.can_channel,
+            can_bustype=args.can_bustype,
+            can_bitrate=args.can_bitrate,
+            telemetry_path=args.telemetry_jsonl,
+        )
+    except RuntimeConfigError as exc:
+        parser.error(str(exc))
+
+    telemetry = JsonlTelemetryStore(
+        settings.telemetry.path,
+        max_bytes=settings.telemetry.max_bytes,
     )
+    config = settings.launch_config()
     try:
         # CLI bilinçli olarak fiziksel preflight üretmez. LIVE, gerçek interlock
         # entegrasyonu ayrı bootstrap tarafından sağlanana kadar fail-closed kalır.
-        service = build_runtime_service(config, telemetry=telemetry)
+        service = build_runtime_service(
+            config,
+            telemetry=telemetry,
+            operator_options={
+                "pan_min_deg": settings.safety.pan_min_deg,
+                "pan_max_deg": settings.safety.pan_max_deg,
+                "tilt_min_deg": settings.safety.tilt_min_deg,
+                "tilt_max_deg": settings.safety.tilt_max_deg,
+            },
+        )
     except RuntimeConfigurationError as exc:
         parser.error(str(exc))
 
     if runtime_mode == "HIL" and args.can_bustype == "virtual":
         # Mac OS'ta virtual bus process'ler arası çalışmadığı için simülatörü de aynı process'te başlatıyoruz
         import sys
-        import threading
         sys.path.insert(0, "backend/hardware_mock")
         try:
             from mcu_simulator import McuSimulator
@@ -199,10 +269,24 @@ def main() -> None:
         except ImportError:
             pass
 
+    print(f"Config: {settings.source} (schema={settings.schema_version})")
     print(f"Runtime: {json.dumps(runtime_summary(service), ensure_ascii=False, default=str)}")
-    server = build_http_server(args.host, args.port, service=service)
-    print(f"Gökkalkan operator API listening on http://{args.host}:{args.port}")
+    server = build_http_server(
+        settings.api.host,
+        settings.api.port,
+        service=service,
+        allowed_origins=settings.api.allowed_origins,
+    )
+    print(
+        "Gökkalkan operator API listening on "
+        f"http://{settings.api.host}:{settings.api.port}"
+    )
     print(f"Telemetry JSONL: {server.RequestHandlerClass.service.telemetry.path}")
+
+    def stop_server(_signum: int, _frame: object) -> None:
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, stop_server)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

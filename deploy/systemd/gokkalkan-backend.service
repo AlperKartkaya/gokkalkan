@@ -1,0 +1,32 @@
+[Unit]
+Description=Gökkalkan Mission Core and operator API
+Requires=gokkalkan-telemetry.service
+After=network.target gokkalkan-telemetry.service
+Before=gokkalkan-perception.service gokkalkan-frontend.service
+
+[Service]
+Type=simple
+User=gokkalkan
+Group=gokkalkan
+SupplementaryGroups=dialout gpio
+WorkingDirectory=/opt/gokkalkan
+Environment=PYTHONUNBUFFERED=1
+Environment=GOKKALKAN_RUNTIME_CONFIG=/etc/gokkalkan/runtime.toml
+ExecStart=/opt/gokkalkan/.venv/bin/gokkalkan operator-api --config /etc/gokkalkan/runtime.toml
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=8
+KillSignal=SIGINT
+StateDirectory=gokkalkan
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/gokkalkan
+ReadWritePaths=/var/lib/gokkalkan
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gokkalkan-backend
+
+[Install]
+WantedBy=gokkalkan.target

@@ -1,0 +1,314 @@
+"""Validated TOML configuration for SIM, HIL and LIVE runtimes."""
+
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import Any, Mapping, TypeVar
+
+from .runtime_mode import RuntimeLaunchConfig, RuntimeMode
+
+T = TypeVar("T")
+
+
+class RuntimeConfigError(ValueError):
+    """Raised when a runtime file is incomplete, unsafe or inconsistent."""
+
+
+def _table(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = data.get(key)
+    if not isinstance(value, dict):
+        raise RuntimeConfigError(f"missing or invalid [{key}] table")
+    return value
+
+
+def _required(table: Mapping[str, Any], key: str, expected: type[T]) -> T:
+    if key not in table:
+        raise RuntimeConfigError(f"missing required config value: {key}")
+    value = table[key]
+    # bool is an int subclass; do not accept it for numeric safety fields.
+    if expected in {int, float} and isinstance(value, bool):
+        raise RuntimeConfigError(f"{key} must be {expected.__name__}")
+    if expected is float and isinstance(value, (int, float)):
+        return float(value)  # type: ignore[return-value]
+    if not isinstance(value, expected):
+        raise RuntimeConfigError(f"{key} must be {expected.__name__}")
+    return value
+
+
+def _bounded(name: str, value: float, minimum: float, maximum: float) -> None:
+    if not minimum <= value <= maximum:
+        raise RuntimeConfigError(
+            f"{name} must be between {minimum} and {maximum}; got {value}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ApiSettings:
+    host: str
+    port: int
+    allowed_origins: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CanSettings:
+    channel: str
+    bustype: str
+    bitrate: int
+    heartbeat_timeout_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class SafetySettings:
+    pan_min_deg: float
+    pan_max_deg: float
+    tilt_min_deg: float
+    tilt_max_deg: float
+    command_timeout_ms: int
+    live_output_enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TelemetrySettings:
+    path: Path
+    max_bytes: int
+    min_free_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class SensorSettings:
+    camera_device: int
+    track_stale_ms: int
+    lidar_stale_ms: int
+    lidar_min_m: float
+    lidar_max_m: float
+    classification_min_confidence: float
+
+
+@dataclass(frozen=True, slots=True)
+class LiveSettings:
+    interlock_provider: str
+    readiness_provider: str
+    operator_token_file: str
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSettings:
+    schema_version: int
+    profile: RuntimeMode
+    api: ApiSettings
+    can: CanSettings
+    safety: SafetySettings
+    telemetry: TelemetrySettings
+    sensors: SensorSettings
+    live: LiveSettings
+    source: Path
+
+    def launch_config(self) -> RuntimeLaunchConfig:
+        return RuntimeLaunchConfig(
+            mode=self.profile,
+            can_channel=self.can.channel,
+            can_bustype=self.can.bustype,
+            can_bitrate=self.can.bitrate,
+            heartbeat_timeout_sec=self.can.heartbeat_timeout_ms / 1000.0,
+            live_output_enabled=self.safety.live_output_enabled,
+        )
+
+    def with_cli_overrides(
+        self,
+        *,
+        host: str | None = None,
+        port: int | None = None,
+        can_channel: str | None = None,
+        can_bustype: str | None = None,
+        can_bitrate: int | None = None,
+        telemetry_path: str | None = None,
+    ) -> "RuntimeSettings":
+        """Apply non-authority CLI overrides and revalidate the result."""
+
+        updated = replace(
+            self,
+            api=replace(
+                self.api,
+                host=host if host is not None else self.api.host,
+                port=port if port is not None else self.api.port,
+            ),
+            can=replace(
+                self.can,
+                channel=can_channel if can_channel is not None else self.can.channel,
+                bustype=can_bustype if can_bustype is not None else self.can.bustype,
+                bitrate=can_bitrate if can_bitrate is not None else self.can.bitrate,
+            ),
+            telemetry=replace(
+                self.telemetry,
+                path=Path(telemetry_path) if telemetry_path else self.telemetry.path,
+            ),
+        )
+        _validate_settings(updated)
+        return updated
+
+
+def _parse_origins(api: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = api.get("allowed_origins")
+    if not isinstance(raw, list) or not raw or not all(
+        isinstance(item, str) and item.strip() for item in raw
+    ):
+        raise RuntimeConfigError("api.allowed_origins must be a non-empty string list")
+    return tuple(item.strip() for item in raw)
+
+
+def _validate_settings(settings: RuntimeSettings) -> None:
+    if settings.schema_version != 1:
+        raise RuntimeConfigError(
+            f"unsupported runtime schema_version: {settings.schema_version}"
+        )
+    if settings.profile not in {"SIM", "HIL", "LIVE"}:
+        raise RuntimeConfigError(f"unsupported runtime profile: {settings.profile}")
+    if not settings.api.host.strip():
+        raise RuntimeConfigError("api.host must not be empty")
+    _bounded("api.port", settings.api.port, 1, 65535)
+    if settings.can.bitrate not in {125_000, 250_000, 500_000, 1_000_000}:
+        raise RuntimeConfigError("can.bitrate is not an approved classical CAN bitrate")
+    _bounded(
+        "can.heartbeat_timeout_ms",
+        settings.can.heartbeat_timeout_ms,
+        100,
+        10_000,
+    )
+    _bounded("safety.pan_min_deg", settings.safety.pan_min_deg, -180.0, 180.0)
+    _bounded("safety.pan_max_deg", settings.safety.pan_max_deg, -180.0, 180.0)
+    _bounded("safety.tilt_min_deg", settings.safety.tilt_min_deg, -90.0, 90.0)
+    _bounded("safety.tilt_max_deg", settings.safety.tilt_max_deg, -90.0, 90.0)
+    if settings.safety.pan_min_deg >= settings.safety.pan_max_deg:
+        raise RuntimeConfigError("pan soft limit minimum must be below maximum")
+    if settings.safety.tilt_min_deg >= settings.safety.tilt_max_deg:
+        raise RuntimeConfigError("tilt soft limit minimum must be below maximum")
+    _bounded(
+        "safety.command_timeout_ms",
+        settings.safety.command_timeout_ms,
+        50,
+        10_000,
+    )
+    _bounded("telemetry.max_bytes", settings.telemetry.max_bytes, 1_048_576, 2**40)
+    _bounded(
+        "telemetry.min_free_bytes",
+        settings.telemetry.min_free_bytes,
+        1_048_576,
+        2**40,
+    )
+    _bounded("sensors.camera_device", settings.sensors.camera_device, 0, 64)
+    _bounded("sensors.track_stale_ms", settings.sensors.track_stale_ms, 50, 30_000)
+    _bounded("sensors.lidar_stale_ms", settings.sensors.lidar_stale_ms, 50, 30_000)
+    _bounded("sensors.lidar_min_m", settings.sensors.lidar_min_m, 0.01, 500.0)
+    _bounded("sensors.lidar_max_m", settings.sensors.lidar_max_m, 0.02, 500.0)
+    if settings.sensors.lidar_min_m >= settings.sensors.lidar_max_m:
+        raise RuntimeConfigError("LiDAR minimum range must be below maximum range")
+    _bounded(
+        "sensors.classification_min_confidence",
+        settings.sensors.classification_min_confidence,
+        0.0,
+        1.0,
+    )
+
+    virtual_can = (
+        settings.can.bustype == "virtual"
+        or settings.can.channel.startswith("vcan")
+    )
+    if settings.profile != "LIVE" and settings.safety.live_output_enabled:
+        raise RuntimeConfigError(
+            "SIM/HIL profiles cannot enable physical LIVE output"
+        )
+    if settings.profile == "HIL" and not virtual_can:
+        raise RuntimeConfigError("HIL profile requires a virtual CAN channel")
+    if settings.profile == "LIVE":
+        if "*" in settings.api.allowed_origins:
+            raise RuntimeConfigError("LIVE profile cannot use wildcard CORS origin")
+        if virtual_can:
+            raise RuntimeConfigError("LIVE profile requires a physical CAN channel")
+        required_live = {
+            "live.interlock_provider": settings.live.interlock_provider,
+            "live.readiness_provider": settings.live.readiness_provider,
+            "live.operator_token_file": settings.live.operator_token_file,
+        }
+        missing = [name for name, value in required_live.items() if not value.strip()]
+        if missing:
+            raise RuntimeConfigError(
+                "LIVE profile is missing safety config: " + ", ".join(missing)
+            )
+
+
+def load_runtime_config(path: str | Path) -> RuntimeSettings:
+    source = Path(path)
+    try:
+        raw = tomllib.loads(source.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise RuntimeConfigError(f"runtime config does not exist: {source}") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise RuntimeConfigError(f"invalid TOML in {source}: {exc}") from exc
+
+    api = _table(raw, "api")
+    can = _table(raw, "can")
+    safety = _table(raw, "safety")
+    telemetry = _table(raw, "telemetry")
+    sensors = _table(raw, "sensors")
+    live = _table(raw, "live")
+    profile = _required(raw, "profile", str).upper()
+    if profile not in {"SIM", "HIL", "LIVE"}:
+        raise RuntimeConfigError(f"unsupported runtime profile: {profile}")
+
+    settings = RuntimeSettings(
+        schema_version=_required(raw, "schema_version", int),
+        profile=profile,  # type: ignore[arg-type]
+        api=ApiSettings(
+            host=_required(api, "host", str),
+            port=_required(api, "port", int),
+            allowed_origins=_parse_origins(api),
+        ),
+        can=CanSettings(
+            channel=_required(can, "channel", str),
+            bustype=_required(can, "bustype", str),
+            bitrate=_required(can, "bitrate", int),
+            heartbeat_timeout_ms=_required(can, "heartbeat_timeout_ms", int),
+        ),
+        safety=SafetySettings(
+            pan_min_deg=_required(safety, "pan_min_deg", float),
+            pan_max_deg=_required(safety, "pan_max_deg", float),
+            tilt_min_deg=_required(safety, "tilt_min_deg", float),
+            tilt_max_deg=_required(safety, "tilt_max_deg", float),
+            command_timeout_ms=_required(safety, "command_timeout_ms", int),
+            live_output_enabled=_required(safety, "live_output_enabled", bool),
+        ),
+        telemetry=TelemetrySettings(
+            path=Path(_required(telemetry, "path", str)),
+            max_bytes=_required(telemetry, "max_bytes", int),
+            min_free_bytes=_required(telemetry, "min_free_bytes", int),
+        ),
+        sensors=SensorSettings(
+            camera_device=_required(sensors, "camera_device", int),
+            track_stale_ms=_required(sensors, "track_stale_ms", int),
+            lidar_stale_ms=_required(sensors, "lidar_stale_ms", int),
+            lidar_min_m=_required(sensors, "lidar_min_m", float),
+            lidar_max_m=_required(sensors, "lidar_max_m", float),
+            classification_min_confidence=_required(
+                sensors, "classification_min_confidence", float
+            ),
+        ),
+        live=LiveSettings(
+            interlock_provider=_required(live, "interlock_provider", str),
+            readiness_provider=_required(live, "readiness_provider", str),
+            operator_token_file=_required(live, "operator_token_file", str),
+        ),
+        source=source,
+    )
+    _validate_settings(settings)
+    return settings
+
+
+def default_profile_path(
+    profile: str = "SIM", config_dir: str | Path = "config/runtime"
+) -> Path:
+    normalized = profile.lower()
+    if normalized not in {"sim", "hil", "live"}:
+        raise RuntimeConfigError(f"unsupported runtime profile: {profile}")
+    return Path(config_dir) / f"{normalized}.toml"

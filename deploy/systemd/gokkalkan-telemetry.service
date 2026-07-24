@@ -1,0 +1,28 @@
+[Unit]
+Description=Gökkalkan single-writer telemetry recorder
+After=local-fs.target
+Before=gokkalkan-backend.service
+
+[Service]
+Type=simple
+User=gokkalkan
+Group=gokkalkan
+WorkingDirectory=/opt/gokkalkan
+ExecStart=/opt/gokkalkan/.venv/bin/gokkalkan telemetry-recorder --socket /run/gokkalkan/telemetry-recorder.sock --output /var/lib/gokkalkan/telemetry/recorder.jsonl --max-bytes 536870912
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+KillSignal=SIGTERM
+RuntimeDirectory=gokkalkan
+StateDirectory=gokkalkan
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/gokkalkan /var/lib/gokkalkan
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gokkalkan-telemetry
+
+[Install]
+WantedBy=gokkalkan.target

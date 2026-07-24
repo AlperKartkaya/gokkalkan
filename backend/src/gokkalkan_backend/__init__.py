@@ -1,11 +1,13 @@
-"""Gökkalkan backend entegrasyon primitifleri.
+"""Gökkalkan backend integration primitives.
 
-Dry-run (fiziksel çıkış yok) ve gerçek donanım modlarını destekler.
-Gerçek donanım için CanMcuAdapter kullanın (bkz. hardware_adapter.py).
+Construct runtimes through ``runtime_mode.build_runtime_service``. Direct
+adapter construction is not an authorization path for physical output.
 """
 
 from .hardware_adapter import CanMcuAdapter, GpioEStopMonitor, HardwareAdapterBase
 from .operator_api import DryRunHardwareAdapter, OperatorService
+from .runtime_config import RuntimeSettings, load_runtime_config
+from .runtime_mode import RuntimeLaunchConfig, build_runtime_service
 from .telemetry_log import JsonlTelemetryStore
 
 __all__ = [
@@ -15,5 +17,8 @@ __all__ = [
     "HardwareAdapterBase",
     "CanMcuAdapter",
     "GpioEStopMonitor",
+    "RuntimeLaunchConfig",
+    "RuntimeSettings",
+    "build_runtime_service",
+    "load_runtime_config",
 ]
-

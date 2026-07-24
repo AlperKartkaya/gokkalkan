@@ -29,6 +29,7 @@ class RuntimeLaunchConfig:
     can_channel: str = "vcan0"
     can_bustype: str = "socketcan"
     can_bitrate: int = 500_000
+    heartbeat_timeout_sec: float = 2.0
     live_output_enabled: bool = False
 
 
@@ -58,15 +59,18 @@ def build_runtime_service(
     telemetry: JsonlTelemetryStore | None = None,
     live_preflight: LivePreflight | None = None,
     can_adapter_factory: CanAdapterFactory = CanMcuAdapter,
+    operator_options: dict[str, Any] | None = None,
 ) -> OperatorService:
     """Build a service without letting client input influence output authority."""
 
+    options = dict(operator_options or {})
     if config.mode == "SIM":
         return OperatorService(
             hardware=DryRunHardwareAdapter(),
             telemetry=telemetry,
             dry_run=True,
             runtime_mode="SIM",
+            **options,
         )
 
     if config.mode == "HIL":
@@ -78,6 +82,7 @@ def build_runtime_service(
             channel=config.can_channel,
             bustype=config.can_bustype,
             bitrate=config.can_bitrate,
+            heartbeat_timeout_sec=config.heartbeat_timeout_sec,
             dry_run=False,
             physical_output_capable=False,
         )
@@ -87,6 +92,7 @@ def build_runtime_service(
             telemetry=telemetry,
             dry_run=True,
             runtime_mode="HIL",
+            **options,
         )
 
     if config.mode != "LIVE":
@@ -116,6 +122,7 @@ def build_runtime_service(
         channel=config.can_channel,
         bustype=config.can_bustype,
         bitrate=config.can_bitrate,
+        heartbeat_timeout_sec=config.heartbeat_timeout_sec,
         dry_run=False,
         physical_output_capable=True,
     )
@@ -125,6 +132,7 @@ def build_runtime_service(
         telemetry=telemetry,
         dry_run=False,
         runtime_mode="LIVE",
+        **options,
     )
 
 

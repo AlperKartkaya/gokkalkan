@@ -7,9 +7,10 @@ Bu klasör, gerçek operatör panelinin bağlanacağı görev çekirdeği ve don
 Çalıştırma:
 
 ```bash
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml
 # İsteğe bağlı kanıt/replay yolu:
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml \
+  --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Endpoint’ler:
@@ -42,11 +43,10 @@ Güvenlik notu: Bu API geçişinde `hardware_mock.dry_run` adapter kullanılır.
 
 ```bash
 # Linux vcan HIL
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server \
-  --runtime-mode HIL --can-channel vcan0 --can-bustype socketcan
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml
 
 # macOS aynı-process virtual HIL
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --vcan
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml --vcan
 ```
 
 Frontend’i bu API’ye bağlamak için:
@@ -59,5 +59,18 @@ VITE_GOKKALKAN_OPERATOR_API_BASE=http://127.0.0.1:8088 npm run dev
 ## Test
 
 ```bash
-PYTHONPATH=backend/src python3 -m unittest discover -s tests -p 'test_*.py'
+.venv/bin/python -m pytest
 ```
+
+## Paket ve tanılama
+
+`pyproject.toml`, `gokkalkan`, `gokkalkan-operator-api`,
+`gokkalkan-doctor`, `gokkalkan-static-server` ve
+`gokkalkan-telemetry-recorder` giriş noktalarını kurar.
+
+```bash
+.venv/bin/gokkalkan doctor --config config/runtime/sim.toml
+```
+
+Doctor yalnız config, dosya sistemi, cihaz düğümleri ve salt okunur health
+endpoint’lerini inceler; CAN/GPIO adapter oluşturmaz.

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bash scripts/setup_dev.sh",
+    "doctor": ".venv/bin/gokkalkan doctor --config config/runtime/sim.toml",
+    "test:python": ".venv/bin/python -m pytest",
+    "dev:check": "npm run desktop:check",
     "desktop": "npm --prefix frontend run desktop --",
     "desktop:dev": "npm --prefix frontend run desktop:dev --",
     "desktop:check": "npm --prefix frontend run desktop:check --",

@@ -152,13 +152,22 @@ function startVite({ mode, host, uiPort }) {
 function startBackend({ apiHost, apiPort }) {
   mkdirSync(telemetryDir, { recursive: true });
   const telemetryPath = join(telemetryDir, 'operator-api-desktop-dry-run.jsonl');
-  const pythonPath = join(repoRoot, 'backend', 'src');
-  const env = {
-    ...process.env,
-    PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${process.platform === 'win32' ? ';' : ':'}${process.env.PYTHONPATH}` : pythonPath,
-  };
-  const args = ['-m', 'gokkalkan_backend.operator_http_server', '--host', apiHost, '--port', String(apiPort), '--telemetry-jsonl', telemetryPath];
-  return spawnFirstAvailable(pythonCandidates(process.platform, process.env), args, { cwd: repoRoot, env }, 'Python backend');
+  const configPath = join(repoRoot, 'config', 'runtime', 'sim.toml');
+  const venvPython = process.platform === 'win32'
+    ? join(repoRoot, '.venv', 'Scripts', 'python.exe')
+    : join(repoRoot, '.venv', 'bin', 'python');
+  const candidates = [
+    ...(existsSync(venvPython) ? [{ command: venvPython, args: [] }] : []),
+    ...pythonCandidates(process.platform, process.env),
+  ];
+  const args = [
+    '-m', 'gokkalkan_backend.operator_http_server',
+    '--config', configPath,
+    '--host', apiHost,
+    '--port', String(apiPort),
+    '--telemetry-jsonl', telemetryPath,
+  ];
+  return spawnFirstAvailable(candidates, args, { cwd: repoRoot, env: process.env }, 'Python backend');
 }
 
 export async function waitForHttp(url, { timeoutMs = 20_000, label = url } = {}) {
@@ -175,6 +184,14 @@ export async function waitForHttp(url, { timeoutMs = 20_000, label = url } = {})
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`${label} did not become ready within ${timeoutMs}ms (${lastError})`);
+}
+
+export async function assertSafeBackendHealth(response) {
+  const health = await response.json();
+  if (health.runtimeMode !== 'SIM' || health.physicalOutputEnabled !== false) {
+    throw new Error(`Unsafe desktop backend health: ${JSON.stringify(health)}`);
+  }
+  return health;
 }
 
 async function launchBrowserApp(url, options) {
@@ -259,7 +276,8 @@ export async function runDesktopLauncher(rawOptions = parseDesktopArgs()) {
     const vite = startVite(rawOptions);
     children.push(vite);
 
-    await waitForHttp(`${apiBaseUrl}/health`, { timeoutMs: rawOptions.timeoutMs, label: 'Operator API /health' });
+    const healthResponse = await waitForHttp(`${apiBaseUrl}/health`, { timeoutMs: rawOptions.timeoutMs, label: 'Operator API /health' });
+    await assertSafeBackendHealth(healthResponse);
     await waitForHttp(uiBaseUrl, { timeoutMs: rawOptions.timeoutMs, label: 'Operator UI' });
     console.log(`[desktop] Ready: ${operatorUrl}`);
 

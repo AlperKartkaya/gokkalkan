@@ -1,0 +1,30 @@
+[Unit]
+Description=Gökkalkan camera and perception bridge
+ConditionPathExists=/etc/gokkalkan/enable-perception
+Requires=gokkalkan-backend.service
+After=gokkalkan-backend.service
+
+[Service]
+Type=simple
+User=gokkalkan
+Group=gokkalkan
+SupplementaryGroups=video render
+WorkingDirectory=/opt/gokkalkan
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/gokkalkan/.venv/bin/python /opt/gokkalkan/perception/src/perception_bridge.py --url http://127.0.0.1:8088 --stage 2 --poll-hz 10
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=8
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gokkalkan
+DeviceAllow=/dev/video0 rw
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gokkalkan-perception
+
+[Install]
+WantedBy=gokkalkan.target

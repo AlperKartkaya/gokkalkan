@@ -157,9 +157,10 @@ Kesin elektronik değerler tasarım netleşince doldurulmalıdır. KTR’de yanl
 Bu geçişte backend tarafında bağımlılıksız Python iskeleti başlatılmıştır:
 
 ```bash
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml
 # KTR/debug kanıtını belirli dosyaya yazmak için:
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml \
+  --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Uygulanan endpoint’ler:

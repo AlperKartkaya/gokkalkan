@@ -33,6 +33,19 @@ RPi5 GPIO header (GpioEStopMonitor, ikincil) ───────────�
 
 ## Hızlı Başlangıç
 
+### Temiz geliştirme kurulumu
+
+```bash
+npm run setup
+npm run dev:check   # Backend + UI health kontrolü; tarayıcı açmadan kapanır
+npm run desktop     # SIM backend + operatör paneli
+npm run doctor
+```
+
+Python paketi `.venv` içine editable kurulur; `PYTHONPATH` gerekmez. Kilit
+dosyaları `requirements/`, runtime profilleri `config/runtime/`, Raspberry Pi
+kurulum sözleşmesi `deploy/pi/` altındadır.
+
 ### Geliştirme — Sanal CAN (donanım olmadan)
 
 **Linux / RPi5:**
@@ -43,18 +56,23 @@ bash scripts/setup_virtual_can.sh          # vcan0 kur
 python3 backend/hardware_mock/mcu_simulator.py --channel vcan0 --bustype socketcan
 
 # Terminal 2: Backend
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server \
-  --runtime-mode HIL --can-channel vcan0 --can-bustype socketcan
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml
 
 # Terminal 3: Operatör paneli
-npm run desktop
+npm --prefix frontend run dev
+# http://127.0.0.1:5173/?operator=1
 ```
 
 **macOS (aynı process içinde python-can virtual + MCU simülatörü):**
 ```bash
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --vcan
-npm run desktop
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml \
+  --vcan
+npm --prefix frontend run dev
+# http://127.0.0.1:5173/?operator=1
 ```
+
+`npm run desktop` kendi güvenli SIM backend’ini de başlatır; bu nedenle ayrı
+HIL backend’i çalışırken yalnız frontend dev server kullanılır.
 
 ### LIVE hazırlığı (RPi5 + Pico + can0)
 
@@ -92,13 +110,13 @@ cd frontend && npm install && npm run dev
 
 ```bash
 # Tüm testler
-PYTHONPATH=backend/src python3 -m pytest tests/ -v
+.venv/bin/python -m pytest -v
 
 # Kapsama raporu (pytest-cov gerekli)
-PYTHONPATH=backend/src python3 -m pytest tests/ --cov=gokkalkan_backend --cov-report=term-missing
+.venv/bin/python -m pytest --cov=gokkalkan_backend --cov-report=term-missing
 
 # Hızlı doğrulama
-PYTHONPATH=backend/src python3 -m pytest tests/ -q
+.venv/bin/python -m pytest -q
 
 # Frontend tip kontrolü
 cd frontend && npm run typecheck && npm run build
@@ -111,6 +129,9 @@ cd frontend && npm run typecheck && npm run build
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
 - `docs/delivery_video_plan.md` — güncel takvim ve sıralı video kanıt planı.
 - `docs/adr/` — kabul edilmiş çalışma ortamı, CAN ve kamera/LiDAR kararları.
+- `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
+- `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
+- `requirements/` — backend, test ve perception bağımlılık kilitleri.
 - `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, CAN protokolü ve safety gate.
 - `docs/imalat_oncesi_yazilim_todo.md` — imalat öncesi yazılım yol haritası.
 - `docs/operator_panel_interfaces_roadmap.md` — gerçek operatör paneli arayüz tabloları (KTR).

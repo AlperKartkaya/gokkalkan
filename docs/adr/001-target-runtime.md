@@ -58,8 +58,9 @@ yazılmaz.
 - Ekip tek bir anlaşılır ana stack üzerinde ilerler.
 - Linux thread’leri güvenlik garantisi sayılmaz.
 - Pico firmware ve fiziksel E-Stop zinciri zorunlu kalır.
-- Pi imajı, `systemd` dosyaları ve temiz kurulum henüz tamamlanmış sayılmaz;
-  bunlar Faz 2 kapsamındadır.
+- Pi imaj sözleşmesi, `systemd` birimleri ve temiz kurulum scripti Faz 2’de
+  `deploy/` ve `scripts/bootstrap_pi.sh` altında oluşturulmuştur. Fiziksel Pi
+  host doğrulaması hâlâ donanım üzerinde çalıştırılmalıdır.
 
 ## Kaynaklar
 

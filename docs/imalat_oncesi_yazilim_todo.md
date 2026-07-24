@@ -66,9 +66,8 @@ Bir kutu ancak aşağıdakiler sağlandığında tamamlanır:
   - Kanıt: `tests/test_runtime_mode.py`, `test_live_service_ignores_client_dry_run_override`, `test_can_adapter_defaults_to_no_transmit_and_no_physical_output`.
 
 **Faz kanıtı:** Güvenilmeyen istemci girdilerinin hiçbir kombinasyonu canlı
-çıkışı etkinleştiremiyor. `PYTHONPATH=backend/src python3 -m unittest discover -s tests -p 'test_*.py' -v`
-ile 81 test geçti; fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi
-de reddedildi.
+çıkışı etkinleştiremiyor. Kurulu paket üzerinden çalışan Python regresyon paketi
+ile fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi de reddedildi.
 
 ---
 
@@ -115,37 +114,65 @@ yoluna referans bulunmadı; PDF hash’i `docs/requirements_source.md` ile eşle
 
 # Faz 2 — Tekrarlanabilir geliştirme ve Pi çalışma ortamı
 
-- [ ] **ENV-001 — Backend’i gerçek Python paketi hâline getir**
+- [x] **ENV-001 — Backend’i gerçek Python paketi hâline getir**
   - `pyproject.toml`, paket metadata’sı, test config’i ve giriş noktaları eklenmeli.
   - Geçici `PYTHONPATH` gereksinimi kaldırılmalı.
+  - Kanıt: `pyproject.toml`; editable `.venv` kurulumunda `gokkalkan`,
+    `gokkalkan-operator-api`, `gokkalkan-doctor`, static server ve recorder
+    giriş noktaları çalıştı; testler kurulu paket üzerinden geçti.
 
-- [ ] **ENV-002 — Python bağımlılıklarını eksiksiz ve kilitli tanımla**
+- [x] **ENV-002 — Python bağımlılıklarını eksiksiz ve kilitli tanımla**
   - Backend, test ve perception bağımlılıkları ayrıştırılmalı.
   - OpenCV, NumPy ve hedef Pi’de kullanılan kamera bağımlılıkları belgelenmeli.
   - Büyük model dosyaları repoya eklenmemeli.
+  - Kanıt: `requirements/backend.lock`, `dev.lock`,
+    `perception-dev.lock` ve `deploy/pi/manifest.toml`; Pi’de
+    NumPy/OpenCV/Picamera2 aynı apt yığınından gelir. Frontend `package-lock`
+    yenilendi ve `npm audit` sıfır açık raporladı.
 
-- [ ] **ENV-003 — Raspberry Pi kurulum manifestini oluştur**
+- [x] **ENV-003 — Raspberry Pi kurulum manifestini oluştur**
   - OS sürümü, sistem paketleri, kullanıcı/grup izinleri, CAN ve kamera ayarları yazılmalı.
   - Temiz imaj kurulumunun tekrarlanabilir kontrolü bulunmalı.
+  - Kanıt: `deploy/pi/manifest.toml`, `deploy/pi/README.md`,
+    `scripts/bootstrap_pi.sh`, `scripts/verify_pi_manifest.py`;
+    manifest-only doğrulaması geçti. Fiziksel Pi host kontrolü donanım geldiğinde
+    aynı scriptin `--host` modu ile yapılacak.
 
-- [ ] **ENV-004 — Runtime config şeması oluştur**
+- [x] **ENV-004 — Runtime config şeması oluştur**
   - `SIM`, `HIL`, `LIVE` profilleri açıkça ayrılmalı.
   - Soft limit, timeout, port, kayıt kotası ve sensör eşikleri doğrulanmalı.
   - Eksik güvenlik config’i live başlangıcını engellemeli.
+  - Kanıt: `gokkalkan_backend.runtime_config`,
+    `config/runtime/{sim,hil,live,pi-sim}.toml`,
+    `tests/test_runtime_config.py`; repo `LIVE` profili explicit enable kapalı
+    olduğu için CLI adapter oluşturmadan çıkış kodu 2 ile reddedildi.
 
-- [ ] **ENV-005 — `systemd` servislerini ekle**
+- [x] **ENV-005 — `systemd` servislerini ekle**
   - Backend/Mission Core, perception, UI/static server ve telemetry recorder servisleri hazırlanmalı.
   - Restart politikası, dependency sırası, graceful shutdown ve log yönlendirmesi tanımlanmalı.
+  - Kanıt: `deploy/systemd/`; backend, perception, bağımlılıksız static/proxy
+    UI ve Unix-socket tek-yazarlı recorder birimleri ile `gokkalkan.target`.
+    Birimler restart, sıra, sinyal, timeout ve journald politikasını içerir.
+    Producer’ların tamamının recorder socket’ine taşınması `TEL-001` olarak kalır.
 
-- [ ] **ENV-006 — Tek komutlu geliştirme ve dry-run başlatma ekle**
+- [x] **ENV-006 — Tek komutlu geliştirme ve dry-run başlatma ekle**
   - Mevcut frontend scriptleri korunmalı.
   - Backend + simulator + UI health kontrolü tek akışta doğrulanmalı.
+  - Kanıt: `npm run setup`, `npm run desktop`, `npm run dev:check`;
+    launcher backend health’inde `runtimeMode=SIM` ve
+    `physicalOutputEnabled=false` doğrulamadan hazır saymıyor. Smoke geçti.
 
-- [ ] **ENV-007 — `gokkalkan doctor` tanılama komutunu ekle**
+- [x] **ENV-007 — `gokkalkan doctor` tanılama komutunu ekle**
   - Kamera, disk, saat, config, API, Pico/CAN ve kayıt dizini durumunu raporlamalı.
   - Tanılama fiziksel çıkış üretememeli.
+  - Kanıt: `gokkalkan_backend.doctor`, `tests/test_doctor.py`;
+    JSON raporu config, saat, disk, recording, kamera, CAN, API ve Pico
+    kontrollerini verdi ve `physicalOutputAttempted=false` kaldı.
 
-**Faz kanıtı:** Temiz bir Pi imajı ve temiz bir Linux CI ortamı belgelenmiş adımlarla kurulup dry-run çalıştırılabiliyor.
+**Faz kanıtı:** `.github/workflows/verify.yml` temiz Python 3.11/Node 22 Linux
+kurulumu, test/build ve dry-run stack smoke akışını tanımlar. Yerel temiz `.venv`
+kurulumu, 95 Python testi, doctor ve `npm run dev:check` geçti. Fiziksel Pi
+üzerindeki `--host` doğrulaması imalat/donanım olmadan tamamlanmış sayılmıyor.
 
 ---
 
@@ -499,13 +526,15 @@ Bu maddeler yazılım görevi değildir; ilgili ekip tarafından sonuçlandırı
 Mevcut repo komutları:
 
 ```bash
-PYTHONPATH=backend/src python3 -m pytest tests -q
+npm run setup
+.venv/bin/python -m pytest -q
 npm run typecheck
 npm run test:unit
 npm run build
 npm run test:desktop
 npm run test:competition
-npm run desktop:check
+npm run dev:check
+.venv/bin/gokkalkan doctor
 ```
 
 Plan sonunda bulunması beklenen komutlar:

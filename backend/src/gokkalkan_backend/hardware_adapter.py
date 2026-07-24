@@ -264,6 +264,7 @@ class CanMcuAdapter(HardwareAdapterBase):
         channel: str = "vcan0",
         bustype: str = "socketcan",
         bitrate: int = 500_000,
+        heartbeat_timeout_sec: float = HEALTH_TIMEOUT_SEC,
         estop_callback: EStopCallback | None = None,
         dry_run: bool = True,
         physical_output_capable: bool = False,
@@ -271,6 +272,7 @@ class CanMcuAdapter(HardwareAdapterBase):
         self.channel   = channel
         self.bustype   = bustype
         self.bitrate   = bitrate
+        self._heartbeat_timeout_sec = heartbeat_timeout_sec
         self._estop_cb = estop_callback
         self._dry_run  = dry_run
         self._physical_output_capable = physical_output_capable
@@ -538,7 +540,7 @@ class CanMcuAdapter(HardwareAdapterBase):
         pico_reachable = (
             self._bus is not None
             and age_sec is not None
-            and age_sec < HEALTH_TIMEOUT_SEC
+            and age_sec < self._heartbeat_timeout_sec
         )
         return {
             "adapter":             "can_mcu_adapter",

@@ -98,11 +98,17 @@ For report/documentation work:
 
 ## Commands and verification
 
-There is a root-level `package.json` for lightweight npm script proxies into `frontend/` and a root `requirements.txt` for the current Python development/test dependencies. `pyproject.toml`, Makefile, Dockerfile, locked multi-environment dependency manifest, and installable Python packaging are not present yet.
+The root `pyproject.toml` installs the `gokkalkan` backend/diagnostic commands,
+`requirements/*.lock` separates exact backend, test, and perception dependencies,
+and `config/runtime/*.toml` defines validated SIM/HIL/LIVE profiles. Use
+`npm run setup`, then `.venv/bin/python -m pytest`, `npm run dev:check`, and the
+frontend verification scripts. Pi/systemd deployment material lives under
+`deploy/`; do not claim physical Pi validation merely because its manifest-only
+check passes.
 
 When code is added later, prefer verification in this order:
 1. Run the narrowest relevant test first.
-2. Run pytest for Python changes once a pytest setup exists.
+2. Run `.venv/bin/python -m pytest` for Python changes.
 3. Run ROS2/colcon/CMake commands only if the relevant workspace/configuration has been added.
 4. Manually exercise hardware-facing behavior with mocks before assuming real-device behavior.
 

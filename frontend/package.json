@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "desktop": "node scripts/desktop-launcher.mjs --mode dev",
@@ -30,7 +33,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.1",
     "typescript": "6.0.3",
-    "vite": "8.0.11",
+    "vite": "8.1.5",
     "vitest": "4.1.5"
   }
 }

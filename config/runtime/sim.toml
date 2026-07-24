@@ -1,0 +1,39 @@
+schema_version = 1
+profile = "SIM"
+
+[api]
+host = "127.0.0.1"
+port = 8088
+allowed_origins = ["http://127.0.0.1:5173", "http://127.0.0.1:4173"]
+
+[can]
+channel = "vcan0"
+bustype = "virtual"
+bitrate = 500000
+heartbeat_timeout_ms = 2000
+
+[safety]
+pan_min_deg = -75.0
+pan_max_deg = 75.0
+tilt_min_deg = -10.0
+tilt_max_deg = 45.0
+command_timeout_ms = 750
+live_output_enabled = false
+
+[telemetry]
+path = "telemetry_data/operator-api-sim.jsonl"
+max_bytes = 52428800
+min_free_bytes = 268435456
+
+[sensors]
+camera_device = 0
+track_stale_ms = 500
+lidar_stale_ms = 300
+lidar_min_m = 0.2
+lidar_max_m = 50.0
+classification_min_confidence = 0.40
+
+[live]
+interlock_provider = ""
+readiness_provider = ""
+operator_token_file = ""

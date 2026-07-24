@@ -1,0 +1,7 @@
+# Non-Pi development/CI perception lock.
+# Raspberry Pi uses apt-pinned python3-numpy/python3-opencv/python3-picamera2
+# from deploy/pi/manifest.toml instead of mixing pip OpenCV with Picamera2.
+-r backend.lock
+
+numpy==1.26.4
+opencv-python-headless==4.10.0.84

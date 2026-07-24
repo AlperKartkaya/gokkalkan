@@ -185,6 +185,10 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi aşama/tur seçimi, radar/LiDAR biçimli `SensorFrame` replay görünümü, hedef tipi + dost/düşman + menzil yorumu, mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
 - **Vendor LiDAR viewer stratejisi:** RPLIDAR Viewer, Livox Viewer ve benzeri üretici araçları görev arayüzü değildir. Bunlar bakım, kalibrasyon, firmware/IP/serial doğrulama ve ham point cloud kontrolünde dış diagnostic araç olarak kalır. Görev panelindeki veri yolu `SDK/driver → SensorFrame → Backend → Operatör Paneli` olmalıdır; vendor pencere embed/screen-scrape edilmemelidir.
 - **Hedef runtime:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS + `systemd`; hedefte VM yok. Ayrıntı: ADR-001.
+- **Kurulum/paketleme:** Backend `pyproject.toml` ile kurulur; exact Python
+  kilitleri `requirements/`, doğrulanan çalışma profilleri `config/runtime/`,
+  Pi manifesti ve servisler `deploy/` altındadır. Frontend Pi’de Node.js yerine
+  önceden üretilmiş `dist` + bağımlılıksız static/proxy server ile çalışır.
 - **Backend / görev çekirdeği:** Python 3.x.
 - **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /stage`, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
