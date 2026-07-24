@@ -1,7 +1,6 @@
 [Unit]
 Description=Gökkalkan Mission Core and operator API
-Requires=gokkalkan-telemetry.service
-After=network.target gokkalkan-telemetry.service
+After=network.target
 Before=gokkalkan-perception.service gokkalkan-frontend.service
 
 [Service]

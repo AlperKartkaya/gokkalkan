@@ -1,7 +1,6 @@
 [Unit]
 Description=Gökkalkan single-writer telemetry recorder
 After=local-fs.target
-Before=gokkalkan-backend.service
 
 [Service]
 Type=simple

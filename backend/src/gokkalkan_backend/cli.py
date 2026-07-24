@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import sys
 
-from . import doctor, operator_http_server, static_server, telemetry_recorder
+from . import (
+    doctor,
+    operator_http_server,
+    session_cli,
+    static_server,
+    telemetry_recorder,
+)
 
 
 def _usage() -> str:
@@ -15,6 +21,10 @@ Usage:
   gokkalkan doctor [options]
   gokkalkan static-server [options]
   gokkalkan telemetry-recorder [options]
+  gokkalkan scenario run <name> [--output PATH]
+  gokkalkan scenario fixtures <output>
+  gokkalkan replay verify|run <session>
+  gokkalkan evidence build|verify ...
 """
 
 
@@ -33,6 +43,12 @@ def main(argv: list[str] | None = None) -> int:
         return static_server.main(command_args)
     if command == "telemetry-recorder":
         return telemetry_recorder.main(command_args)
+    if command == "scenario":
+        return session_cli.scenario_main(command_args)
+    if command == "replay":
+        return session_cli.replay_main(command_args)
+    if command == "evidence":
+        return session_cli.evidence_main(command_args)
     print(f"Unknown command: {command}\n\n{_usage()}", file=sys.stderr)
     return 2
 

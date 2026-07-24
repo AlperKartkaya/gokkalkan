@@ -11,11 +11,13 @@ from .operator_api import DryRunHardwareAdapter, OperatorService
 from .runtime_config import RuntimeSettings, load_runtime_config
 from .runtime_mode import RuntimeLaunchConfig, build_runtime_service
 from .telemetry_log import JsonlTelemetryStore
+from .telemetry_session import SessionTelemetryStore
 
 __all__ = [
     "OperatorService",
     "DryRunHardwareAdapter",
     "JsonlTelemetryStore",
+    "SessionTelemetryStore",
     "HardwareAdapterBase",
     "CanMcuAdapter",
     "CommandEnvelope",

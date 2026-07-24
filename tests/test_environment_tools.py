@@ -6,6 +6,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -14,10 +15,45 @@ from urllib.request import Request, urlopen
 from gokkalkan_backend.operator_http_server import build_http_server
 from gokkalkan_backend.static_server import build_static_server
 from gokkalkan_backend.telemetry_log import JsonlTelemetryStore
-from gokkalkan_backend.telemetry_recorder import TelemetryRecorder
+from gokkalkan_backend.telemetry_recorder import TelemetryProducer, TelemetryRecorder
 
 
 class TelemetryRecorderTest(unittest.TestCase):
+    def test_socket_producers_share_one_persistent_writer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            socket_path = Path(tmp) / "recorder.sock"
+            recorder = TelemetryRecorder(
+                socket_path,
+                Path(tmp) / "records.jsonl",
+                max_bytes=1_048_576,
+                min_free_bytes=0,
+            )
+            thread = threading.Thread(target=recorder.serve, daemon=True)
+            thread.start()
+            for _ in range(100):
+                if socket_path.exists():
+                    break
+                time.sleep(0.01)
+            producer = TelemetryProducer(socket_path)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(
+                    pool.map(
+                        lambda index: producer.append(
+                            "event", {"index": index, "physicalOutput": False}
+                        ),
+                        range(50),
+                    )
+                )
+            for _ in range(100):
+                if recorder.store.metadata()["recordCount"] == 50:
+                    break
+                time.sleep(0.01)
+            recorder.stop()
+            thread.join(timeout=3)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(recorder.store.metadata()["recordCount"], 50)
+
     def test_recorder_accepts_only_typed_json_datagrams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             recorder = TelemetryRecorder(
@@ -41,6 +77,7 @@ class TelemetryRecorderTest(unittest.TestCase):
             records = recorder.store.read_all()
             self.assertEqual(len(records), 1)
             self.assertFalse(records[0]["payload"]["physicalOutput"])
+            recorder.close()
 
     def test_jsonl_store_rotates_before_exceeding_configured_quota(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

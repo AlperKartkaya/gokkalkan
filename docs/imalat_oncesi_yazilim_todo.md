@@ -151,9 +151,11 @@ yoluna referans bulunmadı; PDF hash’i `docs/requirements_source.md` ile eşle
   - Backend/Mission Core, perception, UI/static server ve telemetry recorder servisleri hazırlanmalı.
   - Restart politikası, dependency sırası, graceful shutdown ve log yönlendirmesi tanımlanmalı.
   - Kanıt: `deploy/systemd/`; backend, perception, bağımlılıksız static/proxy
-    UI ve Unix-socket tek-yazarlı recorder birimleri ile `gokkalkan.target`.
+    UI ve opsiyonel Unix-socket recorder birimleri ile `gokkalkan.target`.
     Birimler restart, sıra, sinyal, timeout ve journald politikasını içerir.
-    Producer’ların tamamının recorder socket’ine taşınması `TEL-001` olarak kalır.
+    Faz 7’de backend kanonik tek-yazarlı session deposunun sahibi yapıldı;
+    bağımsız process recorder’ı ikinci kanonik log oluşturmaması için target
+    dışında opsiyonel kaldı. Kalıcı sequence yalnız ilgili writer’da atanır.
 
 - [x] **ENV-006 — Tek komutlu geliştirme ve dry-run başlatma ekle**
   - Mevcut frontend scriptleri korunmalı.
@@ -289,59 +291,74 @@ kapanışını doğrular. Sözleşme ve karar kayıtları
 
 # Faz 6 — Donanım simülasyonu ve dijital ikiz
 
-- [ ] **SIM-001 — MCU simülatörünü gerçek protokol davranışına yükselt**
+- [x] **SIM-001 — MCU simülatörünü gerçek protokol davranışına yükselt**
   - State machine, ACK/NACK, gecikme, timeout ve fault injection desteklemeli.
 
-- [ ] **SIM-002 — Pan/tilt dinamik mock’u ekle**
+- [x] **SIM-002 — Pan/tilt dinamik mock’u ekle**
   - Hız, ivme, soft limit, basit backlash ve encoder feedback modellenmeli.
   - Parametreler resmî donanım ölçümü gibi sunulmamalı.
 
-- [ ] **SIM-003 — Sensör fixture ve replay adapter’ları ekle**
+- [x] **SIM-003 — Sensör fixture ve replay adapter’ları ekle**
   - Kamera track, TFA50-L tek nokta menzil/no-detection, bozuk UART frame, stale/dropout ve zaman kayması senaryoları üretilebilmeli.
 
-- [ ] **SIM-004 — Güvenli imha çıkışı mock’u ekle**
+- [x] **SIM-004 — Güvenli imha çıkışı mock’u ekle**
   - Gerçek çıkış yerine event/lamba/yapay yük davranışı.
   - Fire command yalnız Safety Gate kararından sonra kabul edilmeli.
 
-- [ ] **SIM-005 — Senaryo çalıştırıcısı oluştur**
+- [x] **SIM-005 — Senaryo çalıştırıcısı oluştur**
   - Aşama 1/2/3, E-Stop, bağlantı kaybı ve yanlış hedef senaryoları komut satırından tekrarlanabilmeli.
 
-**Faz kanıtı:** Gerçek donanım olmadan kritik görev ve hata akışları deterministik biçimde tekrar edilebiliyor.
+**Faz 6 yazılım/mock kanıtı (25.07.2026):**
+`gokkalkan_backend.digital_twin`, CAN v1 uyumlu
+`backend/hardware_mock/mcu_simulator.py` ve `gokkalkan scenario` CLI’sı;
+Aşama 1/2/3, dost/düşman, E-Stop, bağlantı kaybı ve yanlış hedef yollarını
+deterministik yürütür. `tests/test_digital_twin.py` hız/ivme/backlash/limit,
+ACK gecikmesi-drop-bozulma, sensör fault fixture’ları ve fiziksel çıkışsız
+SafeFireMock sınırını doğrular. Parametreler ölçülmüş donanım değeri değildir;
+gerçek motor/enkoder/sensör kabulü imalat sonrası kalır.
 
 ---
 
 # Faz 7 — Telemetri, kayıt, kanıt ve replay
 
-- [ ] **TEL-001 — Tek-yazarlı telemetry pipeline kur** `[WP-05]`
+- [x] **TEL-001 — Tek-yazarlı telemetry pipeline kur** `[WP-05]`
   - Producer’lar kuyruğa yazar; yalnız recorder kalıcı depoya yazar.
   - Event ID ve sequence process/thread güvenli olmalı.
 
-- [ ] **TEL-002 — SQLite WAL event index’i ekle** `[WP-05]`
+- [x] **TEL-002 — SQLite WAL event index’i ekle** `[WP-05]`
   - JSONL taşınabilir export olarak korunabilir.
   - `/state` veya health istekleri bütün logu baştan okumamalı.
 
-- [ ] **TEL-003 — Session manifest oluştur** `[WP-05]`
+- [x] **TEL-003 — Session manifest oluştur** `[WP-05]`
   - Git SHA, build ID, OS/paket sürümleri, config/calibration/BOM hash’leri, operatör ve dosya hash’leri kaydedilmeli.
 
-- [ ] **TEL-004 — Kamera ve ham sensör kayıtlarını session’a bağla** `[WP-05]`
+- [x] **TEL-004 — Kamera ve ham sensör kayıtlarını session’a bağla** `[WP-05]`
   - Segmentli video/frame index’i, LiDAR paketleri ve CAN frame’leri ortak zaman tabanında ilişkilendirilmeli.
 
-- [ ] **TEL-005 — Disk yönetimi ve bozulma davranışı ekle** `[WP-05]`
+- [x] **TEL-005 — Disk yönetimi ve bozulma davranışı ekle** `[WP-05]`
   - Rotation, kota, retention, düşük disk alarmı ve graceful degradation.
   - Eksik/bozuk session açıkça `invalid evidence` olmalı.
 
-- [ ] **TEL-006 — Güvenli replay motorunu oluştur** `[WP-05]`
+- [x] **TEL-006 — Güvenli replay motorunu oluştur** `[WP-05]`
   - Replay fiziksel adapter yükleyememeli.
   - Aynı session aynı karar ve event sırasını üretmeli.
 
-- [ ] **TEL-007 — Kanıt paketi üreticisi ekle** `[WP-05]`
+- [x] **TEL-007 — Kanıt paketi üreticisi ekle** `[WP-05]`
   - Şartname yeteneği, video zaman aralığı, ilgili event’ler ve hash manifest birlikte export edilmeli.
 
-- [ ] **TEL-008 — Doğrulama CLI’larını ekle** `[WP-05]`
+- [x] **TEL-008 — Doğrulama CLI’larını ekle** `[WP-05]`
   - `gokkalkan replay verify <session>`
   - `gokkalkan evidence verify <session>`
 
-**Faz kanıtı:** Bir komut; kamera karesi, Safety kararı, CAN ACK’i ve sonuç olayıyla birlikte yeniden oynatılabiliyor.
+**Faz 7 yazılım/mock kanıtı (25.07.2026):**
+`SessionTelemetryStore` queue/soket producer’larını tek writer’da sıralar;
+SQLite WAL index, segmentli JSONL, manifest ve monotonic medya index’i üretir.
+`gokkalkan replay verify|run` ile `gokkalkan evidence build|verify` fiziksel
+adapter yüklemeden çalışır. `tests/test_telemetry_session.py` kamera karesi,
+LiDAR paketi, Safety kararı, CAN ACK’i, komut sonucu ve video aralığını aynı
+`commandId`/zaman tabanında paketleyip hash doğrulamasından geçirir. Düşük disk,
+retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanıt,
+şartnamenin §2.4.4 fiziksel video/yetenek gösteriminin yerine geçmez.
 
 ---
 

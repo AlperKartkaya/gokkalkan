@@ -33,6 +33,7 @@ from .runtime_config import (
     load_runtime_config,
 )
 from .telemetry_log import JsonlTelemetryStore
+from .telemetry_session import SessionTelemetryStore
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
@@ -444,9 +445,24 @@ def main(argv: list[str] | None = None) -> None:
     except RuntimeConfigError as exc:
         parser.error(str(exc))
 
-    telemetry = JsonlTelemetryStore(
+    source_files: dict[str, Path] = {
+        "runtimeConfig": settings.source,
+        "canIcd": Path("docs/can_icd_v1.md"),
+        "lidarCameraPlacement": Path("docs/adr/003-camera-lidar-placement.md"),
+    }
+    for label, environment_name in (
+        ("calibration", "GOKKALKAN_CALIBRATION_FILE"),
+        ("bom", "GOKKALKAN_BOM_FILE"),
+    ):
+        configured = os.environ.get(environment_name)
+        if configured:
+            source_files[label] = Path(configured)
+    telemetry = SessionTelemetryStore.from_output_path(
         settings.telemetry.path,
         max_bytes=settings.telemetry.max_bytes,
+        min_free_bytes=settings.telemetry.min_free_bytes,
+        operator_id=os.environ.get("GOKKALKAN_OPERATOR_ID", "UNASSIGNED"),
+        source_files=source_files,
     )
     config = settings.launch_config()
     try:
@@ -516,6 +532,7 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         server.server_close()
         service.hardware.close()
+        telemetry.close()
 
 
 if __name__ == "__main__":

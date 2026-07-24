@@ -75,8 +75,8 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
    - sıradaki kritik radar/LiDAR, perception, MCU ve arming adımları.
    - Bu gösterge resmi yarışma uygunluk skoru değildir; yalnız uygulanmış yazılım arayüzlerinin durumunu dürüstçe gösterir.
 7. **Kayıt / Replay çekmecesi**
-   - JSONL telemetri yolu ve kayıt sayısı,
-   - `/telemetry/export` kanıt paketi,
+   - SQLite WAL session, segmentli JSONL export yolu ve kayıt sayısı,
+   - `/telemetry/export` görünümü ile `gokkalkan evidence` hash’li kanıt paketi,
    - replay-only olay/komut/hardware sonucu özeti,
    - fiziksel çıkış üretmediğini gösteren açık durum.
 
@@ -235,7 +235,9 @@ Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı
 Ancak canlı saha testi başlamadan önce şu kararlar hâlâ kapatılmalıdır:
 
 - radar/LiDAR donanımı ve mesaj formatı,
-- MCU haberleşme protokolü,
+- CAN v1 protokolünün gerçek Pico/controller/transceiver HIL kabulü,
 - gerçek panelin dry-run/live geçiş prosedürü,
 - Acil Durdur’un fiziksel kesme hattı ve backend state bildirimi,
-- dry-run için JSONL telemetri/replay yolu uygulanmıştır; canlı saha log saklama, süre/latency metriği ve export saklama politikası ayrıca netleştirilmelidir.
+- SQLite WAL + segmentli JSONL session/replay yolu uygulanmıştır; saha quota,
+  video segment süresi ve retention değerleri fiziksel bilgisayar yük testinde
+  kalibre edilmelidir.

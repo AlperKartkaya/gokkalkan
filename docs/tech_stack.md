@@ -211,13 +211,18 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti
   (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez.
   Mutasyonlar Mission Core kuyruğuna girer; `GET /state/stream` SSE snapshot,
-  `GET /commands/{id}` komut izleme, JSONL telemetri, `/readiness`,
+  `GET /commands/{id}` komut izleme, SQLite WAL + segmentli JSONL telemetri, `/readiness`,
   `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.
 - **Test:** pytest + frontend için Vitest/Playwright.
-- **Log formatı:** dry-run operatör API için JSONL uygulanmıştır (`telemetry_data/operator-api-dry-run.jsonl`, git’e eklenmez). Canlı saha log saklama politikası ve elektronik entegrasyon metrikleri donanım seçimiyle netleştirilmelidir.
+- **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
+  segmentli JSONL export, session manifest, ortak monotonic zaman tabanlı medya
+  index’i, güvenli replay ve hash’li kanıt paketi uygulanmıştır. Düşük disk,
+  retention veya eksik medya session’ı açıkça geçersiz kanıt yapar. Gerçek saha
+  quota değerleri ile video segment süreleri depolama ve kamera ölçümlerinden
+  sonra kalibre edilmelidir.
 
 ROS 2 ve tam Rust yeniden yazımı bu fazın parçası değildir. Yeniden değerlendirme
 eşikleri ADR-001’de tanımlıdır. Hailo veya derin öğrenme tabanlı algı da yalnızca

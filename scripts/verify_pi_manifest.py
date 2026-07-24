@@ -79,8 +79,7 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     _require_tokens(
         systemd / "gokkalkan-backend.service",
         (
-            "Requires=gokkalkan-telemetry.service",
-            "After=network.target gokkalkan-telemetry.service",
+            "After=network.target",
             "Restart=on-failure",
             "KillSignal=SIGINT",
             "StandardOutput=journal",
@@ -107,7 +106,6 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     _require_tokens(
         systemd / "gokkalkan-telemetry.service",
         (
-            "Before=gokkalkan-backend.service",
             "gokkalkan telemetry-recorder",
             "RuntimeDirectory=gokkalkan",
             "StateDirectory=gokkalkan",
@@ -116,8 +114,7 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     _require_tokens(
         systemd / "gokkalkan.target",
         (
-            "Requires=gokkalkan-telemetry.service gokkalkan-backend.service "
-            "gokkalkan-frontend.service",
+            "Requires=gokkalkan-backend.service gokkalkan-frontend.service",
             "Wants=gokkalkan-perception.service",
         ),
     )
@@ -201,7 +198,6 @@ def verify_host(data: dict[str, Any]) -> list[str]:
 
     for unit in (
         "gokkalkan.target",
-        "gokkalkan-telemetry.service",
         "gokkalkan-backend.service",
         "gokkalkan-frontend.service",
     ):

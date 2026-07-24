@@ -44,12 +44,20 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 
 | ID | Şartname kaynağı | Yetenek | Test/kanıt bağı | Durum |
 | --- | --- | --- | --- | --- |
-| `VID-Y1-UI` | txt 384–389 | Kullanıcı komut arayüzleri | Frontend unit/Playwright + API command events | Yazılım mevcut; entegre çekim bekliyor |
+| `VID-Y1-UI` | txt 384–389 | Kullanıcı komut arayüzleri | Frontend unit/Playwright + API command events + hash’li session evidence | Yazılım mevcut; entegre çekim bekliyor |
 | `VID-Y2-15M` | txt 390 | Durağan 15 m balon imhası | `SYS-RANGE-5-10-15`, Safety + Fire event | Fiziksel bekliyor |
 | `VID-Y3-ESTOP-MOTION` | txt 391–392 | Hareket sırasında Acil Durdur | `SAFE-ESTOP`, motor/encoder HIL | HIL/fiziksel bekliyor |
 | `VID-Y4-ESTOP-FIRE` | txt 393 | Ateş sırasında Acil Durdur | `SAFE-ESTOP`, güvenli yapay yük | HIL/fiziksel bekliyor |
-| `VID-Y5-TRACK` | txt 394–395 | Yan/yükseliş hareketli hedef takibi | Perception track + pan/tilt feedback | Gerçek hedef bekliyor |
+| `VID-Y5-TRACK` | txt 394–395 | Yan/yükseliş hareketli hedef takibi | Perception track + pan/tilt digital twin feedback + session replay | Mock doğrulandı; gerçek hedef bekliyor |
 | `VID-Y6-CLASSIFY` | txt 396–400 | 5/10/15 m tip sınıflandırma *(opsiyonel)* | Camera + TFA50-L + classification | Gerçek veri bekliyor |
+
+## WP-05 kayıt ve kanıt zinciri
+
+| ID | Kaynak | Gereksinim | Modül/test | Durum |
+| --- | --- | --- | --- | --- |
+| `TRACE-SESSION` | Video §2.4.4 ve mimari türetim | Gösterim aralığı event/sensör/video ile ilişkilendirilebilir | `telemetry_session.py`, `test_media_common_timebase_replay_and_evidence_package` | Yazılım/mock doğrulandı |
+| `TRACE-INTEGRITY` | Video §2.4.4 ve kanıt güvenilirliği | Eksik/bozuk kayıt kanıt sayılmaz | `verify_session`, `verify_evidence`, düşük disk/retention/tamper testleri | Yazılım doğrulandı |
+| `TRACE-REPLAY` | Mimari türetim | Replay fiziksel çıkış üretemez ve sıralama deterministiktir | `replay_session`, `tests/test_telemetry_session.py` | Yazılım doğrulandı |
 
 ## Değişiklik yönetimi
 

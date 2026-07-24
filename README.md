@@ -5,17 +5,19 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 ## Güncel Durum
 
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü**. Aşama 1/2/3 senaryolarını görselleştirir.
-- `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. JSONL telemetri, Safety Gate ve görev endpoint’leri aktiftir.
+- `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
 - `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi ve CAN v1 codec çekirdeği.
 - `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.
-- Faz 4–5 yazılımı; saf/fail-closed Safety Gate, canlı arm/E-Stop reset zinciri,
-  CAN v1 ICD ve Pico firmware çekirdeğiyle tamamlanmıştır. Sıradaki işler gerçek
-  kamera/TFA50-L adapter’ları, dijital ikiz, HIL ve uçtan uca fault-injection
-  kanıtlarıdır. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
+- Faz 4–7 yazılımı; saf/fail-closed Safety Gate, canlı arm/E-Stop reset zinciri,
+  CAN v1/Pico çekirdeği, deterministik dijital ikiz ve doğrulanabilir telemetry
+  session/replay zinciriyle tamamlanmıştır. Bunlar **yazılım/mock kanıtıdır**;
+  gerçek kamera, TFA50-L, Pico/CAN, E-Stop, motor ve imha hattı kabulü imalat
+  sonrası HIL/fiziksel kanıt olarak açık kalır. Kanonik sıra:
+  `docs/imalat_oncesi_yazilim_todo.md`.
 
 ## Komut Zinciri
 
@@ -95,7 +97,26 @@ komutu dokümante edilmez.
 
 ```bash
 cd frontend && npm install && npm run dev
+
+# Deterministik backend senaryoları
+.venv/bin/gokkalkan scenario run stage3-friend-foe
+.venv/bin/gokkalkan scenario fixtures telemetry_data/sensor-fixtures.jsonl
 ```
+
+### Session, replay ve kanıt
+
+Backend çalışma anında tek writer thread üzerinden SQLite WAL event index’i ve
+segmentli JSONL export üretir. Doğrulama/tekrar oynatma fiziksel adapter
+oluşturmaz:
+
+```bash
+.venv/bin/gokkalkan replay verify telemetry_data/operator-api-dry-run-<zaman>-<id>.session
+.venv/bin/gokkalkan replay run telemetry_data/operator-api-dry-run-<zaman>-<id>.session
+.venv/bin/gokkalkan evidence verify telemetry_data/operator-api-dry-run-<zaman>-<id>.session
+```
+
+Kanıt paketi üretimi ve bütünlük sınırları:
+`docs/digital_twin_and_evidence.md`.
 
 ## Backend API Endpoint'leri
 
@@ -156,6 +177,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
   geriye uyumluluk politikası.
 - `docs/can_icd_v1.md` — sürümlü CAN frame, CRC, sequence ve ACK/NACK sözleşmesi.
+- `docs/digital_twin_and_evidence.md` — Faz 6/7 senaryo, session, replay ve kanıt kullanımı.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
 - `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.

@@ -1,6 +1,6 @@
 [Unit]
 Description=Gökkalkan software stack
-Requires=gokkalkan-telemetry.service gokkalkan-backend.service gokkalkan-frontend.service
+Requires=gokkalkan-backend.service gokkalkan-frontend.service
 Wants=gokkalkan-perception.service
 After=network.target
 AllowIsolate=yes

@@ -564,7 +564,8 @@ class CanMcuAdapter(HardwareAdapterBase):
         detail: dict[str, Any] = {}
 
         command_id = str(command.get("commandId", f"CAN-{self._command_count + 1:05d}"))
-        if self._physical_output_capable and not self._dry_run:
+        virtual_channel = self.bustype == "virtual" or self.channel.startswith("vcan")
+        if not self._dry_run and (self._physical_output_capable or virtual_channel):
             return self._execute_v1(command_id, kind, payload, command)
 
         if kind == "ManualAimCommand":
