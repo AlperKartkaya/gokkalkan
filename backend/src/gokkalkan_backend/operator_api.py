@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
 from math import isfinite
-from typing import Any, Callable, Literal
+import threading
 import time as _time
+from typing import Any, Callable, Literal
 
 from .hardware_adapter import HardwareAdapterBase
 from .telemetry_log import JsonlTelemetryStore
@@ -339,6 +340,8 @@ class OperatorService:
     ) -> None:
         self._clock = clock
         self._ids = count(1)
+        self._owner_thread_id: int | None = None
+        self._active_command_id: str | None = None
         self.stage: Stage = 3
         self.mode: Mode = stage_expected_mode(self.stage)
         self.round = 1
@@ -382,6 +385,24 @@ class OperatorService:
             boot_msg,
             {"dryRun": dry_run, "runtimeMode": self.runtime_mode},
         )
+
+    def bind_owner_thread(self, thread_id: int) -> None:
+        """Bind production mutations to the Mission Core reducer thread."""
+
+        if self._owner_thread_id not in {None, thread_id}:
+            raise RuntimeError("OperatorService already has a different owner")
+        self._owner_thread_id = thread_id
+
+    def set_command_context(self, command_id: str | None) -> None:
+        self._require_owner()
+        self._active_command_id = command_id
+
+    def _require_owner(self) -> None:
+        owner = self._owner_thread_id
+        if owner is not None and threading.get_ident() != owner:
+            raise RuntimeError(
+                "state mutation is restricted to the Mission Core owner thread"
+            )
 
     def _tracks_for_stage(self, stage: Stage, round_no: int) -> list[DryRunTrack]:
         now = self._clock()
@@ -643,7 +664,7 @@ class OperatorService:
                 "Backend Operatör API",
                 "ready" if self.backend_connected else "blocked",
                 "Backend",
-                "GET /state, GET /sensor-frames, GET /readiness, POST /stage, POST /mode, POST /fire-intent, /telemetry/export ve /replay çalışıyor.",
+                "Tek sahipli Mission Core kuyruğu, immutable GET /state, SSE /state/stream, izlenebilir komut sonuçları, /telemetry/export ve /replay çalışıyor.",
                 "API hata toleransı ve oturum/imza katmanı saha entegrasyonu öncesi eklenecek.",
                 "StageRequest, ModeRequest, SensorFrame, FireIntent, CommandResult",
             ),
@@ -679,8 +700,8 @@ class OperatorService:
                 "Perception Adapter",
                 "ready" if self.perception_connected else "tbd",
                 "Perception",
-                "Şu an dry-run TrackState kullanılıyor; canlı sınıflandırma bağlantısı yapılmadı.",
-                "Kamera + model çıktısını TrackState sözleşmesine bağla.",
+                "Ayrı process perception bridge, bounded queue ve heartbeat uygulanmış; gerçek kamera/parkur verisi bağlı değil.",
+                "Gerçek kamera çıktısını kalibre edilmiş TrackState akışına bağla ve gecikmeyi ölç.",
                 "TrackState",
             ),
             self._readiness_item(
@@ -688,8 +709,8 @@ class OperatorService:
                 "Radar/LiDAR Adapter",
                 "ready" if self.sensor_adapter_connected else "tbd",
                 "Sensör",
-                "Menzil/açı/kalite verisi için SensorFrame replay sözleşmesi ve fixture görünümü hazır; gerçek sensör protokolü seçilmedi.",
-                "Seçilen radar/LiDAR için güç, veri, timestamp ve sağlık mesajı arayüzünü doldur.",
+                "TFA50-L seçimi, UART decoder ve SensorFrame replay sözleşmesi hazır; gerçek sensör bağlı değil.",
+                "radar/LiDAR hattında TFA50-L serial adapterını bağla; güç, timestamp, hizalama ve 5/10/15 m kabulünü doğrula.",
                 "SensorFrame",
             ),
             self._readiness_item(
@@ -697,8 +718,8 @@ class OperatorService:
                 "Hardware Adapter",
                 "partial",
                 "Backend + Elektronik",
-                "hardware_mock.dry_run komutları kaydediyor ve physicalOutput=false döndürüyor.",
-                "MCU haberleşme protokolü (UART/RS422/CAN/Ethernet TBD) ve imha hattı interlock mesajları bağlanacak.",
+                "Klasik CAN v0 codec, CanMcuAdapter ve Pico simülatörü çalışıyor; physicalOutput=false.",
+                "Sürümlü CAN ICD v1, Pico firmware ve imha hattı interlock mesajlarını tamamla.",
                 "HardwareCommand, HardwareResult",
             ),
             self._readiness_item(
@@ -740,9 +761,14 @@ class OperatorService:
             "nextCriticalActions": next_actions,
         }
 
-    def telemetry_export(self) -> dict[str, Any]:
+    def telemetry_export(
+        self,
+        *,
+        state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         entries = self.telemetry.read_all()
         unsafe_replay = self._unsafe_physical_output_entries(entries)
+        published_state = state if state is not None else self.snapshot()
         return {
             "schemaVersion": 1,
             "generatedAt": self._clock(),
@@ -750,9 +776,11 @@ class OperatorService:
             "unsafeReplayEvidence": unsafe_replay,
             "evidenceWarning": "Replay log içinde physicalOutput=true kaydı var; kanıt güvenli kabul edilmez." if unsafe_replay else "",
             "telemetry": self.telemetry.metadata(),
-            "state": self.snapshot(),
-            "events": self.events[:50],
-            "commandResults": self.command_results[:50],
+            "state": published_state,
+            "events": list(published_state.get("events", []))[:50],
+            "commandResults": list(
+                published_state.get("commandResults", [])
+            )[:50],
             "entries": entries,
         }
 
@@ -800,6 +828,7 @@ class OperatorService:
         return any(isinstance(entry.get("payload"), dict) and entry["payload"].get("physicalOutput") is True for entry in entries)
 
     def reset_telemetry(self) -> dict[str, Any]:
+        self._require_owner()
         self.mode = "safe"
         self.stage = 3
         self.round = 1
@@ -882,6 +911,7 @@ class OperatorService:
         )
 
     def handle_mode_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_owner()
         requested = payload.get("requestedMode")
         safety = self.evaluate_safety("ModeRequest", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
@@ -899,6 +929,7 @@ class OperatorService:
         - Sistem zaten maintenance modunda değil
         - E-Stop aktif değil
         """
+        self._require_owner()
         if self.estop:
             return {"ok": False, "blocked": True, "reason": "BLOCKED_ESTOP",
                     "message": "Acil Durdur aktif; bakım isteği reddedildi."}
@@ -922,6 +953,7 @@ class OperatorService:
 
         En az MAINTENANCE_MIN_REQUEST_SEC kadar süre kayıt edilir.
         """
+        self._require_owner()
         if self.mode != "maintenance" or self._maintenance_started_at is None:
             return {"ok": False, "reason": "NOT_IN_MAINTENANCE", "message": "Sistem bakım modunda değil."}
         elapsed = max(MAINTENANCE_MIN_REQUEST_SEC, _time.monotonic() - self._maintenance_started_at)
@@ -935,6 +967,7 @@ class OperatorService:
                 "maintenanceState": self._maintenance_state(), "state": self.snapshot()}
 
     def handle_stage_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_owner()
         safety = self.evaluate_safety("StageRequest", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
         if accepted:
@@ -970,6 +1003,7 @@ class OperatorService:
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_owner()
         safety = self.evaluate_safety("ManualAimCommand", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
         result = self._command_result("ManualAimCommand", accepted, safety.blockReason)
@@ -981,6 +1015,7 @@ class OperatorService:
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
     def handle_fire_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_owner()
         target = self._find_track(str(payload.get("targetId", "")))
         target_dict = target.to_dict() if target else None
         safety = self.evaluate_safety("FireIntent", target=target_dict, payload=payload)
@@ -1023,11 +1058,12 @@ class OperatorService:
         return True
 
     def set_estop(self, active: bool) -> None:
-        """E-Stop durumunu dışarıdan güncelle.
+        """Mission Core owner thread'inde E-Stop durumunu güncelle.
 
-        CAN üzerinden gelen Pico bildirimi veya GPIO interrupt'ı
-        bu yöntemi çağırır. Thread-safe: sadece bool ataması.
+        CAN/GPIO callback'leri bu yöntemi doğrudan çağırmaz; Mission Core
+        ``publish_threadsafe`` köprüsüne ``EStopChange`` bırakır.
         """
+        self._require_owner()
         prev = self.estop
         self.estop = active
         if active != prev:
@@ -1048,6 +1084,7 @@ class OperatorService:
           trackId, targetType, friendFoe, rangeM, bearingDeg, confidence
         Eksik alanlar güvenli varsayılanlarla doldurulur.
         """
+        self._require_owner()
         if not isinstance(tracks_data, list):
             return {"ok": False, "error": "tracks bir liste olmalıdır."}
 
@@ -1088,12 +1125,44 @@ class OperatorService:
             "perceptionConnected": True,
         }
 
+    def set_perception_health(
+        self,
+        healthy: bool,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Apply perception health only from the Mission Core reducer."""
+
+        self._require_owner()
+        changed = self.perception_connected != healthy
+        self.perception_connected = healthy
+        if not healthy:
+            self.live_arm_enabled = False
+        if changed:
+            self._append_event(
+                "perception",
+                "PERCEPTION_HEALTH",
+                f"Perception {'sağlıklı' if healthy else 'sağlıksız'}: {reason}",
+                {
+                    "healthy": healthy,
+                    "reason": reason,
+                    "engagementClosed": not healthy,
+                },
+            )
+        return {
+            "ok": True,
+            "healthy": healthy,
+            "reason": reason,
+            "engagementClosed": not healthy,
+            "physicalOutput": False,
+        }
+
     def _find_track(self, track_id: str) -> DryRunTrack | None:
         return next((track for track in self.tracks if track.trackId == track_id), None)
 
     def _command_result(self, kind: CommandKind, accepted: bool, block: BlockReason) -> dict[str, Any]:
         dry_run = self.dry_run
-        command_id = f"CMD-{next(self._ids):05d}"
+        command_id = self._active_command_id or f"CMD-{next(self._ids):05d}"
         message = (
             "Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi."
             if accepted and dry_run

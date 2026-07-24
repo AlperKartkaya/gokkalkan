@@ -39,6 +39,7 @@ export interface OperatorTelemetryEvent {
 export interface OperatorApiSnapshot {
   app: string;
   version: number;
+  snapshotVersion?: number;
   mode: Mode;
   stage: Stage;
   round: number;
@@ -59,6 +60,17 @@ export interface OperatorApiSnapshot {
   missionRemainingSeconds?: number;
   missionTimeLimitSec?: number;
   missionTimerRunning?: boolean;
+  missionCore?: {
+    schemaVersion: number;
+    runId: string;
+    version: number;
+    lastEventSequence: number;
+    lifecycle: string;
+    perceptionHealthy: boolean;
+    faults: string[];
+    updatedAtUtc: string;
+    updatedAtMonotonicNs: number;
+  };
 }
 
 export interface HardwareResult {
@@ -151,6 +163,11 @@ export interface OperatorApiCommandResponse {
 
 export function normalizeOperatorApiBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
+}
+
+export function operatorStateStreamUrl(baseUrl: string, afterVersion = 0): string {
+  const after = Math.max(0, Math.trunc(afterVersion));
+  return `${normalizeOperatorApiBaseUrl(baseUrl)}/state/stream?after=${after}`;
 }
 
 export async function fetchOperatorSnapshot(baseUrl: string): Promise<OperatorApiSnapshot> {

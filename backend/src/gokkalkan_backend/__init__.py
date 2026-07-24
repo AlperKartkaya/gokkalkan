@@ -5,6 +5,8 @@ adapter construction is not an authorization path for physical output.
 """
 
 from .hardware_adapter import CanMcuAdapter, GpioEStopMonitor, HardwareAdapterBase
+from .messages import CommandEnvelope, EventEnvelope
+from .mission_core import MissionCore, MissionState
 from .operator_api import DryRunHardwareAdapter, OperatorService
 from .runtime_config import RuntimeSettings, load_runtime_config
 from .runtime_mode import RuntimeLaunchConfig, build_runtime_service
@@ -16,7 +18,11 @@ __all__ = [
     "JsonlTelemetryStore",
     "HardwareAdapterBase",
     "CanMcuAdapter",
+    "CommandEnvelope",
+    "EventEnvelope",
     "GpioEStopMonitor",
+    "MissionCore",
+    "MissionState",
     "RuntimeLaunchConfig",
     "RuntimeSettings",
     "build_runtime_service",

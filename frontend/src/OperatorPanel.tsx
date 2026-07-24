@@ -21,6 +21,7 @@ import {
   fetchOperatorReadiness,
   fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
+  operatorStateStreamUrl,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
   sendOperatorModeRequest,
@@ -2109,52 +2110,97 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     }
 
     let cancelled = false;
-    let timer: number;
+    let fallbackTimer: number | undefined;
+    let readinessTimer: number | undefined;
+    let stream: EventSource | undefined;
 
-    const poll = () => {
-      setApiBusy(true);
-      Promise.all([
-        fetchOperatorSnapshot(apiBaseUrl),
-        fetchOperatorReadiness(apiBaseUrl).catch((error: unknown) => {
-          if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
-          return undefined;
-        }),
-      ])
-        .then(([snapshot, readiness]) => {
+    const applySnapshot = (snapshot: OperatorApiSnapshot) => {
+      setApiSnapshot(snapshot);
+      setApiError('');
+      setMode(snapshot.mode);
+      setStage(snapshot.stage);
+      setRound(snapshot.round);
+      if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
+      setSelectedTrackId((current) => {
+        if (!snapshot.tracks[0] || snapshot.tracks.some((track) => track.trackId === current)) return current;
+        return snapshot.tracks[0].trackId;
+      });
+    };
+
+    const loadReadiness = () => {
+      void fetchOperatorReadiness(apiBaseUrl)
+        .then((readiness) => {
           if (cancelled) return;
-          setApiSnapshot(snapshot);
           setReadinessReport(readiness);
-          setApiError('');
-          if (readiness) setReadinessError('');
-          setMode(snapshot.mode);
-          setStage(snapshot.stage);
-          setRound(snapshot.round);
-          if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
-          if (snapshot.tracks[0] && !snapshot.tracks.some((track) => track.trackId === selectedTrackId)) {
-            setSelectedTrackId(snapshot.tracks[0].trackId);
-          }
+          setReadinessError('');
         })
         .catch((error: unknown) => {
-          if (cancelled) return;
-          setApiSnapshot(undefined);
-          setReadinessReport(undefined);
-          setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setApiBusy(false);
-            timer = window.setTimeout(poll, 300);
-          }
+          if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
         });
     };
 
-    poll();
+    const scheduleFallback = () => {
+      if (cancelled || fallbackTimer !== undefined) return;
+      fallbackTimer = window.setTimeout(() => {
+        fallbackTimer = undefined;
+        void loadSnapshot(true);
+      }, 2_000);
+    };
+
+    const loadSnapshot = (continueFallback = false) => {
+      setApiBusy(true);
+      void fetchOperatorSnapshot(apiBaseUrl)
+        .then((snapshot) => {
+          if (cancelled) return;
+          applySnapshot(snapshot);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setApiBusy(false);
+          if (continueFallback) scheduleFallback();
+        });
+    };
+
+    loadSnapshot();
+    loadReadiness();
+    readinessTimer = window.setInterval(loadReadiness, 5_000);
+
+    if (typeof EventSource === 'function') {
+      stream = new EventSource(operatorStateStreamUrl(apiBaseUrl));
+      stream.addEventListener('state', (event) => {
+        if (cancelled) return;
+        try {
+          applySnapshot(JSON.parse((event as MessageEvent<string>).data) as OperatorApiSnapshot);
+          if (fallbackTimer !== undefined) {
+            window.clearTimeout(fallbackTimer);
+            fallbackTimer = undefined;
+          }
+          setApiBusy(false);
+        } catch {
+          setApiError('Backend state stream geçersiz JSON üretti.');
+          scheduleFallback();
+        }
+      });
+      stream.onerror = () => {
+        if (cancelled) return;
+        setApiError('Backend state stream kesildi; düşük hızlı snapshot yedeği kullanılıyor.');
+        scheduleFallback();
+      };
+    } else {
+      scheduleFallback();
+    }
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      stream?.close();
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      if (readinessTimer !== undefined) window.clearInterval(readinessTimer);
     };
-  }, [apiBaseUrl, selectedTrackId]);
+  }, [apiBaseUrl]);
 
   const config: OperatorPanelConfig = useMemo(() => {
     const apiReady = Boolean(apiSnapshot && !apiError);
@@ -2939,4 +2985,3 @@ function EvidenceRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

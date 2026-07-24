@@ -110,6 +110,49 @@ class StaticServerTest(unittest.TestCase):
         self.assertTrue(health["ok"])
         self.assertIn("Gökkalkan", html)
 
+    def test_static_proxy_forwards_sse_without_buffering_until_disconnect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text("<h1>Gökkalkan</h1>", encoding="utf-8")
+            backend = build_http_server("127.0.0.1", 0)
+            backend_thread = threading.Thread(
+                target=backend.serve_forever,
+                daemon=True,
+            )
+            backend_thread.start()
+            backend_base = f"http://127.0.0.1:{backend.server_address[1]}"
+            static = build_static_server(
+                "127.0.0.1",
+                0,
+                root=root,
+                api_base=backend_base,
+            )
+            static_thread = threading.Thread(
+                target=static.serve_forever,
+                daemon=True,
+            )
+            static_thread.start()
+            try:
+                stream = urlopen(
+                    f"http://127.0.0.1:{static.server_address[1]}/api/state/stream?after=0",
+                    timeout=2,
+                )
+                try:
+                    lines = [stream.readline().decode("utf-8") for _ in range(3)]
+                finally:
+                    stream.close()
+            finally:
+                static.shutdown()
+                static.server_close()
+                backend.shutdown()
+                backend.server_close()
+                static_thread.join(timeout=2)
+                backend_thread.join(timeout=2)
+
+        self.assertTrue(lines[0].startswith("id: "))
+        self.assertEqual(lines[1], "event: state\n")
+        self.assertTrue(lines[2].startswith("data: {"))
+
 
 class OperatorServerLifecycleTest(unittest.TestCase):
     def test_operator_server_emits_only_configured_cors_origin(self) -> None:

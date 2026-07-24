@@ -327,6 +327,15 @@ class CanMcuAdapter(HardwareAdapterBase):
             self.channel, self.bustype, self.bitrate,
         )
 
+    def set_estop_callback(self, callback: EStopCallback) -> None:
+        """Bind CAN E-Stop notifications to the Mission Core queue bridge."""
+
+        self._estop_cb = callback
+        with self._lock:
+            active = bool(self._status.get("estopActive", False))
+        if active:
+            callback(True)
+
     def _open_bus(self) -> None:
         try:
             import can

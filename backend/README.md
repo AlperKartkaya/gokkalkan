@@ -13,10 +13,16 @@ Bu klasör, gerçek operatör panelinin bağlanacağı görev çekirdeği ve don
   --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
+Tüm mutasyon endpoint’leri önce bounded `CommandEnvelope` kuyruğuna girer. State
+yalnız tek sahipli Mission Core reducer thread’inde değişir; HTTP/CAN/sensör
+thread’leri `OperatorService` state’ini doğrudan yazamaz.
+
 Endpoint’ler:
 
 - `GET /health`
-- `GET /state`
+- `GET /state` — immutable Mission Core snapshot’ı.
+- `GET /state/stream?after=N` — SSE state akışı; `id=snapshotVersion`.
+- `GET /commands/{commandId}` — kabul edilen/kuyruktaki komutun sonucu.
 - `GET /sensor-frames` — radar/LiDAR biçimli dry-run `SensorFrame` replay paketi döner; gerçek sensör bağlı iddiası taşımaz.
 - `GET /readiness` — final fazı arayüz hazırlığı, TBD/kilitli boşluklar ve sıradaki kritik adımları döner; resmi uygunluk skoru değildir.
 - `GET /events`
@@ -26,11 +32,18 @@ Endpoint’ler:
 - `POST /mode`
 - `POST /manual-aim`
 - `POST /fire-intent`
+- `POST /tracks/update` — perception sonucu; source sequence ile sıra kontrolü.
+- `POST /perception/heartbeat` — ayrı perception process health bildirimi.
+- `POST /estop` — ikincil yazılımsal Acil Durdur olayı.
 - `POST /telemetry/reset` — dry-run oturumu ve JSONL kanıtını güvenli başlangıç durumuna sıfırlar.
 
 Telemetri varsayılan olarak git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır. `GOKKALKAN_TELEMETRY_JSONL` ortam değişkeni veya `--telemetry-jsonl` parametresiyle yol değiştirilebilir. `/readiness` repo içi entegrasyon durumunu gösterir; `/replay` yalnız kayıtları okur ve gerçek hardware adapter çağırmaz.
 
 Güvenlik notu: Bu API geçişinde `hardware_mock.dry_run` adapter kullanılır. Komut kabul edilse bile `physicalOutput=false` döner; gerçek motor, MCU, radar/LiDAR veya imha hattı sürülmez.
+
+Mesaj şeması, idempotency, sıra ve kapanış davranışı
+[`docs/message_contracts.md`](../docs/message_contracts.md); concurrency kararı
+[`ADR-004`](../docs/adr/004-mission-core-concurrency.md) içinde açıklanır.
 
 ## Runtime profilleri
 

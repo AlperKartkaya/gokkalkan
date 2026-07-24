@@ -96,6 +96,12 @@ Temel alt bileşenler:
 - **Hardware Adapter:** Safety Gate’ten geçen yüksek seviye komutu MCU/protokol düzeyine çevirir.
 - **Telemetry Logger:** zaman damgalı mod, hedef, komut, güvenlik, hata ve atış kayıtları üretir.
 
+**Mevcut concurrency sınırı:** `MissionCore`, frozen `MissionState` modelinin tek
+yazarıdır. HTTP, CAN/GPIO callback ve sensör üreticileri bounded kuyruğa
+`CommandEnvelope` bırakır; reducer sıralı `EventEnvelope` ve immutable snapshot
+üretir. UI snapshot’ı SSE üzerinden izler ve yalnız stream kesilirse düşük hızlı
+REST polling kullanır. Ayrıntılar: ADR-004 ve `docs/message_contracts.md`.
+
 ### 4.2. `backend/hardware_mock/` — Donanım Simülasyonu
 
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
@@ -106,7 +112,12 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 
 `perception/` kamera verisinden hedef adaylarını üretir. Şartname hedeflerin maket, renk/şekil ve balonla temsil edileceğini söylediği için ilk tercih basit, açıklanabilir ve test edilebilir görüntü işleme olmalıdır; yapay zekâ modeli ancak gerçek hedef görselleri ve saha testleri bunu gerektirirse eklenmelidir.
 
-**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim), `frame_processor.py` (HSV renk filtresi + CentroidTracker), `perception_bridge.py` (10Hz poll → POST /tracks/update). Aşama 2 renk-nötr, Aşama 3 kırmızı=Düşman/mavi=Dost.
+**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim),
+`frame_processor.py` (HSV renk filtresi + CentroidTracker),
+`perception_bridge.py` (ayrı `systemd` process’i; bounded latest-wins queue,
+heartbeat ve POST `/tracks/update`). Aşama 2 renk-nötr, Aşama 3
+kırmızı=Düşman/mavi=Dost. Heartbeat kaybı Mission Core’da perception fault’u
+oluşturup canlı arm iznini kapatır.
 
 Önerilen öncelik:
 
@@ -156,9 +167,9 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 
 | Kaynak → Hedef | Mesaj örnekleri | İlk protokol önerisi | Not |
 | --- | --- | --- | --- |
-| Operatör Paneli → Backend | `StageRequest`, `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP + WebSocket | Komutlar niyettir; yetki backend’dedir |
-| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
-| Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | Python içi queue, ZeroMQ/WebSocket veya REST adapter; seçim entegrasyona göre | Saha gecikmesi ölçülmeden kesin protokol dayatılmamalı |
+| Operatör Paneli → Backend | `StageRequest`, `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP → bounded Mission Core queue | Komutlar niyettir; yetki backend’dedir |
+| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
+| Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
 | Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002; v0 codec fiziksel LIVE release için yeterli değildir |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
@@ -189,8 +200,14 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
   kilitleri `requirements/`, doğrulanan çalışma profilleri `config/runtime/`,
   Pi manifesti ve servisler `deploy/` altındadır. Frontend Pi’de Node.js yerine
   önceden üretilmiş `dist` + bağımlılıksız static/proxy server ile çalışır.
-- **Backend / görev çekirdeği:** Python 3.x.
-- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /stage`, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
+- **Backend / görev çekirdeği:** Python 3.x; tek sahipli reducer thread,
+  sürümlü immutable mesajlar ve bounded queue. Tam Rust yeniden yazımı yerine
+  ölçülebilir, test edilen sahiplik sınırı kullanılır.
+- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti
+  (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez.
+  Mutasyonlar Mission Core kuyruğuna girer; `GET /state/stream` SSE snapshot,
+  `GET /commands/{id}` komut izleme, JSONL telemetri, `/readiness`,
+  `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
 - **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.

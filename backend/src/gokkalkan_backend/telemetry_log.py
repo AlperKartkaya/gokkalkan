@@ -43,6 +43,7 @@ class JsonlTelemetryStore:
         self._ids = count(1)
         self._lock = RLock()
         self.max_bytes = max_bytes
+        self._current_record_count = self._count_existing_records()
 
     @property
     def rotated_path(self) -> Path:
@@ -63,8 +64,18 @@ class JsonlTelemetryStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.rotated_path.unlink(missing_ok=True)
         self.path.replace(self.rotated_path)
+        self._current_record_count = 0
         if self.rotated_path.stat().st_size + incoming_size > self.max_bytes:
             self.rotated_path.unlink()
+
+    def _count_existing_records(self) -> int:
+        if not self.path.exists():
+            return 0
+        try:
+            with self.path.open("r", encoding="utf-8") as handle:
+                return sum(1 for line in handle if line.strip())
+        except OSError:
+            return 0
 
     def append(self, record_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -79,6 +90,7 @@ class JsonlTelemetryStore:
             self._rotate_if_needed(len(encoded.encode("utf-8")))
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(encoded)
+            self._current_record_count += 1
             return record
 
     def read_all(self, limit: int | None = None) -> list[dict[str, Any]]:
@@ -107,6 +119,7 @@ class JsonlTelemetryStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text("", encoding="utf-8")
             self._ids = count(1)
+            self._current_record_count = 0
 
     def metadata(self) -> dict[str, Any]:
         with self._lock:
@@ -119,7 +132,7 @@ class JsonlTelemetryStore:
             return {
                 "path": str(self.path),
                 "exists": self.path.exists(),
-                "recordCount": len(self.read_all()),
+                "recordCount": self._current_record_count,
                 "maxBytes": self.max_bytes,
                 "sizeBytes": size_bytes,
                 "rotatedPath": str(self.rotated_path),

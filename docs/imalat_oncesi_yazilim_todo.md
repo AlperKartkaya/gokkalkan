@@ -178,35 +178,42 @@ kurulumu, 95 Python testi, doctor ve `npm run dev:check` geçti. Fiziksel Pi
 
 # Faz 3 — Tek sahipli görev çekirdeği ve mesaj sözleşmeleri
 
-- [ ] **CORE-001 — Mission Core state modelini ayır** `[WP-01][WP-02][WP-03]`
+- [x] **CORE-001 — Mission Core state modelini ayır** `[WP-01][WP-02][WP-03]`
   - Mod, aşama, tur, hedef, arm, bakım ve fault state’leri tek modelde tanımlanmalı.
   - State değişikliği yalnız Mission Core tarafından yapılmalı.
 
-- [ ] **CORE-002 — `CommandEnvelope` ve `EventEnvelope` şemalarını tanımla**
+- [x] **CORE-002 — `CommandEnvelope` ve `EventEnvelope` şemalarını tanımla**
   - En az `run_id`, `event_id`, `sequence`, UTC/monotonic zaman, source, schema version, command/causation ID ve target/track ID alanları bulunmalı.
   - Şema sürümü ve geriye uyumluluk politikası yazılmalı.
 
-- [ ] **CORE-003 — HTTP komutlarını kuyruğa taşı**
+- [x] **CORE-003 — HTTP komutlarını kuyruğa taşı**
   - HTTP handler’ları paylaşılan state’i veya donanım adapter’ını doğrudan çağırmamalı.
   - Kabul/red cevabı command ID ile izlenebilmeli.
 
-- [ ] **CORE-004 — CAN/sensör thread’lerini event köprüsüne taşı**
+- [x] **CORE-004 — CAN/sensör thread’lerini event köprüsüne taşı**
   - Thread’ler state değiştirmemeli.
   - `loop.call_soon_threadsafe` veya eşdeğer güvenli köprü kullanılmalı.
 
-- [ ] **CORE-005 — CPU-ağır perception’ı ayrı process yap**
+- [x] **CORE-005 — CPU-ağır perception’ı ayrı process yap**
   - Process sınırı, health heartbeat’i, queue backpressure ve kapanış davranışı tanımlanmalı.
   - Perception çökmesi Mission Core’u çökertmemeli; angajman kapanmalı.
 
-- [ ] **CORE-006 — Immutable state snapshot yayını ekle**
+- [x] **CORE-006 — Immutable state snapshot yayını ekle**
   - UI ve kayıt katmanı tutarlı snapshot okumalı.
   - Polling yerine SSE veya WebSocket state stream tercih edilmeli.
 
-- [ ] **CORE-007 — Concurrency ve ordering testlerini ekle**
+- [x] **CORE-007 — Concurrency ve ordering testlerini ekle**
   - Aynı anda komut, CAN ve sensör olaylarıyla sequence bütünlüğü test edilmeli.
   - Duplicate/out-of-order olaylar deterministik işlenmeli veya reddedilmeli.
 
-**Faz kanıtı:** Aynı anda yoğun komut/sensör yükünde state ve event sırası deterministik kalıyor.
+**Faz kanıtı:** `tests/test_mission_core.py`, 80 eşzamanlı komutta ve eşzamanlı
+HTTP/CAN/sensör kaynak karışımında tek, kesintisiz event sırasını; owner-thread
+ihlalini, idempotency’yi, duplicate/out-of-order sensör olaylarını, CAN-benzeri
+external thread köprüsünü, perception heartbeat timeout’unu, kuyruk boşaltmalı
+kapanışı ve SSE yayını doğrular. `tests/test_perception_bridge.py`, ayrı servis
+process’i içindeki bounded latest-wins queue, heartbeat ve temiz thread
+kapanışını doğrular. Sözleşme ve karar kayıtları
+`docs/message_contracts.md` ile ADR-004’tedir.
 
 ---
 

@@ -8,14 +8,21 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. JSONL telemetri, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** (`mcu_simulator.py`). Gerçek Pico olmadan tam CAN protokol testi.
 - `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi.
-- İmalat öncesi kalan işler; Pico firmware, canlı arm/interlock zinciri, gerçek kamera/TFA50-L adapter’ları, tek sahipli Mission Core, HIL ve uçtan uca fault-injection testleridir. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
+- Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
+  snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
+  uygulanmıştır.
+- İmalat öncesi sıradaki işler; Pico firmware, canlı arm/interlock zinciri,
+  gerçek kamera/TFA50-L adapter’ları, HIL ve uçtan uca fault-injection
+  testleridir. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
 
 ## Komut Zinciri
 
 ```
 Operatör Paneli (UI)
       ↓  HTTP POST /manual-aim  /fire-intent
-Backend API (OperatorService + Safety Gate)
+Backend API → bounded CommandEnvelope kuyruğu
+      ↓  tek sahipli Mission Core reducer + immutable snapshot/SSE
+OperatorService + Safety Gate
       ↓  HardwareAdapterBase.execute()
 CanMcuAdapter — python-can / socketcan
       ↓  CAN bus 500kbps (SN65HVD230 transceiver)
@@ -93,7 +100,9 @@ cd frontend && npm install && npm run dev
 | Endpoint | Yöntem | Açıklama |
 |----------|--------|----------|
 | `/state` | GET | Tüm sistem durumu |
+| `/state/stream?after=N` | GET | SSE üzerinden immutable state snapshot akışı |
 | `/health` | GET | Backend sağlık |
+| `/commands/{commandId}` | GET | Kuyruktaki/tamamlanan komutun izlenebilir sonucu |
 | `/hardware/health` | **GET** | CAN bağlantısı ve Pico MCU durumu |
 | `/mode` | POST | Mod değiştir |
 | `/stage` | POST | Aşama/tur değiştir |
@@ -129,6 +138,8 @@ cd frontend && npm run typecheck && npm run build
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
 - `docs/delivery_video_plan.md` — güncel takvim ve sıralı video kanıt planı.
 - `docs/adr/` — kabul edilmiş çalışma ortamı, CAN ve kamera/LiDAR kararları.
+- `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
+  geriye uyumluluk politikası.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
 - `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.

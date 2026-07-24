@@ -14,6 +14,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .operator_api import OperatorService
+from .mission_core import (
+    MissionCommandTimeout,
+    MissionCore,
+    MissionCoreStopped,
+    MissionQueueFull,
+)
+from .messages import MessageContractError
 from .runtime_mode import (
     RuntimeConfigurationError,
     build_runtime_service,
@@ -29,8 +36,15 @@ from .telemetry_log import JsonlTelemetryStore
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
     service: OperatorService | None = None
+    core: MissionCore | None = None
     allowed_origins: tuple[str, ...] = ("*",)
     server_version = "GokkalkanOperatorApi/0.1"
+
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError):
+            return
 
     def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming convention
         self._send_json({"ok": True})
@@ -38,21 +52,53 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/health":
-            self._send_json(self.operator_service.health())
+            self._send_json(self.mission_core.health())
         elif path == "/state":
-            self._send_json(self.operator_service.snapshot())
+            self._send_json(self.mission_core.snapshot())
+        elif path == "/state/stream":
+            self._stream_state()
         elif path == "/sensor-frames":
-            self._send_json(self.operator_service.sensor_frames_snapshot())
+            snapshot = self.mission_core.snapshot()
+            self._send_json(
+                {
+                    "schemaVersion": 1,
+                    "generatedAt": snapshot["missionCore"]["updatedAtUtc"],
+                    "stage": snapshot["stage"],
+                    "round": snapshot["round"],
+                    "sensorHealth": snapshot["sensorHealth"],
+                    "frames": snapshot["sensorFrames"],
+                    "physicalOutputEnabled": False,
+                    "replayOnly": snapshot["sensorHealth"]["replayOnly"],
+                    "snapshotVersion": snapshot["snapshotVersion"],
+                }
+            )
         elif path == "/readiness":
             self._send_json(self.operator_service.readiness())
         elif path == "/events":
-            self._send_json({"events": self.operator_service.events})
+            snapshot = self.mission_core.snapshot()
+            self._send_json(
+                {
+                    "events": snapshot["events"],
+                    "coreEvents": snapshot["coreEvents"],
+                    "snapshotVersion": snapshot["snapshotVersion"],
+                }
+            )
         elif path == "/telemetry/export":
-            self._send_json(self.operator_service.telemetry_export())
+            snapshot = self.mission_core.snapshot()
+            export = self.operator_service.telemetry_export(state=snapshot)
+            export["snapshotVersion"] = snapshot["snapshotVersion"]
+            self._send_json(export)
         elif path == "/replay":
             self._send_json(self.operator_service.replay())
         elif path == "/hardware/health":
             self._send_json(self.operator_service.hardware.health_check())
+        elif path.startswith("/commands/"):
+            command_id = path.removeprefix("/commands/").strip()
+            status = self.mission_core.command_status(command_id)
+            self._send_json(
+                status or {"error": "not_found", "commandId": command_id},
+                HTTPStatus.OK if status else HTTPStatus.NOT_FOUND,
+            )
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 
@@ -60,36 +106,38 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         payload = self._read_json()
         if path == "/mode":
-            self._send_json(self.operator_service.handle_mode_request(payload))
+            self._submit("ModeRequest", payload)
         elif path == "/stage":
-            self._send_json(self.operator_service.handle_stage_request(payload))
+            self._submit("StageRequest", payload)
         elif path == "/manual-aim":
-            self._send_json(self.operator_service.handle_manual_aim(payload))
+            self._submit("ManualAimCommand", payload)
         elif path == "/fire-intent":
-            self._send_json(self.operator_service.handle_fire_intent(payload))
+            self._submit("FireIntent", payload)
         elif path == "/telemetry/reset":
-            self._send_json(self.operator_service.reset_telemetry())
+            self._submit("TelemetryReset", payload)
         elif path == "/tracks/update":
-            # Perception veya sensör adapter'ından canlı track güncellemesi
-            tracks = payload.get("tracks", [])
-            source = str(payload.get("source", "perception"))
-            self._send_json(self.operator_service.update_tracks(tracks, source))
+            self._submit(
+                "TracksUpdate",
+                payload,
+                source=str(payload.get("source", "perception")),
+            )
+        elif path == "/perception/heartbeat":
+            heartbeat = {**payload, "healthy": bool(payload.get("healthy", True))}
+            self._submit(
+                "PerceptionHealth",
+                heartbeat,
+                source=str(payload.get("source", "perception")),
+            )
         elif path == "/estop":
-            # Test ve harici tetikleyici için E-Stop endpoint'i
-            # Üretimde bu endpoint hakem/operatör kilidi gerektirir.
-            active = bool(payload.get("active", True))
-            self.operator_service.set_estop(active)
-            self._send_json({
-                "ok": True,
-                "estop": active,
-                "safety": self.operator_service.evaluate_safety("ModeRequest").to_dict(),
-            })
+            self._submit(
+                "EStopChange",
+                {"active": bool(payload.get("active", True)), **payload},
+                source="operator-estop-http",
+            )
         elif path == "/maintenance":
-            # Şartname v1.3: bakım isteği başlat
-            self._send_json(self.operator_service.handle_maintenance_request(payload))
+            self._submit("MaintenanceStart", payload)
         elif path == "/maintenance/end":
-            # Bakım süresini sonlandır
-            self._send_json(self.operator_service.maintenance_end())
+            self._submit("MaintenanceEnd", payload)
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 
@@ -101,6 +149,116 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         if self.service is None:
             self.__class__.service = OperatorService()
         return self.service
+
+    @property
+    def mission_core(self) -> MissionCore:
+        if self.core is None:
+            self.__class__.core = MissionCore(self.operator_service)
+            self.__class__.core.start()
+        return self.core
+
+    def _submit(
+        self,
+        kind: str,
+        payload: dict[str, Any],
+        *,
+        source: str = "operator-http",
+    ) -> None:
+        command_id = (
+            self.headers.get("Idempotency-Key")
+            or str(payload.get("commandId", "")).strip()
+            or None
+        )
+        source_sequence = payload.get("sourceSequence")
+        if not isinstance(source_sequence, int) or isinstance(source_sequence, bool):
+            source_sequence = None
+        try:
+            response = self.mission_core.submit(
+                kind,
+                payload,
+                source=source,
+                command_id=command_id,
+                causation_id=str(payload.get("causationId", "")).strip() or None,
+                source_sequence=source_sequence,
+                schema_version=payload.get("schemaVersion", 1),
+            )
+        except MissionCommandTimeout as exc:
+            self._send_json(
+                {
+                    "commandId": exc.command_id,
+                    "queued": True,
+                    "completed": False,
+                    "statusUrl": f"/commands/{exc.command_id}",
+                    "physicalOutput": False,
+                },
+                HTTPStatus.ACCEPTED,
+            )
+        except MissionQueueFull as exc:
+            self._send_json(
+                {"error": "queue_full", "detail": str(exc)},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        except MissionCoreStopped as exc:
+            self._send_json(
+                {"error": "mission_core_stopped", "detail": str(exc)},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        except MessageContractError as exc:
+            self._send_json(
+                {"error": "message_contract", "detail": str(exc)},
+                HTTPStatus.CONFLICT,
+            )
+        else:
+            assert isinstance(response, dict)
+            self._send_json(response)
+
+    def _stream_state(self) -> None:
+        query = urlparse(self.path).query
+        try:
+            after_version = max(0, int(self.headers.get("Last-Event-ID", "0")))
+        except ValueError:
+            after_version = 0
+        for item in query.split("&"):
+            if item.startswith("after="):
+                try:
+                    after_version = max(0, int(item.split("=", 1)[1]))
+                except ValueError:
+                    pass
+        self.close_connection = True
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        origin = self.headers.get("Origin")
+        if "*" in self.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        elif origin and origin in self.allowed_origins:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.end_headers()
+        try:
+            while self.mission_core.is_running:
+                snapshot = self.mission_core.wait_for_snapshot(
+                    after_version,
+                    timeout=1.0,
+                )
+                version = int(snapshot["snapshotVersion"])
+                if version <= after_version:
+                    self.wfile.write(b": heartbeat\n\n")
+                else:
+                    payload = json.dumps(
+                        snapshot,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                    self.wfile.write(
+                        f"id: {version}\nevent: state\ndata: ".encode("utf-8")
+                        + payload
+                        + b"\n\n"
+                    )
+                    after_version = version
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or 0)
@@ -125,7 +283,10 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Idempotency-Key, Last-Event-ID",
+        )
         self.end_headers()
         self.wfile.write(body)
 
@@ -136,14 +297,30 @@ def build_http_server(
     service: OperatorService | None = None,
     telemetry_jsonl: str | None = None,
     allowed_origins: tuple[str, ...] = ("*",),
+    core: MissionCore | None = None,
 ) -> ThreadingHTTPServer:
     class BoundHandler(OperatorApiHandler):
         pass
 
     telemetry = JsonlTelemetryStore(telemetry_jsonl) if telemetry_jsonl else None
     BoundHandler.service = service or OperatorService(telemetry=telemetry)
+    BoundHandler.core = core or MissionCore(BoundHandler.service)
     BoundHandler.allowed_origins = allowed_origins
-    return ThreadingHTTPServer((host, port), BoundHandler)
+
+    class CoreHttpServer(ThreadingHTTPServer):
+        daemon_threads = True
+
+        def shutdown(self) -> None:
+            super().shutdown()
+            BoundHandler.core.stop()
+
+        def server_close(self) -> None:
+            BoundHandler.core.stop()
+            super().server_close()
+
+    server = CoreHttpServer((host, port), BoundHandler)
+    BoundHandler.core.start()
+    return server
 
 
 def main(argv: list[str] | None = None) -> None:
