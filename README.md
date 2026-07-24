@@ -1,14 +1,14 @@
 # Gökkalkan
 
-Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması için geliştirilen yazılım, simülasyon ve KTR/rapor hazırlık çalışma alanıdır. Nihai gereksinim kaynağı `docs/sartname_v5.pdf` ve aranabilir metin karşılığı `docs/sartname_v5.txt` dosyalarıdır.
+Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması için geliştirilen yazılım, simülasyon ve KTR/rapor hazırlık çalışma alanıdır. Nihai gereksinim kaynağı `docs/sartname_v1_3.pdf` ve aranabilir metin karşılığı `docs/sartname_v1_3.txt` dosyalarıdır.
 
 ## Güncel Durum
 
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü**. Aşama 1/2/3 senaryolarını görselleştirir.
-- `backend/` — **Çalışan Operatör API**. Dry-run (geliştirme) ve **gerçek CAN donanım** modlarını destekler. JSONL telemetri, Safety Gate ve tüm yarışma endpoint'leri aktif.
+- `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. JSONL telemetri, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** (`mcu_simulator.py`). Gerçek Pico olmadan tam CAN protokol testi.
 - `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi.
-- Gerçek donanım bağlamak için kalan tek eksik: **Pico RP2040 firmware** (CAN alıcı, STEP/DIR üretici, enkoder okuma).
+- İmalat öncesi kalan işler; Pico firmware, canlı arm/interlock zinciri, gerçek kamera/TFA50-L adapter’ları, tek sahipli Mission Core, HIL ve uçtan uca fault-injection testleridir. Kanonik sıra: `docs/imalat_oncesi_yazilim_todo.md`.
 
 ## Komut Zinciri
 
@@ -43,31 +43,26 @@ bash scripts/setup_virtual_can.sh          # vcan0 kur
 python3 backend/hardware_mock/mcu_simulator.py --channel vcan0 --bustype socketcan
 
 # Terminal 2: Backend
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server \
+  --runtime-mode HIL --can-channel vcan0 --can-bustype socketcan
 
 # Terminal 3: Operatör paneli
 npm run desktop
 ```
 
-**macOS (python-can virtual, OS kurulum gerektirmez):**
+**macOS (aynı process içinde python-can virtual + MCU simülatörü):**
 ```bash
-python3 backend/hardware_mock/mcu_simulator.py --channel test --bustype virtual
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --vcan
 npm run desktop
 ```
 
-### Gerçek Donanım (RPi5 + Pico + can0)
+### LIVE hazırlığı (RPi5 + Pico + can0)
 
-```bash
-sudo ip link set can0 up type can bitrate 500000
-
-GOKKALKAN_CAN_CHANNEL=can0 GOKKALKAN_CAN_BUSTYPE=socketcan \
-  PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server
-
-python3 perception/src/perception_bridge.py --stage 2 --url http://127.0.0.1:8088
-
-npm run desktop
-```
+Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek CAN
+adapter’ı; `docs/adr/001-target-runtime.md` ve `docs/adr/002-mcu-can.md`
+gereğince fiziksel interlock, backend readiness ve ayrı arm zinciri tamamlandıktan
+sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan `can0`
+komutu dokümante edilmez.
 
 ### Simülatör
 
@@ -111,9 +106,13 @@ cd frontend && npm run typecheck && npm run build
 
 ## Önemli Dokümanlar
 
-- `docs/sartname_v5.txt` — şartname metni; gereksinimlerde final otorite.
+- `docs/sartname_v1_3.txt` — şartname metni; gereksinimlerde final otorite.
+- `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
+- `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
+- `docs/delivery_video_plan.md` — güncel takvim ve sıralı video kanıt planı.
+- `docs/adr/` — kabul edilmiş çalışma ortamı, CAN ve kamera/LiDAR kararları.
 - `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, CAN protokolü ve safety gate.
-- `integration_todo.md` — donanım entegrasyon yol haritası ve tamamlanma durumu.
+- `docs/imalat_oncesi_yazilim_todo.md` — imalat öncesi yazılım yol haritası.
 - `docs/operator_panel_interfaces_roadmap.md` — gerçek operatör paneli arayüz tabloları (KTR).
 - `reports/diyagramlar/mermaid_kodu/ktr_mermaid_diagrams.md` — KTR Mermaid diyagramları.
 
@@ -124,6 +123,7 @@ cd frontend && npm run typecheck && npm run build
 - OTR: en fazla 10 sayfa.
 - KTR: en fazla 30 sayfa.
 - Görev Kabiliyeti Gösterimi Videosu: tek YouTube linki, 720p+, 2-5 dakika, şartnamedeki yetenek sırasına uygun.
+- Sistem Kabiliyeti Videoları son teslimi: **17.08.2026 17:00**.
 
 ## Güvenlik İlkesi
 

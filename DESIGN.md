@@ -3,15 +3,16 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-05-25
+- Last refreshed: 2026-07-25
 - Primary product surfaces:
   1. `frontend/` yarışma eğitim simülatörü.
   2. Planlanan gerçek operatör paneli.
   3. KTR/rapor arayüz ve mimari kanıtları.
 - Evidence reviewed:
-  - `docs/sartname_v5.txt:430-463` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
-  - `docs/sartname_v5.txt:513-540` — Aşama 2: 4 tur, üç kol, A→B hareket, sınıflandırma beklenmez.
-  - `docs/sartname_v5.txt:543-568` — Aşama 3: 8 tur, 1 düşman + 2 dost, hedef tipine göre menzil kapısı.
+  - `docs/sartname_v1_3.txt:609-637; 491-504` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
+  - `docs/sartname_v1_3.txt:589-595,617-620` — Aşama 2’nin otonom tespit, takip ve hedef parkurdan çıkmadan imha yükümlülüğü.
+  - `docs/sartname_v1_3.txt:599-605,621-623` — Aşama 3’ün otonom doğru hedef ve doğru menzil yükümlülüğü.
+  - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi için güncel çizim kaynağı.
   - `frontend/src/App.tsx`, `frontend/src/competitionSimulation.ts`, `frontend/src/competitionCourse.ts`, `frontend/src/safetyGate.ts` — mevcut React/Vite simülatör uygulaması.
 
 ## Brand

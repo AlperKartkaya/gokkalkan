@@ -44,7 +44,7 @@ describe('real-world competition simulation feed', () => {
     expect(frame.radarReturns).toHaveLength(3);
     expect(frame.fusedTargetId).toBeTruthy();
     expect(frame.assumptionNotice).toContain('kesin koordinat');
-    expect(frame.sourceLineRefs.join(' ')).toContain('docs/sartname_v5.txt');
+    expect(frame.sourceLineRefs.join(' ')).toContain('docs/sartname_v1_3.txt');
   });
 
   it('reports camera and mechanics telemetry shaped like a live field feed', () => {

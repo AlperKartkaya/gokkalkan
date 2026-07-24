@@ -198,6 +198,34 @@ class TestHardwareAdapterBase(unittest.TestCase):
         self.assertTrue(hc["dryRun"])
         self.assertFalse(hc["physicalOutputEnabled"])
 
+    def test_can_adapter_defaults_to_no_transmit_and_no_physical_output(self) -> None:
+        adapter = CanMcuAdapter(channel="can0", bustype="socketcan")
+
+        hc = adapter.health_check()
+
+        self.assertTrue(hc["dryRun"])
+        self.assertFalse(hc["physicalOutputEnabled"])
+
+    def test_can_adapter_rejects_physical_bus_without_output_capability(self) -> None:
+        adapter = CanMcuAdapter(
+            channel="can0",
+            bustype="socketcan",
+            dry_run=False,
+            physical_output_capable=False,
+        )
+        adapter._can_available = True
+        adapter._bus = object()
+
+        result = adapter.execute(
+            {
+                "kind": "SysCmd",
+                "payload": {"arm": True},
+            }
+        )
+
+        self.assertFalse(result["accepted"])
+        self.assertFalse(result["physicalOutput"])
+
     def test_can_adapter_package_reexport(self) -> None:
         """__init__.py üzerinden içe aktarım çalışmalı."""
         adapter = CanMcuAdapterPkg(channel="test", bustype="virtual", dry_run=True)

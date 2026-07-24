@@ -11,6 +11,12 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .operator_api import OperatorService
+from .runtime_mode import (
+    RuntimeConfigurationError,
+    RuntimeLaunchConfig,
+    build_runtime_service,
+    runtime_summary,
+)
 from .telemetry_log import JsonlTelemetryStore
 
 
@@ -142,15 +148,42 @@ def main() -> None:
     parser.add_argument("--host", default=default_host)
     parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--telemetry-jsonl", default=None, help="JSONL telemetri yolu (varsayılan: telemetry_data/operator-api-dry-run.jsonl)")
-    parser.add_argument("--vcan", action="store_true", help="vCAN üzerinden CanMcuAdapter kullan (mcu_simulator ile haberleşmek için)")
+    parser.add_argument(
+        "--runtime-mode",
+        choices=("SIM", "HIL", "LIVE"),
+        default=os.environ.get("GOKKALKAN_RUNTIME_MODE", "SIM").upper(),
+        help="Çalışma profili; varsayılan SIM ve fiziksel çıkışsızdır.",
+    )
+    parser.add_argument("--can-channel", default=os.environ.get("GOKKALKAN_CAN_CHANNEL", "vcan0"))
+    parser.add_argument("--can-bustype", default=os.environ.get("GOKKALKAN_CAN_BUSTYPE", "virtual"))
+    parser.add_argument("--can-bitrate", type=int, default=int(os.environ.get("GOKKALKAN_CAN_BITRATE", "500000")))
+    parser.add_argument(
+        "--vcan",
+        action="store_true",
+        help="Geriye uyumlu HIL kısayolu; yalnız sanal CAN kullanır.",
+    )
     args = parser.parse_args()
-    
-    service = None
+
+    runtime_mode = "HIL" if args.vcan else args.runtime_mode
     if args.vcan:
-        from .hardware_adapter import CanMcuAdapter
-        hardware = CanMcuAdapter(channel="vcan0", bustype="virtual")
-        hardware.start()
-        
+        args.can_channel = "vcan0"
+        args.can_bustype = "virtual"
+    telemetry = JsonlTelemetryStore(args.telemetry_jsonl) if args.telemetry_jsonl else None
+    config = RuntimeLaunchConfig(
+        mode=runtime_mode,
+        can_channel=args.can_channel,
+        can_bustype=args.can_bustype,
+        can_bitrate=args.can_bitrate,
+        live_output_enabled=os.environ.get("GOKKALKAN_LIVE_OUTPUT_ENABLED") == "1",
+    )
+    try:
+        # CLI bilinçli olarak fiziksel preflight üretmez. LIVE, gerçek interlock
+        # entegrasyonu ayrı bootstrap tarafından sağlanana kadar fail-closed kalır.
+        service = build_runtime_service(config, telemetry=telemetry)
+    except RuntimeConfigurationError as exc:
+        parser.error(str(exc))
+
+    if runtime_mode == "HIL" and args.can_bustype == "virtual":
         # Mac OS'ta virtual bus process'ler arası çalışmadığı için simülatörü de aynı process'te başlatıyoruz
         import sys
         import threading
@@ -166,12 +199,8 @@ def main() -> None:
         except ImportError:
             pass
 
-        service = OperatorService(hardware=hardware, dry_run=False)
-        print("Hardware adapter: CanMcuAdapter (vcan0)")
-    else:
-        print("Hardware adapter: DryRunHardwareAdapter (Fiziksel çıkış yok)")
-        
-    server = build_http_server(args.host, args.port, service=service, telemetry_jsonl=args.telemetry_jsonl)
+    print(f"Runtime: {json.dumps(runtime_summary(service), ensure_ascii=False, default=str)}")
+    server = build_http_server(args.host, args.port, service=service)
     print(f"Gökkalkan operator API listening on http://{args.host}:{args.port}")
     print(f"Telemetry JSONL: {server.RequestHandlerClass.service.telemetry.path}")
     try:
@@ -180,6 +209,7 @@ def main() -> None:
         print("\nOperator API stopped.")
     finally:
         server.server_close()
+        service.hardware.close()
 
 
 if __name__ == "__main__":

@@ -31,6 +31,24 @@ Telemetri varsayılan olarak git’e eklenmeyen `telemetry_data/operator-api-dry
 
 Güvenlik notu: Bu API geçişinde `hardware_mock.dry_run` adapter kullanılır. Komut kabul edilse bile `physicalOutput=false` döner; gerçek motor, MCU, radar/LiDAR veya imha hattı sürülmez.
 
+## Runtime profilleri
+
+- `SIM` varsayılandır ve CAN adapter oluşturmaz.
+- `HIL` yalnız `vcan*` veya python-can `virtual` hatlarını kabul eder; fiziksel
+  çıkış yetkisi yoktur.
+- `LIVE`, açık backend enable yanında fiziksel interlock ve readiness preflight
+  ister. Genel CLI bu preflight’ı üretmediği için canlı adapter fail-closed
+  kilitlidir.
+
+```bash
+# Linux vcan HIL
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server \
+  --runtime-mode HIL --can-channel vcan0 --can-bustype socketcan
+
+# macOS aynı-process virtual HIL
+PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --vcan
+```
+
 Frontend’i bu API’ye bağlamak için:
 
 ```bash

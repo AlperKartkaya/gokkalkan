@@ -55,48 +55,61 @@ Bir kutu ancak aşağıdakiler sağlandığında tamamlanır:
   - Kabul: canlı servis + payload `dryRun=true` fiziksel adapter çağrısı üretmez.
   - Kanıt: `tests/test_operator_api.py::OperatorServiceTest::test_live_service_ignores_client_dry_run_override`; backend çalışma modu `OperatorService.dry_run` üzerinden sunucu-otoritatif hâle getirildi.
 
-- [ ] **SAFE-002 — Fiziksel adapter’ı varsayılan kapalı yap** `[WP-04]`
+- [x] **SAFE-002 — Fiziksel adapter’ı varsayılan kapalı yap** `[WP-04]`
   - Açıkça seçilmiş backend live config, fiziksel interlock ve readiness olmadan gerçek adapter yüklenmemeli.
   - Başlangıç logu çalışma modunu `SIM`, `HIL` veya `LIVE` olarak açıkça yazmalı.
+  - Kanıt: `gokkalkan_backend.runtime_mode`; `CanMcuAdapter` varsayılanı çıkışsızdır, HIL fiziksel CAN kanalını reddeder, genel CLI preflight olmadığı için LIVE’ı fail-closed reddeder.
 
-- [ ] **SAFE-003 — Kritik bypass regresyon testlerini ekle** `[WP-04]`
+- [x] **SAFE-003 — Kritik bypass regresyon testlerini ekle** `[WP-04]`
   - UI/config/payload kombinasyonları denenmeli.
   - Test spy adapter ile “sıfır fiziksel çağrı” invariant’ını kanıtlamalı.
+  - Kanıt: `tests/test_runtime_mode.py`, `test_live_service_ignores_client_dry_run_override`, `test_can_adapter_defaults_to_no_transmit_and_no_physical_output`.
 
-**Faz kanıtı:** Güvenilmeyen istemci girdilerinin hiçbir kombinasyonu canlı çıkışı etkinleştiremiyor.
+**Faz kanıtı:** Güvenilmeyen istemci girdilerinin hiçbir kombinasyonu canlı
+çıkışı etkinleştiremiyor. `PYTHONPATH=backend/src python3 -m unittest discover -s tests -p 'test_*.py' -v`
+ile 81 test geçti; fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi
+de reddedildi.
 
 ---
 
 # Faz 1 — Kaynakları ve arayüz kararlarını sabitle
 
-- [ ] **DOC-001 — Güncel şartname yolunu ve sürümünü kanonikleştir**
+- [x] **DOC-001 — Güncel şartname yolunu ve sürümünü kanonikleştir**
   - README, AGENTS, teknik dokümanlar ve rapor bağlantıları mevcut PDF adına yönelmeli.
   - Aranabilir metin çıktısı üretilmeli; PDF son otorite olarak kalmalı.
+  - Kanıt: `docs/sartname_v1_3.pdf`, `docs/sartname_v1_3.txt`, `docs/requirements_source.md`; eski kanonik yola aktif bağlantı kalmadı.
 
-- [ ] **DOC-002 — Takvim ve video yükümlülüklerini senkronize et**
+- [x] **DOC-002 — Takvim ve video yükümlülüklerini senkronize et**
   - `TARIHLER.md`, rapor notları ve görev traceability matrisi aynı tarihleri kullanmalı.
   - Video yetenekleri şartnamedeki sırayla test kimliklerine bağlanmalı.
+  - Kanıt: `TARIHLER.md`, `docs/delivery_video_plan.md`; v1.3’e göre KTR sonucu 13.07.2026, video teslimi 17.08.2026 17:00.
 
-- [ ] **ADR-001 — Hedef çalışma ortamı ADR’ını yaz**
+- [x] **ADR-001 — Hedef çalışma ortamı ADR’ını yaz**
   - Raspberry Pi OS, Python/React/Pico C++, `systemd`, no-ROS2 ve no-full-Rust kararları kaydedilmeli.
   - ROS 2’yi yeniden değerlendirme koşulları belirtilmeli.
+  - Kanıt: `docs/adr/001-target-runtime.md`.
 
-- [ ] **ADR-002 — MCU ve saha haberleşmesini kesinleştir**
+- [x] **ADR-002 — MCU ve saha haberleşmesini kesinleştir**
   - Pico/Arduino çelişkisi kapatılmalı.
   - CAN veya CAN-FD tek karar olarak seçilmeli.
   - Bitrate, frame biçimi, transceiver ve hata davranışı tanımlanmalı.
+  - Kanıt: `docs/adr/002-mcu-can.md`; Pico/RP2040 + klasik CAN 2.0B, 500 kbit/s, SN65HVD230, mevcut ICD v0 ve fail-safe davranış kaydedildi.
 
-- [ ] **ADR-003 — Kamera/LiDAR yerleşim kararını kaydet**
+- [x] **ADR-003 — Kamera/LiDAR yerleşim kararını kaydet**
   - Yukarıdaki üç CAD görseli karar kanıtı olarak bağlanmalı.
   - Sabit geniş kamera, nişan kamerası, yaw ekseni, silah pitch ekseni ve TFA50-L referans koordinatları tanımlanmalı.
   - Köprü/profil öncelikli, merkezî kızak/direk mekanik alternatif olarak kaydedilmeli; ikisinin de yaw’ı izlediği fakat silah pitch’ini izlemediği belirtilmeli.
   - TFA50-L’nin elle ayarlanan yükseklik aralığı, merkezleme toleransı, kilitleme yöntemi ve kablo güzergâhı mekanik ekiple kesinleştirilmeli.
   - TFA50-L gerçek hedef testini geçemezse fallback sırası: optik/algoritmik iyileştirme → ikinci tek nokta sensör değerlendirmesi → 2D tarayıcı değerlendirmesi.
+  - Kanıt: `docs/adr/003-camera-lidar-placement.md`; koordinat çerçeveleri, köprü/kızak kararı, kalibrasyon alanları ve fallback kaydedildi.
 
-- [ ] **DOC-003 — Şartname traceability matrisini oluştur**
+- [x] **DOC-003 — Şartname traceability matrisini oluştur**
   - Her zorunlu yetenek için requirement ID, modül, test, telemetri olayı ve video kanıtı alanları bulunmalı.
+  - Kanıt: `docs/requirements_traceability.md`; teslim, güvenlik, mod/aşama ve VID-Y1–Y6 bağları.
 
-**Faz kanıtı:** Aktif belgelerde OS, MCU, protokol, sensör rolü, kamera sayısı ve tarih çelişkisi kalmıyor.
+**Faz kanıtı:** Aktif belgelerde OS, MCU, protokol, sensör rolü, kamera sayısı ve
+tarih çelişkisi kalmıyor. Yerel Markdown bağlantı denetimi geçti; eski şartname
+yoluna referans bulunmadı; PDF hash’i `docs/requirements_source.md` ile eşleşti.
 
 ---
 
@@ -471,7 +484,7 @@ Bu maddeler yazılım görevi değildir; ilgili ekip tarafından sonuçlandırı
 - [ ] TFA50-L’nin 5/10/15 m gerçek hedef testi ve nihai satın alma kabulü.
 - [ ] Köprü/profil veya merkezî kızak/direk seçimi; manuel yükseklik aralığı, ölçü skalası, merkezleme toleransı ve mekanik kilit.
 - [ ] TFA50-L için 9–36 V besleme, UART elektrik seviyesi/izolasyonu, konnektör ve Raspberry Pi bağlantı devresi.
-- [ ] CAN/CAN-FD transceiver ve bitrate kararı.
+- [x] Klasik CAN 2.0B, SN65HVD230 ve 500 kbit/s kararı (`ADR-002`).
 - [ ] Enkoder tam modeli, çözünürlüğü ve elektriksel arayüzü.
 - [ ] Motor sürücüsü ve limit switch arayüzleri.
 - [ ] E-Stop, emniyet rölesi/kontaktör ve reset devresi.

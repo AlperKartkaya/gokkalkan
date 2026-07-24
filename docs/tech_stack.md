@@ -1,6 +1,6 @@
 # Gökkalkan Teknik Yönelim ve Yazılım Mimarisi
 
-Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v5.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v5.txt` dosyasında tutulur.
+Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v1_3.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v1_3.txt` dosyasında tutulur.
 
 ## 1. Şartnameye Göre Sistem Hedefi
 
@@ -160,8 +160,8 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | Python içi queue, ZeroMQ/WebSocket veya REST adapter; seçim entegrasyona göre | Saha gecikmesi ölçülmeden kesin protokol dayatılmamalı |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | CAN bus 500kbps | Elektronik seçim netleşince sabitlendi |
-| Sensor Adapter → Backend/Perception | radar/LiDAR ölçümü, sağlık, zaman damgası | Donanıma göre seri, Ethernet veya SDK adapter | Şimdilik soyut `SensorFrame` |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002; v0 codec fiziksel LIVE release için yeterli değildir |
+| TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
 
@@ -172,9 +172,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
 | Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
-| MCU haberleşmesi | **Onaylandı** | CAN bus 500kbps; SN65HVD230 (×3) transceiver; ISO 11898-2; Mesaj haritası: 0x100 pan/tilt komutu, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop olayı |
+| MCU haberleşmesi | **Onaylandı** | Klasik CAN 2.0B, 500 kbit/s; SN65HVD230 (×3); ISO 11898-2; 0x100 pan/tilt, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop. Ayrıntı: ADR-002 |
 | Kamera | **Onaylandı** | Raspberry Pi Camera Module 3 (12MP, OT AF, HDR), CSI bağlantı, Picamera2 API |
-| Radar/LiDAR | TBD | 2D LiDAR olasılıklı; seçilen sensörün güç, veri ve zaman damgası arayüzü adapter ile anlatılacak |
+| LiDAR | **Aday seçildi** | Benewake TFA50-L tek nokta UART LiDAR; yaw ile dönen/pitch-sabit merkezî köprü. Gerçek 5/10/15 m kabul testi bekliyor |
 | İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
@@ -184,15 +184,18 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
 - **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi aşama/tur seçimi, radar/LiDAR biçimli `SensorFrame` replay görünümü, hedef tipi + dost/düşman + menzil yorumu, mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
 - **Vendor LiDAR viewer stratejisi:** RPLIDAR Viewer, Livox Viewer ve benzeri üretici araçları görev arayüzü değildir. Bunlar bakım, kalibrasyon, firmware/IP/serial doğrulama ve ham point cloud kontrolünde dış diagnostic araç olarak kalır. Görev panelindeki veri yolu `SDK/driver → SensorFrame → Backend → Operatör Paneli` olmalıdır; vendor pencere embed/screen-scrape edilmemelidir.
+- **Hedef runtime:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS + `systemd`; hedefte VM yok. Ayrıntı: ADR-001.
 - **Backend / görev çekirdeği:** Python 3.x.
 - **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /stage`, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
-- **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.
+- **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.
 - **Test:** pytest + frontend için Vitest/Playwright.
 - **Log formatı:** dry-run operatör API için JSONL uygulanmıştır (`telemetry_data/operator-api-dry-run.jsonl`, git’e eklenmez). Canlı saha log saklama politikası ve elektronik entegrasyon metrikleri donanım seçimiyle netleştirilmelidir.
 
-ROS2, Hailo veya derin öğrenme tabanlı algı çekirdek zorunluluk değildir. Bu teknolojiler yalnızca gecikme, doğruluk veya entegrasyon testleri açıkça ihtiyaç gösterirse eklenmelidir.
+ROS 2 ve tam Rust yeniden yazımı bu fazın parçası değildir. Yeniden değerlendirme
+eşikleri ADR-001’de tanımlıdır. Hailo veya derin öğrenme tabanlı algı da yalnızca
+gecikme/doğruluk testleri ihtiyaç gösterirse eklenir.
 
 ## 7. İş Paketi Eşlemesi
 

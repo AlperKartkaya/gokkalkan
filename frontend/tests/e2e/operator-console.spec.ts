@@ -17,7 +17,7 @@ async function headerText(page: Page) {
 }
 
 test('landing is simulator-branded and removes mock/keyboard skip copy', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?landing=1');
 
   await expect(page.locator('.signal')).toHaveText('GÖKKALKAN');
   await expect(page.getByRole('button', { name: 'Simülatöre Başla' })).toBeVisible();
@@ -243,7 +243,7 @@ test('emergency stop freezes simulator state and reports summary safety', async 
 
 
 test('landing opens the dry-run real operator panel without live hardware claims', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?landing=1');
 
   await page.getByRole('button', { name: 'Operatör Paneli' }).click();
   await expect(page.getByTestId('operator-panel')).toBeVisible();

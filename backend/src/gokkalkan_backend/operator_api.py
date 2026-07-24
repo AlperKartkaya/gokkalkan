@@ -318,17 +318,10 @@ class DryRunHardwareAdapter(HardwareAdapterBase):
 
 
 class OperatorService:
-    """Stateful backend service — dry-run ve gerçek donanım modlarını destekler.
+    """Stateful backend service for SIM, HIL and fail-closed LIVE runtimes.
 
-    Gerçek donanım bağlamak için:
-        from gokkalkan_backend.hardware_adapter import CanMcuAdapter, GpioEStopMonitor
-        adapter = CanMcuAdapter(channel="can0", bustype="socketcan")
-        monitor = GpioEStopMonitor(service_callback=None)  # callback sonra set edilir
-        service = OperatorService(hardware=adapter, dry_run=False)
-        monitor._callback = service.set_estop
-        adapter._estop_cb = monitor.on_can_estop
-        adapter.start()
-        monitor.start()
+    Hardware construction belongs to ``runtime_mode.build_runtime_service``;
+    callers must not assemble an output-capable LIVE adapter directly.
     """
 
     def __init__(
@@ -337,6 +330,7 @@ class OperatorService:
         hardware: HardwareAdapterBase | None = None,
         telemetry: JsonlTelemetryStore | None = None,
         dry_run: bool = True,
+        runtime_mode: str | None = None,
         # Pan/tilt yazılım limitleri (derece); None = sınır yok
         pan_min_deg: float | None = None,
         pan_max_deg: float | None = None,
@@ -355,6 +349,9 @@ class OperatorService:
         self.perception_connected = False
         self.sensor_adapter_connected = False
         self.dry_run = dry_run
+        self.runtime_mode = runtime_mode or ("SIM" if dry_run else "LIVE")
+        if self.runtime_mode not in {"SIM", "HIL", "LIVE"}:
+            raise ValueError(f"Geçersiz runtime mode: {self.runtime_mode}")
         self.live_arm_enabled = False
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
@@ -374,12 +371,17 @@ class OperatorService:
         # Şartname — görev timer'ı (Aşama 1: 300 sn)
         self.mission_started_at: float | None = None  # monotonic timestamp
         self.mission_time_limit_sec: int = STAGE1_TIME_LIMIT_SEC
-        boot_msg = (
-            "Canlı donanım modunda başlatıldı; fiziksel çıkış Safety Gate sonrası aktif."
-            if not dry_run
-            else "Dry-run backend API hazır; fiziksel çıkış yok."
+        boot_msg = {
+            "SIM": "SIM modunda başlatıldı; fiziksel adapter yüklenmedi.",
+            "HIL": "HIL modunda başlatıldı; yalnız doğrulanmış sanal CAN hattı kullanılabilir.",
+            "LIVE": "LIVE modunda başlatıldı; fiziksel çıkış ayrıca arm edilene kadar kapalı.",
+        }[self.runtime_mode]
+        self._append_event(
+            "telemetry",
+            "BOOT",
+            boot_msg,
+            {"dryRun": dry_run, "runtimeMode": self.runtime_mode},
         )
-        self._append_event("telemetry", "BOOT", boot_msg, {"dryRun": dry_run})
 
     def _tracks_for_stage(self, stage: Stage, round_no: int) -> list[DryRunTrack]:
         now = self._clock()
@@ -588,6 +590,7 @@ class OperatorService:
             "stage": self.stage,
             "round": self.round,
             "dryRun": self.dry_run,
+            "runtimeMode": self.runtime_mode,
             "liveArmEnabled": self.live_arm_enabled,
             "tracks": [track.to_dict() for track in self.tracks],
             "sensorFrames": [frame.to_dict() for frame in self.sensor_frames],
@@ -620,6 +623,7 @@ class OperatorService:
             "service": "gokkalkan-operator-api",
             "mode": self.mode,
             "dryRun": self.dry_run,
+            "runtimeMode": self.runtime_mode,
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
             "timestamp": self._clock(),

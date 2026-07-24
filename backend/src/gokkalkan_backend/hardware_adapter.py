@@ -234,18 +234,26 @@ class HardwareAdapterBase(ABC):
 class CanMcuAdapter(HardwareAdapterBase):
     """CAN bus üzerinden Pico RP2040 MCU'ya bağlanan gerçek donanım adaptörü.
 
-    Kullanım — RPi5 üzerinde gerçek donanım (socketcan):
-        adapter = CanMcuAdapter(channel="can0", bustype="socketcan")
-        adapter.start()
-        # ... servis ömrü ...
-        adapter.close()
+    Gerçek donanım adaptörü doğrudan oluşturulmamalıdır. LIVE yapılandırması,
+    fiziksel interlock ve readiness kontrolü için ``runtime_mode`` factory'si
+    kullanılmalıdır.
 
     Kullanım — geliştirme makinesi, sanal CAN (setup_virtual_can.sh sonrası):
-        adapter = CanMcuAdapter(channel="vcan0", bustype="socketcan")
+        adapter = CanMcuAdapter(
+            channel="vcan0",
+            bustype="socketcan",
+            dry_run=False,
+            physical_output_capable=False,
+        )
         adapter.start()
 
     Kullanım — macOS / python-can virtual (OS kurulum gerektirmez):
-        adapter = CanMcuAdapter(channel="test", bustype="virtual")
+        adapter = CanMcuAdapter(
+            channel="test",
+            bustype="virtual",
+            dry_run=False,
+            physical_output_capable=False,
+        )
         adapter.start()
 
     python-can kurulu değilse: uyarı loglanır, mock modda çalışmaya devam eder.
@@ -257,13 +265,15 @@ class CanMcuAdapter(HardwareAdapterBase):
         bustype: str = "socketcan",
         bitrate: int = 500_000,
         estop_callback: EStopCallback | None = None,
-        dry_run: bool = False,
+        dry_run: bool = True,
+        physical_output_capable: bool = False,
     ) -> None:
         self.channel   = channel
         self.bustype   = bustype
         self.bitrate   = bitrate
         self._estop_cb = estop_callback
         self._dry_run  = dry_run
+        self._physical_output_capable = physical_output_capable
 
         self._bus: Any          = None
         self._lock              = threading.Lock()
@@ -403,6 +413,14 @@ class CanMcuAdapter(HardwareAdapterBase):
         """Tek bir CAN çerçevesi gönderir. Başarısızsa False döner."""
         if self._dry_run or not self._can_available:
             return True   # mock modda başarılı say
+        virtual_channel = self.bustype == "virtual" or self.channel.startswith("vcan")
+        if not self._physical_output_capable and not virtual_channel:
+            logger.error(
+                "Yetkisiz fiziksel CAN çıkışı engellendi (channel=%s, id=0x%03X).",
+                self.channel,
+                can_id,
+            )
+            return False
         if self._bus is None:
             logger.error("CAN bus bağlı değil; mesaj gönderilemedi (id=0x%03X).", can_id)
             return False
@@ -465,10 +483,17 @@ class CanMcuAdapter(HardwareAdapterBase):
             logger.warning("CanMcuAdapter: tanınmayan komut türü '%s'.", kind)
 
         self._command_count += 1
-        physical_out = ok and not self._dry_run and self._bus is not None
+        physical_out = (
+            ok
+            and not self._dry_run
+            and self._physical_output_capable
+            and self._bus is not None
+        )
 
-        if ok and self._bus is not None and not self._dry_run:
+        if ok and physical_out:
             msg = "CAN komutu Pico MCU'ya iletildi."
+        elif ok and self._bus is not None and not self._dry_run:
+            msg = "CAN komutu HIL/sanal CAN hattına iletildi; fiziksel çıkış yetkisi yok."
         elif ok:
             msg = "Mock/dry-run modda kaydedildi; fiziksel CAN çıkışı yok."
         else:
@@ -525,7 +550,11 @@ class CanMcuAdapter(HardwareAdapterBase):
             "lastStatusAgeSec":    age_sec,
             "mcuStatus":           status,
             "commandCount":        self._command_count,
-            "physicalOutputEnabled": not self._dry_run and self._bus is not None,
+            "physicalOutputEnabled": (
+                not self._dry_run
+                and self._physical_output_capable
+                and self._bus is not None
+            ),
         }
 
     @property
