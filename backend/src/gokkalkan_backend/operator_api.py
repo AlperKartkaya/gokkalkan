@@ -817,7 +817,10 @@ class OperatorService:
 
     def evaluate_safety(self, kind: CommandKind, target: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> SafetyState:
         payload = payload or {}
-        dry_run = bool(payload.get("dryRun", self.dry_run))
+        # Çalışma modu güvenlik açısından sunucuya aittir. İstemcinin dryRun
+        # beyanı canlı servisi simülasyon gibi göstererek arm/sensör kapılarını
+        # gevşetemez.
+        dry_run = self.dry_run
         live_arm_enabled = self.live_arm_enabled and not dry_run
         target_gate_ok = True
         mode_ok = True
@@ -880,7 +883,7 @@ class OperatorService:
         accepted = safety.blockReason == "ALLOWED"
         if accepted:
             self.mode = requested  # type: ignore[assignment]
-        result = self._command_result("ModeRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
+        result = self._command_result("ModeRequest", accepted, safety.blockReason)
         self._append_event("mode", "ModeRequest", result["message"], {"requestedMode": requested, "safety": safety.to_dict(), "result": result})
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
@@ -946,7 +949,7 @@ class OperatorService:
                 self.mission_time_limit_sec = STAGE1_TIME_LIMIT_SEC
             else:
                 self.mission_started_at = None
-        result = self._command_result("StageRequest", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
+        result = self._command_result("StageRequest", accepted, safety.blockReason)
         self._append_event(
             "mission",
             "StageRequest",
@@ -965,7 +968,7 @@ class OperatorService:
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
         safety = self.evaluate_safety("ManualAimCommand", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
-        result = self._command_result("ManualAimCommand", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
+        result = self._command_result("ManualAimCommand", accepted, safety.blockReason)
         hardware_result = None
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "ManualAimCommand", "payload": payload})
@@ -978,7 +981,7 @@ class OperatorService:
         target_dict = target.to_dict() if target else None
         safety = self.evaluate_safety("FireIntent", target=target_dict, payload=payload)
         accepted = safety.blockReason == "ALLOWED"
-        result = self._command_result("FireIntent", accepted, bool(payload.get("dryRun", self.dry_run)), safety.blockReason)
+        result = self._command_result("FireIntent", accepted, safety.blockReason)
         hardware_result = None
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "FireIntent", "target": target_dict, "payload": payload})
@@ -1084,7 +1087,8 @@ class OperatorService:
     def _find_track(self, track_id: str) -> DryRunTrack | None:
         return next((track for track in self.tracks if track.trackId == track_id), None)
 
-    def _command_result(self, kind: CommandKind, accepted: bool, dry_run: bool, block: BlockReason) -> dict[str, Any]:
+    def _command_result(self, kind: CommandKind, accepted: bool, block: BlockReason) -> dict[str, Any]:
+        dry_run = self.dry_run
         command_id = f"CMD-{next(self._ids):05d}"
         message = (
             "Dry-run komut niyeti backend tarafından kaydedildi; fiziksel çıkış üretilmedi."
