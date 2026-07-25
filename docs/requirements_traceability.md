@@ -23,7 +23,7 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 | `SAFE-MOTION-ZONE` | txt 491–495 | Harekete yasak alan | Backend Safety Gate | `tests/test_phase4_safety.py`; `SAFE-013` | `BLOCKED_MOTION_ZONE` | Unit doğrulandı; fiziksel bekliyor |
 | `SAFE-FIRE-ZONE` | txt 491–495 | Atışa yasak alan | Backend Safety Gate | `tests/test_phase4_safety.py`; `SAFE-013/017` | `BLOCKED_FIRE_ZONE` | Unit doğrulandı; fiziksel bekliyor |
 | `SAFE-ENERGY` | txt 496–504 | Güvenlik uygulanmadan enerji verilmemesi | ADR-001/002, runtime gate, fiziksel interlock | `tests/test_runtime_mode.py` | BOOT `runtimeMode`, readiness | Yazılım kapısı var; fiziksel bekliyor |
-| `SAFE-ESTOP` | txt 636–637 ve PDF §6 | Güvenli konumda kablolu Acil Durdur | Pico + emniyet rölesi + Backend | `test_set_estop_blocks_all_commands`, `test_estop_endpoint_activates_and_blocks`, `SAFE-015/017` | `ESTOP_CHANGE`, `VID-Y3/Y4` | Mock doğrulandı; HIL bekliyor |
+| `SAFE-ESTOP` | txt 636–637 ve PDF §6 | Güvenli konumda kablolu Acil Durdur | Pico + emniyet rölesi + Backend | `test_stage_three_range_gate_maintenance_stop_and_estop`, `test_estop_endpoint_activates_and_blocks`, `SAFE-015/017` | `ESTOP_CHANGE`, `MissionFlow`, `VID-Y3/Y4` | Mandal/reset/resume yazılım ve gerçek HTTP ile doğrulandı; HIL bekliyor |
 | `SAFE-CLIENT-AUTHORITY` | mimari türetim | UI güvenlik modunu gevşetemez | `OperatorService`, runtime factory | `test_live_service_ignores_client_dry_run_override`, `tests/test_runtime_mode.py` | BOOT/runtime audit | Unit doğrulandı |
 | `SAFE-NO-EXPLOSIVE` | PDF §6 | Patlayıcı hedef imha çözümü kullanılmaması | Mekanik/elektronik tasarım | Güvenlik incelemesi | Malzeme listesi/tutanak | Fiziksel inceleme bekliyor |
 
@@ -31,14 +31,14 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 
 | ID | Şartname kaynağı | Gereksinim | Modül | Test | Telemetri/Video | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
-| `MODE-MANUAL` | txt 609–617 | Manuel Mod kullanıcı girdisiyle çalışır | Mission Core, Operator Panel | `test_scenario_01_manual_mode_override_and_safety_gate` | `ModeRequest`, `ManualAimCommand`, `VID-Y1` | Mock doğrulandı |
-| `MODE-AUTO` | txt 611–623 | Otonom Mod tanımlı görevleri otomatik yürütür | Mission Core, perception | `test_scenario_02_autonomous_tracking_friend_foe_discrimination` | Track/Mode/Fire olayları | Mock kısmi |
+| `MODE-MANUAL` | txt 609–617 | Manuel Mod kullanıcı girdisiyle çalışır | Mission Core, Operator Panel | `test_stage_one_manual_deadman_order_and_fire_flow`, Playwright Faz 8 | `StageRequest`, `ManualAimCommand`, `FireIntent`, `VID-Y1` | SIM + gerçek HTTP doğrulandı; fiziksel bekliyor |
+| `MODE-AUTO` | txt 611–623 | Otonom Mod tanımlı görevleri otomatik yürütür | Mission Core, perception | `test_stage_two_real_track_priority_and_progress`, Playwright Faz 8 | Track/MissionFlow/Fire olayları | SIM + gerçek HTTP doğrulandı; gerçek perception bekliyor |
 | `MODE-TRANSITION` | txt 611–617 | Mod geçişi kullanıcı denetimindedir | Backend `ModeRequest` | Operator API mode testleri | `ModeRequest` | Unit doğrulandı |
-| `STAGE-1` | txt 578–585, 615–617 | Durağan hedef, iki eksen, Manuel Mod | Backend/frontend/perception | Stage 1 scenario ve timer testleri | Stage/Manual/Fire, `VID-Y2` | Mock doğrulandı; fiziksel bekliyor |
-| `STAGE-2` | txt 589–595, 617–620 | Otonom tespit/takip; parkurdan çıkmadan imha | Backend/frontend/perception | Stage 2 scenario | Track/Fire/round | Mock doğrulandı |
-| `STAGE-3` | txt 599–605, 621–623 | Doğru hedefi doğru menzilde otonom imha | Backend/perception/TFA50-L | target/range gate ve scenario testleri | Classification/range/Fire | Mock kısmi; gerçek sensör bekliyor |
+| `STAGE-1` | txt 578–585, 615–617 | Durağan hedef, iki eksen, Manuel Mod ve 300 sn | `MissionFlow`, Operator Panel | `test_stage_one_manual_deadman_order_and_fire_flow`, `test_stage_one_300_second_limit_fails_closed` | Stage/Manual/Fire/geçiş nedeni, `VID-Y2` | SIM + gerçek HTTP doğrulandı; fiziksel bekliyor |
+| `STAGE-2` | txt 589–595, 617–620 | Otonom tespit/takip; tip sınıflandırması zorunlu olmadan imha | `MissionFlow`, perception bridge, Operator Panel | `test_stage_two_real_track_priority_and_progress`, Playwright SSE testi | Track/öncelik/Fire/tur | SIM + gerçek HTTP doğrulandı; gerçek perception bekliyor |
+| `STAGE-3` | txt 599–605, 621–623 | Doğru hedefi doğru menzilde otonom imha | `MissionFlow`, Safety Gate, TFA50-L sınırı | `test_stage_three_range_gate_maintenance_stop_and_estop` | Classification/range-source/Fire | SIM + gerçek HTTP doğrulandı; gerçek sensör bekliyor |
 | `ZERO-REFERENCE` | txt 624–627 | Başlangıçta yaw/elev 0° | Pico/encoder calibration | `tests/test_phase5_firmware.py`, HIL zero testi | CAN v1 encoder status | Host doğrulandı; HIL bekliyor |
-| `MAINT-BUDGET` | txt 628–635 | Toplam 10 dk; istek başına en az 30 sn | Backend maintenance state | `MaintenanceBudgetTest` | `MAINTENANCE_START/END` | Unit doğrulandı |
+| `MAINT-BUDGET` | txt 628–635 | Toplam 10 dk; istek başına en az 30 sn | Backend maintenance state + `MissionFlow` | `MaintenanceBudgetTest`, `test_stage_three_range_gate_maintenance_stop_and_estop` | `MAINTENANCE_START/END`, geçiş nedeni | Unit + gerçek HTTP doğrulandı |
 
 ## Görev Kabiliyeti Gösterimi Videosu
 

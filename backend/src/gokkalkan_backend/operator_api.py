@@ -21,6 +21,7 @@ import shutil
 from typing import Any, Callable, Literal
 
 from .hardware_adapter import HardwareAdapterBase
+from .mission_flow import MissionFlow
 from .safety_gate import (
     ForbiddenZone,
     LiveArmController,
@@ -401,6 +402,13 @@ class OperatorService:
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
+        self.mission_flow = MissionFlow(stage=self.stage, round=self.round)
+        self.mission_flow.start_stage(
+            self.stage,
+            self.round,
+            (track.to_dict() for track in self.tracks),
+            reason="BOOT_DEFAULT_STAGE",
+        )
         self.command_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
         # Pan/tilt yazılım sınır alanları
@@ -414,6 +422,7 @@ class OperatorService:
         self._maintenance_started_at: float | None = None  # monotonic timestamp
         # Şartname — görev timer'ı (Aşama 1: 300 sn)
         self.mission_started_at: float | None = None  # monotonic timestamp
+        self._mission_elapsed_before_pause_sec: float = 0.0
         self.mission_time_limit_sec: int = STAGE1_TIME_LIMIT_SEC
         boot_msg = {
             "SIM": "SIM modunda başlatıldı; fiziksel adapter yüklenmedi.",
@@ -576,6 +585,11 @@ class OperatorService:
         return "Kilitli"
 
     def _sensor_recommendation(self, target: dict[str, Any], stage_note: str) -> str:
+        if self.stage == 2 and target.get("friendFoe") != "Dost":
+            return (
+                "Aşama 2'de tip sınıflandırması zorunlu değildir; "
+                f"backend menzil/iz önceliğini kullanır. {stage_note}"
+            )
         if self._target_unidentified(target):
             return f"Kimlik kesinleşmeden FireIntent kilitli; iz takipte tutulur. {stage_note}"
         if target.get("friendFoe") == "Dost":
@@ -585,14 +599,23 @@ class OperatorService:
         return f"Hedef izlenir; menzil/mod kapısı tamamlanmadan FireIntent kilitli. {stage_note}"
 
     def _target_gate_ok_for_stage(self, target: dict[str, Any] | None) -> bool:
-        if not target or target.get("friendFoe") != "Düşman":
+        if not target:
             return False
         range_m = float(target.get("rangeM", -1))
         if self.stage == 1:
             return 0 < range_m <= 15
         if self.stage == 2:
-            return 0 < range_m <= 15
-        return target_range_gate(str(target.get("targetType")), range_m)
+            return target.get("friendFoe") != "Dost" and 0 < range_m <= 15
+        if target.get("friendFoe") != "Düşman":
+            return False
+        measured_source_ok = (
+            self.dry_run
+            or target.get("source") in {"radar-lidar", "fused"}
+        )
+        return measured_source_ok and target_range_gate(
+            str(target.get("targetType")),
+            range_m,
+        )
 
     def _sensor_health(self) -> dict[str, Any]:
         latest = self.sensor_frames[0].timestamp if self.sensor_frames else self._clock()
@@ -615,9 +638,9 @@ class OperatorService:
         Diğer aşamalarda missionTimeLimitSec=None ve missionRemainingSeconds=None döner.
         """
         has_limit = self.stage == 1
-        elapsed = 0.0
+        elapsed = self._mission_elapsed_before_pause_sec
         if self.mission_started_at is not None:
-            elapsed = max(0.0, _time.monotonic() - self.mission_started_at)
+            elapsed += max(0.0, _time.monotonic() - self.mission_started_at)
         remaining: float | None = None
         if has_limit:
             remaining = max(0.0, self.mission_time_limit_sec - elapsed)
@@ -626,7 +649,47 @@ class OperatorService:
             "missionRemainingSeconds": round(remaining, 1) if remaining is not None else None,
             "missionTimeLimitSec": self.mission_time_limit_sec if has_limit else None,
             "missionTimerRunning": self.mission_started_at is not None,
+            "missionTimeExpired": bool(has_limit and elapsed >= self.mission_time_limit_sec),
         }
+
+    def expire_stage_timer_if_needed(self) -> bool:
+        """Pause Aşama 1 when its authoritative 300-second budget is exhausted."""
+        self._require_owner()
+        timer = self._mission_timer()
+        if (
+            self.stage != 1
+            or self.mission_flow.status != "ACTIVE"
+            or not timer["missionTimeExpired"]
+        ):
+            return False
+        self._pause_mission_timer()
+        self.mission_flow.pause("STAGE1_TIME_EXPIRED")
+        self._mission_mode_before_pause = self.mode
+        self.mode = "safe"
+        self._append_event(
+            "mission",
+            "STAGE1_TIME_EXPIRED",
+            "Aşama 1 için 300 saniyelik görev süresi doldu; hareket ve atış kapatıldı.",
+            {"missionTimer": self._mission_timer()},
+        )
+        return True
+
+    def _pause_mission_timer(self) -> None:
+        if self.mission_started_at is None:
+            return
+        self._mission_elapsed_before_pause_sec += max(
+            0.0,
+            _time.monotonic() - self.mission_started_at,
+        )
+        self.mission_started_at = None
+
+    def _resume_mission_timer(self) -> None:
+        if (
+            self.stage == 1
+            and self.mission_flow.status == "ACTIVE"
+            and self.mission_started_at is None
+        ):
+            self.mission_started_at = _time.monotonic()
 
     def _maintenance_state(self) -> dict[str, Any]:
         """Şartname v1.3 bakım bütçesi durumu."""
@@ -644,7 +707,7 @@ class OperatorService:
         }
 
     def snapshot(self) -> dict[str, Any]:
-        selected = self.tracks[0] if self.tracks else None
+        selected = self._find_track(self.mission_flow.selected_target_id or "")
         result = {
             "app": "gokkalkan-operator-api",
             "version": 1,
@@ -658,11 +721,20 @@ class OperatorService:
             "tracks": [track.to_dict() for track in self.tracks],
             "sensorFrames": [frame.to_dict() for frame in self.sensor_frames],
             "sensorHealth": self._sensor_health(),
-            "safety": self.evaluate_safety("FireIntent", selected.to_dict() if selected else None).to_dict(),
+            "safety": self.evaluate_safety(
+                "FireIntent",
+                selected.to_dict() if selected else None,
+                {
+                    "stage": self.stage,
+                    "round": self.round,
+                    "operatorConfirm": True,
+                },
+            ).to_dict(),
             "commandResults": self.command_results[:8],
             "events": self.events[:20],
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
+            "missionFlow": self.mission_flow.to_dict(),
         }
         result.update(self._mission_timer())
         result.update(self._maintenance_state())
@@ -733,9 +805,9 @@ class OperatorService:
                 "Operatör Paneli UI",
                 "ready",
                 "Frontend",
-                "React panel aşama/tur seçimi, radar/LiDAR replay katmanı, sınıflandırma/dost-düşman güveni, FireIntent, DURDUR, bakım/diagnostik ve kanıt/replay yüzeylerini gösteriyor.",
+                "React panel backend MissionFlow/state stream ile aşama/tur, deadman'li ManualAimCommand, gerçek track önceliği, FireIntent, görev duraklatma, bakım/diagnostik ve kanıt/replay yüzeylerini gösteriyor.",
                 "Canlı kamera/perception katmanı ve saha kiosk/ekran düzeni gerçek donanımla ayrıca denenmeli.",
-                "Kullanıcı Arayüzü, StageRequest, SensorFrame, TrackState, FireIntent",
+                "Kullanıcı Arayüzü, StageRequest, ManualAimCommand, SensorFrame, TrackState, SafetyState, FireIntent",
             ),
             self._readiness_item(
                 "perception_adapter",
@@ -886,6 +958,9 @@ class OperatorService:
         self.maintenance_used_sec = 0.0
         self._maintenance_started_at = None
         self.mission_started_at = None
+        self._mission_elapsed_before_pause_sec = 0.0
+        self.mission_flow = MissionFlow(stage=self.stage, round=self.round)
+        self.mission_flow.reset(track.to_dict() for track in self.tracks)
         self.telemetry.reset()
         self._append_event("telemetry", "RESET", "Telemetri sıfırlandı; fiziksel çıkış yok.", {})
         return {"ok": True, "physicalOutputEnabled": False, "telemetry": self.telemetry.metadata(), "state": self.snapshot()}
@@ -904,11 +979,33 @@ class OperatorService:
         if kind == "FireIntent":
             payload_stage = _payload_int(payload, "stage")
             payload_round = _payload_int(payload, "round")
-            command_payload_ok = payload_stage == self.stage and payload_round == self.round
-            mode_ok = self.mode == "manual" if self.stage == 1 else self.mode in ENGAGEMENT_MODES
             target_gate_ok = self._target_gate_ok_for_stage(target)
+            command_payload_ok = payload_stage == self.stage and payload_round == self.round
+            mode_ok = (
+                self.mission_flow.status == "ACTIVE"
+                and (
+                    self.mode == "manual"
+                    if self.stage == 1
+                    else self.mode in ENGAGEMENT_MODES
+                )
+            )
+            command_payload_ok = (
+                command_payload_ok
+                and bool(payload.get("operatorConfirm"))
+                and bool(target)
+                and (
+                    not target_gate_ok
+                    or target.get("trackId")
+                    == self.mission_flow.selected_target_id
+                )
+            )
         elif kind == "ManualAimCommand":
-            mode_ok = self.stage == 1 and self.mode == "manual" and bool(payload.get("deadmanActive"))
+            mode_ok = (
+                self.mission_flow.status == "ACTIVE"
+                and self.stage == 1
+                and self.mode == "manual"
+                and bool(payload.get("deadmanActive"))
+            )
             command_payload_ok = manual_aim_payload_ok(payload)
         elif kind == "ModeRequest":
             mode_ok = payload.get("requestedMode") in VALID_MODES
@@ -1021,15 +1118,89 @@ class OperatorService:
             return {"ok": False, "blocked": True, "reason": "MAINTENANCE_BUDGET_EXHAUSTED",
                     "message": f"Bakım bütçesi tükendi ({maint['maintenanceUsedSec']:.0f}/{self.maintenance_budget_sec:.0f} sn kullanıldı)."}
         prev_mode = self.mode
+        if not self.mission_flow.start_maintenance("OPERATOR_MAINTENANCE_START"):
+            return {
+                "ok": False,
+                "blocked": True,
+                "reason": "MISSION_TRANSITION_BLOCKED",
+                "message": "Görev durumu bakıma geçişe izin vermiyor.",
+            }
+        self._pause_mission_timer()
+        self._maintenance_previous_mode = prev_mode
         self.mode = "maintenance"
+        self.disarm("MAINTENANCE_START")
         self._maintenance_started_at = _time.monotonic()
         self._append_event("maintenance", "MAINTENANCE_START",
                            f"Bakım modu başlatıldı (önceki mod: {prev_mode}).",
                            {"prevMode": prev_mode, "maintenanceState": maint})
         return {"ok": True, "blocked": False, "maintenanceState": maint, "state": self.snapshot()}
 
+    def handle_mission_stop(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Controlled operator pause; distinct from the latched physical E-Stop."""
+
+        self._require_owner()
+        reason = str(payload.get("reason", "OPERATOR_STOP"))
+        previous_mode = self.mode
+        accepted = not self.estop and self.mission_flow.pause(reason)
+        if accepted:
+            self._mission_mode_before_pause = previous_mode
+            self._pause_mission_timer()
+            self.mode = "blocked"
+            self.disarm("MISSION_PAUSED")
+        self._append_event(
+            "mission",
+            "MISSION_STOP",
+            "Görev kontrollü olarak duraklatıldı."
+            if accepted
+            else "Görev duraklatma geçişi reddedildi.",
+            {
+                "accepted": accepted,
+                "reason": reason,
+                "previousMode": previous_mode,
+                "missionFlow": self.mission_flow.to_dict(),
+            },
+        )
+        return {
+            "ok": accepted,
+            "accepted": accepted,
+            "reason": "ALLOWED" if accepted else "MISSION_TRANSITION_BLOCKED",
+            "state": self.snapshot(),
+            "physicalOutput": False,
+        }
+
+    def handle_mission_resume(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Resume only a controlled PAUSED state; never clear an E-Stop."""
+
+        self._require_owner()
+        reason = str(payload.get("reason", "OPERATOR_RESUME"))
+        accepted = not self.estop and self.mission_flow.resume(reason)
+        if accepted:
+            expected = stage_expected_mode(self.stage)
+            previous = getattr(self, "_mission_mode_before_pause", expected)
+            self.mode = previous if previous in {expected, "engagement"} else expected
+            self._resume_mission_timer()
+        self._append_event(
+            "mission",
+            "MISSION_RESUME",
+            "Görev kontrollü olarak devam ettirildi."
+            if accepted
+            else "Görev devam geçişi reddedildi; E-Stop veya durum kilidi sürüyor.",
+            {
+                "accepted": accepted,
+                "reason": reason,
+                "missionFlow": self.mission_flow.to_dict(),
+            },
+        )
+        return {
+            "ok": accepted,
+            "accepted": accepted,
+            "reason": "ALLOWED" if accepted else "MISSION_TRANSITION_BLOCKED",
+            "state": self.snapshot(),
+            "physicalOutput": False,
+        }
+
     def maintenance_end(self) -> dict[str, Any]:
-        """Bakım süresini sonlandır; bütçeyi güncelle ve safe moda dön.
+        """Bakım süresini sonlandır; bütçeyi güncelle ve önceki göreve dön.
 
         En az MAINTENANCE_MIN_REQUEST_SEC kadar süre kayıt edilir.
         """
@@ -1039,10 +1210,17 @@ class OperatorService:
         elapsed = max(MAINTENANCE_MIN_REQUEST_SEC, _time.monotonic() - self._maintenance_started_at)
         self.maintenance_used_sec += elapsed
         self._maintenance_started_at = None
+        self.mission_flow.end_maintenance("OPERATOR_MAINTENANCE_END")
         self.mode = "safe"
+        self._mission_mode_before_pause = getattr(
+            self,
+            "_maintenance_previous_mode",
+            stage_expected_mode(self.stage),
+        )
         self._append_event("maintenance", "MAINTENANCE_END",
-                           f"Bakım sona erdi ({elapsed:.1f} sn); safe moda dönüldü.",
-                           {"elapsedSec": elapsed, "totalUsedSec": self.maintenance_used_sec})
+                           f"Bakım sona erdi ({elapsed:.1f} sn); görev durumu backend tarafından geri yüklendi.",
+                           {"elapsedSec": elapsed, "totalUsedSec": self.maintenance_used_sec,
+                            "missionFlow": self.mission_flow.to_dict()})
         return {"ok": True, "elapsedSec": round(elapsed, 1),
                 "maintenanceState": self._maintenance_state(), "state": self.snapshot()}
 
@@ -1060,7 +1238,14 @@ class OperatorService:
             self.mode = stage_expected_mode(self.stage)
             self.tracks = self._tracks_for_stage(self.stage, self.round)
             self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
+            self.mission_flow.start_stage(
+                self.stage,
+                self.round,
+                (track.to_dict() for track in self.tracks),
+                reason=str(payload.get("reason", "STAGE_REQUEST")),
+            )
             # Şartname: Aşama 1 başlayınca görev timer'ı sıfırla ve başlat
+            self._mission_elapsed_before_pause_sec = 0.0
             if self.stage == 1:
                 self.mission_started_at = _time.monotonic()
                 self.mission_time_limit_sec = STAGE1_TIME_LIMIT_SEC
@@ -1084,6 +1269,7 @@ class OperatorService:
 
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_owner()
+        self.expire_stage_timer_if_needed()
         safety = self.evaluate_safety("ManualAimCommand", payload=payload)
         accepted = safety.blockReason == "ALLOWED"
         result = self._command_result("ManualAimCommand", accepted, safety.blockReason)
@@ -1096,6 +1282,7 @@ class OperatorService:
 
     def handle_fire_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_owner()
+        self.expire_stage_timer_if_needed()
         target = self._find_track(str(payload.get("targetId", "")))
         target_dict = target.to_dict() if target else None
         safety = self.evaluate_safety("FireIntent", target=target_dict, payload=payload)
@@ -1105,6 +1292,7 @@ class OperatorService:
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "FireIntent", "target": target_dict, "payload": payload})
             self.telemetry.append("hardware_result", hardware_result)
+            self.mission_flow.record_engagement(str(payload.get("targetId", "")))
         self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
@@ -1175,8 +1363,27 @@ class OperatorService:
         if physical:
             self.estop_physical_active = active
         if active:
+            if self._maintenance_started_at is not None:
+                elapsed = max(
+                    MAINTENANCE_MIN_REQUEST_SEC,
+                    _time.monotonic() - self._maintenance_started_at,
+                )
+                self.maintenance_used_sec += elapsed
+                self._maintenance_started_at = None
+                self._append_event(
+                    "maintenance",
+                    "MAINTENANCE_INTERRUPTED_ESTOP",
+                    "Bakım E-Stop nedeniyle kesildi; kullanılan süre bütçeye işlendi.",
+                    {
+                        "elapsedSec": elapsed,
+                        "totalUsedSec": self.maintenance_used_sec,
+                    },
+                )
             self.estop = True
             self.estop_reset_required = True
+            self._pause_mission_timer()
+            self.mission_flow.latch_estop("ESTOP_ACTIVE")
+            self.mode = "blocked"
             self.disarm("ESTOP_ACTIVE")
         # Physical release only removes the signal.  The latch stays active
         # until reset_estop verifies Pico SAFE and records an operator identity.
@@ -1200,6 +1407,7 @@ class OperatorService:
         if allowed:
             self.estop = False
             self.estop_reset_required = False
+            self.mission_flow.release_estop("CONTROLLED_ESTOP_RESET")
         self._append_event(
             "safety",
             "ESTOP_RESET",
@@ -1350,11 +1558,29 @@ class OperatorService:
             return {"ok": False, "error": "tracks bir liste olmalıdır."}
 
         now = self._clock()
+        source_lower = source.lower()
+        default_track_source: Literal["perception", "radar-lidar", "fused"] = (
+            "fused"
+            if "fused" in source_lower
+            else "radar-lidar"
+            if "lidar" in source_lower or "radar" in source_lower or "sensor" in source_lower
+            else "perception"
+        )
         updated: list[DryRunTrack] = []
         for raw in tracks_data:
             if not isinstance(raw, dict):
                 continue
             try:
+                raw_source = str(raw.get("source", default_track_source))
+                track_source: Literal["perception", "radar-lidar", "fused"]
+                if raw_source == "radar-lidar":
+                    track_source = "radar-lidar"
+                elif raw_source == "fused":
+                    track_source = "fused"
+                elif raw_source == "perception":
+                    track_source = "perception"
+                else:
+                    track_source = default_track_source
                 track = DryRunTrack(
                     trackId    = str(raw.get("trackId", f"LIVE-{now}")),
                     stage      = self.stage,
@@ -1364,7 +1590,7 @@ class OperatorService:
                     rangeM     = float(raw.get("rangeM",    0.0)),
                     bearingDeg = float(raw.get("bearingDeg", 0.0)),
                     confidence = float(raw.get("confidence", 0.5)),
-                    source     = "perception",
+                    source     = track_source,
                     updatedAt  = now,
                 )
                 updated.append(track)
@@ -1372,10 +1598,11 @@ class OperatorService:
                 return {"ok": False, "error": f"Geçersiz track verisi: {exc}"}
 
         self.tracks = updated
+        self.mission_flow.refresh_tracks(track.to_dict() for track in updated)
         self.perception_connected = True
         self.camera_ok = True
         self.track_ok = bool(updated)
-        if "lidar" in source.lower() or "sensor" in source.lower():
+        if "lidar" in source_lower or "radar" in source_lower or "sensor" in source_lower or "fused" in source_lower:
             self.sensor_adapter_connected = True
             self.lidar_ok = bool(updated)
             self._last_lidar_update_monotonic = _time.monotonic()

@@ -3,7 +3,6 @@ import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
 import { COMPETITION_COURSE } from './competitionCourse';
 import {
   canSendFireIntent,
-  evaluateOperatorSafety,
   makeCommandResult,
   makeFireIntent,
   makeStageRequest,
@@ -11,7 +10,6 @@ import {
   stageExpectedMode,
   stageRoundLimit,
   type CommandResult,
-  type FireIntent,
   type OperatorPanelConfig,
   type OperatorSensorFrame,
   type OperatorTrackState,
@@ -19,15 +17,11 @@ import {
 import {
   fetchOperatorReplay,
   fetchOperatorReadiness,
-  fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
-  operatorStateStreamUrl,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
-  sendOperatorModeRequest,
   sendOperatorStageRequest,
   type HardwareResult,
-  type OperatorApiSnapshot,
   type OperatorReplayBundle,
   type OperatorReadinessItem,
   type OperatorReadinessReport,
@@ -47,7 +41,9 @@ import { ReadinessDashboard } from './components/ReadinessDashboard';
 import { EventStream } from './components/EventStream';
 import { SafetyAuthorityPanel } from './components/SafetyAuthorityPanel';
 import { HardwareHealthBadge } from './components/HardwareHealthBadge';
-import { sendOperatorEStop } from './operatorApiClient';
+import { TrackList } from './components/TrackList';
+import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendMissionStop, sendOperatorManualAimCommand } from './operatorApiClient';
+import { useOperatorBackendState } from './hooks/useOperatorBackendState';
 
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
@@ -59,27 +55,6 @@ const targetLabel: Record<TargetType, string> = {
   'Balistik Füze': 'Balistik Füze',
   'Mini/Micro İHA': 'Mini/Micro İHA',
 };
-
-const dryRunTracksByStage: Record<Stage, OperatorTrackState[]> = {
-  1: [
-    { trackId: 'S1-ORDER-FUZE-01', stage: 1, round: 1, targetType: 'Balistik Füze', friendFoe: 'Düşman', rangeM: 15, bearingDeg: -24, confidence: 0.86, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'S1-ORDER-HEL-02', stage: 1, round: 1, targetType: 'Helikopter', friendFoe: 'Düşman', rangeM: 10, bearingDeg: -7, confidence: 0.84, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'S1-ORDER-F16-03', stage: 1, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 5, bearingDeg: 10, confidence: 0.82, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'S1-ORDER-UAV-04', stage: 1, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Düşman', rangeM: 5, bearingDeg: 27, confidence: 0.8, source: 'dry-run', updatedAt: '2026-05-25T20:00:00.000Z' },
-  ],
-  2: [
-    { trackId: 'S2-R1-L1-BALISTIK', stage: 2, round: 1, targetType: 'Balistik Füze', friendFoe: 'Düşman', rangeM: 14.2, bearingDeg: -28, confidence: 0.78, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'S2-R1-L2-UAV', stage: 2, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Düşman', rangeM: 11.6, bearingDeg: 2, confidence: 0.74, source: 'radar-lidar', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'S2-R1-L3-UAV', stage: 2, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Düşman', rangeM: 8.9, bearingDeg: 31, confidence: 0.72, source: 'radar-lidar', updatedAt: '2026-05-25T20:00:00.000Z' },
-  ],
-  3: [
-    { trackId: 'DRY-RUN-F16-01', stage: 3, round: 1, targetType: 'F16', friendFoe: 'Düşman', rangeM: 12.4, bearingDeg: -18, confidence: 0.96, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'DRY-RUN-HEL-02', stage: 3, round: 1, targetType: 'Helikopter', friendFoe: 'Dost', rangeM: 8.1, bearingDeg: 4, confidence: 0.91, source: 'fused', updatedAt: '2026-05-25T20:00:00.000Z' },
-    { trackId: 'DRY-RUN-UAV-03', stage: 3, round: 1, targetType: 'Mini/Micro İHA', friendFoe: 'Bilinmeyen', rangeM: 4.2, bearingDeg: 23, confidence: 0.42, source: 'radar-lidar', updatedAt: '2026-05-25T20:00:00.000Z' },
-  ],
-};
-
-const dryRunTracks = dryRunTracksByStage[DEFAULT_OPERATOR_STAGE];
 
 function makeBootCommandResult() {
   return makeCommandResult({
@@ -96,10 +71,6 @@ function affiliationClass(friendFoe: OperatorTrackState['friendFoe']) {
   if (friendFoe === 'Düşman') return 'enemy';
   if (friendFoe === 'Dost') return 'friend';
   return 'unknown';
-}
-
-function isTrackUnidentified(track: Pick<OperatorTrackState, 'friendFoe' | 'confidence'>) {
-  return track.friendFoe === 'Bilinmeyen' || track.confidence < 0.6;
 }
 
 function isFrameUnidentified(frame: Pick<OperatorSensorFrame, 'friendFoe' | 'classificationConfidence'>) {
@@ -120,76 +91,6 @@ function hostilityConfidence(frame: OperatorSensorFrame) {
 
 function stageHasHostilityDetection(stage: Stage) {
   return stage === 3;
-}
-
-function sensorRecommendation(track: OperatorTrackState, stage: Stage) {
-  if (track.friendFoe === 'Dost') return 'Dost unsur korunur; FireIntent kilitli.';
-  if (track.friendFoe === 'Bilinmeyen') return 'Kimlik kesinleşmeden FireIntent kilitli; yazılım katmanı sınıf/dost-düşman güvenini izler.';
-  if (stage === 2) return 'Aşama 2: sınıflandırma zorunlu değil; takip/imha önceliği.';
-  if (stage === 1) return 'Aşama 1: operatör manuel yönlendirme ve ateş niyetiyle ilerler.';
-  return targetRangeGateOk(track) ? 'Aşama 3: düşman ve menzil uygun; Safety Gate beklenir.' : 'Aşama 3: hedef izlenir, menzil kapısı beklenir.';
-}
-
-function makeLocalSensorFrames(stage: Stage, round: number): OperatorSensorFrame[] {
-  return dryRunTracksByStage[stage].flatMap((track, index) => {
-    const sourceDataset = stage === 3
-      ? 'Gökkalkan recorded-style radar/LiDAR replay; Oxford Radar RobotCar ve nuScenes benzeri offline veriler bu şemaya map edilebilir.'
-      : 'Gökkalkan recorded-style dry-run replay; gerçek sensör adapterı TBD.';
-    const unidentified = isTrackUnidentified(track);
-    const rangeGate = unidentified ? 'Kimlik bekleniyor' : stage === 2 ? 'Takip önceliği' : stage === 3 ? (targetRangeGateOk(track) ? 'Uygun' : 'Kilitli') : 'Manuel hedef sırası';
-    const typeConfidence = unidentified ? Math.min(track.confidence, 0.45) : stage === 2 ? 0.52 : track.confidence;
-    const hostilityConfidence = unidentified ? Math.max(0.52, 1 - typeConfidence) : track.confidence;
-    return [
-      {
-        frameId: `LOCAL-S${stage}-R${round}-${index + 1}-RADAR`,
-        stage,
-        round,
-        trackId: track.trackId,
-        sensor: 'radar',
-        timestamp: track.updatedAt,
-        rangeM: track.rangeM,
-        bearingDeg: track.bearingDeg,
-        elevationDeg: 0.4 + index * 0.2,
-        radialVelocityMps: -4.8 + index,
-        rcsDbsm: track.friendFoe === 'Düşman' ? 13.5 - index : 5.2,
-        snrDb: 23 - index,
-        pointCount: 0,
-        quality: Math.min(0.98, hostilityConfidence + 0.01),
-        targetType: track.targetType,
-        friendFoe: track.friendFoe,
-        classificationConfidence: typeConfidence,
-        rangeGate,
-        recommendation: sensorRecommendation(track, stage),
-        sourceDataset,
-        replayOnly: true,
-        rawSampleRef: `local/stage-${stage}/round-${round}/radar/${track.trackId}`,
-      },
-      {
-        frameId: `LOCAL-S${stage}-R${round}-${index + 1}-FUSION`,
-        stage,
-        round,
-        trackId: track.trackId,
-        sensor: 'fusion',
-        timestamp: track.updatedAt,
-        rangeM: track.rangeM,
-        bearingDeg: track.bearingDeg,
-        elevationDeg: 0.3 + index * 0.1,
-        radialVelocityMps: -4.5 + index,
-        rcsDbsm: track.friendFoe === 'Düşman' ? 12 - index : 5,
-        snrDb: 21 - index,
-        pointCount: 86 + index * 24,
-        quality: hostilityConfidence,
-        targetType: track.targetType,
-        friendFoe: track.friendFoe,
-        classificationConfidence: typeConfidence,
-        rangeGate,
-        recommendation: sensorRecommendation(track, stage),
-        sourceDataset,
-        replayOnly: true,
-        rawSampleRef: `local/stage-${stage}/round-${round}/fusion/${track.trackId}`,
-      },
-    ];
-  });
 }
 
 function operatorXForRange(range: number) {
@@ -237,10 +138,6 @@ const defaultSensorView: SensorViewState = {
   panZ: 0,
   distance: 18,
 };
-
-const MAINTENANCE_SESSION_LIMIT = 3;
-const MAINTENANCE_TOTAL_SECONDS = 10 * 60;
-const MAINTENANCE_MIN_CHARGE_SECONDS = 30;
 
 function visualSizeForTarget(type: TargetType) {
   const base = {
@@ -300,12 +197,6 @@ function targetEngagementRange(type: TargetType) {
 function permittedRangeForStageTarget(stage: Stage, type: TargetType) {
   if (stage === 2) return { min: 0, max: 15 };
   return targetEngagementRange(type);
-}
-
-function targetGateOkForStage(stage: Stage, track: OperatorTrackState | undefined) {
-  if (!track || track.friendFoe !== 'Düşman') return false;
-  if (stage === 1 || stage === 2) return track.rangeM > 0 && track.rangeM <= 15;
-  return targetRangeGateOk(track);
 }
 
 function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
@@ -535,7 +426,7 @@ function cameraPaintName(friendFoe: OperatorSensorFrame['friendFoe']) {
 }
 
 function makeRawCameraFeed(stage: Stage, round: number, sensorFrames: OperatorSensorFrame[]): RawCameraFeed {
-  const baseFrames = sensorFrames.length > 0 ? sensorFrames : makeLocalSensorFrames(stage, round);
+  const baseFrames = sensorFrames;
   const fusionFrames = baseFrames.filter((frame) => frame.sensor === 'fusion');
   const visualFrames = (fusionFrames.length > 0 ? fusionFrames : baseFrames).slice(0, 4);
   const timestamp = visualFrames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
@@ -2066,27 +1957,34 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
-  const dryRun = true;
-  const maintenanceFinishingRef = useRef(false);
   const [mode, setMode] = useState<Mode>(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
   const [stage, setStage] = useState<Stage>(DEFAULT_OPERATOR_STAGE);
   const [round, setRound] = useState(1);
-  const [selectedTrackId, setSelectedTrackId] = useState(dryRunTracks[0]?.trackId ?? '');
-  const [shotTrackIds, setShotTrackIds] = useState<Set<string>>(() => new Set());
-  const [autonomousFireStartKeys, setAutonomousFireStartKeys] = useState<Set<string>>(() => new Set());
+  const [selectedTrackId, setSelectedTrackId] = useState('');
   const [, setLastHardwareResult] = useState<HardwareResult>();
-  const [operatorStopActive, setOperatorStopActive] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const [maintenanceSessionActive, setMaintenanceSessionActive] = useState(false);
-  const [maintenanceSessionStartedAt, setMaintenanceSessionStartedAt] = useState<number>();
-  const [maintenanceClockMs, setMaintenanceClockMs] = useState(Date.now());
-  const [maintenanceSessionsUsed, setMaintenanceSessionsUsed] = useState(0);
-  const [maintenanceRemainingSeconds, setMaintenanceRemainingSeconds] = useState(MAINTENANCE_TOTAL_SECONDS);
-  const [apiSnapshot, setApiSnapshot] = useState<OperatorApiSnapshot>();
-  const [apiError, setApiError] = useState('');
-  const [apiBusy, setApiBusy] = useState(false);
-  const [readinessReport, setReadinessReport] = useState<OperatorReadinessReport>();
-  const [, setReadinessError] = useState('');
+  const {
+    snapshot: apiSnapshot,
+    setSnapshot: setApiSnapshot,
+    readiness: readinessReport,
+    setReadiness: setReadinessReport,
+    busy: backendBusy,
+    error: backendError,
+    readinessError: backendReadinessError,
+  } = useOperatorBackendState(apiBaseUrl);
+  const shotTrackIds = useMemo(
+    () => new Set(apiSnapshot?.missionFlow?.completedTargetIds ?? []),
+    [apiSnapshot?.missionFlow?.completedTargetIds],
+  );
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [commandApiError, setCommandApiError] = useState('');
+  const [readinessRefreshError, setReadinessRefreshError] = useState('');
+  const apiBusy = backendBusy || commandBusy;
+  const apiError = backendError || commandApiError;
+  const readinessError = backendReadinessError || readinessRefreshError;
+  const setApiBusy = setCommandBusy;
+  const setApiError = setCommandApiError;
+  const setReadinessError = setReadinessRefreshError;
   const [telemetryExport, setTelemetryExport] = useState<OperatorTelemetryExport>();
   const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
   const [evidenceBusy, setEvidenceBusy] = useState(false);
@@ -2097,183 +1995,87 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [commandResults, setCommandResults] = useState<CommandResult[]>([makeBootCommandResult()]);
 
   useEffect(() => {
-    if (!apiBaseUrl) {
-      setApiSnapshot(undefined);
-      setReadinessReport(undefined);
-      setTelemetryExport(undefined);
-      setReplayBundle(undefined);
-      setApiError('');
-      setReadinessError('');
-      setEvidenceError('');
-      setEvidenceNotice('Backend API bağlantısı olmadan yalnız yerel dry-run olay akışı gösterilir.');
-      return;
-    }
-
-    let cancelled = false;
-    let fallbackTimer: number | undefined;
-    let readinessTimer: number | undefined;
-    let stream: EventSource | undefined;
-
-    const applySnapshot = (snapshot: OperatorApiSnapshot) => {
-      setApiSnapshot(snapshot);
-      setApiError('');
-      setMode(snapshot.mode);
-      setStage(snapshot.stage);
-      setRound(snapshot.round);
-      if (snapshot.commandResults.length > 0) setCommandResults(snapshot.commandResults);
-      setSelectedTrackId((current) => {
-        if (!snapshot.tracks[0] || snapshot.tracks.some((track) => track.trackId === current)) return current;
-        return snapshot.tracks[0].trackId;
-      });
-    };
-
-    const loadReadiness = () => {
-      void fetchOperatorReadiness(apiBaseUrl)
-        .then((readiness) => {
-          if (cancelled) return;
-          setReadinessReport(readiness);
-          setReadinessError('');
-        })
-        .catch((error: unknown) => {
-          if (!cancelled) setReadinessError(error instanceof Error ? error.message : 'Readiness raporu alınamadı.');
-        });
-    };
-
-    const scheduleFallback = () => {
-      if (cancelled || fallbackTimer !== undefined) return;
-      fallbackTimer = window.setTimeout(() => {
-        fallbackTimer = undefined;
-        void loadSnapshot(true);
-      }, 2_000);
-    };
-
-    const loadSnapshot = (continueFallback = false) => {
-      setApiBusy(true);
-      void fetchOperatorSnapshot(apiBaseUrl)
-        .then((snapshot) => {
-          if (cancelled) return;
-          applySnapshot(snapshot);
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          setApiError(error instanceof Error ? error.message : 'Backend API bağlantısı kurulamadı.');
-        })
-        .finally(() => {
-          if (cancelled) return;
-          setApiBusy(false);
-          if (continueFallback) scheduleFallback();
-        });
-    };
-
-    loadSnapshot();
-    loadReadiness();
-    readinessTimer = window.setInterval(loadReadiness, 5_000);
-
-    if (typeof EventSource === 'function') {
-      stream = new EventSource(operatorStateStreamUrl(apiBaseUrl));
-      stream.addEventListener('state', (event) => {
-        if (cancelled) return;
-        try {
-          applySnapshot(JSON.parse((event as MessageEvent<string>).data) as OperatorApiSnapshot);
-          if (fallbackTimer !== undefined) {
-            window.clearTimeout(fallbackTimer);
-            fallbackTimer = undefined;
-          }
-          setApiBusy(false);
-        } catch {
-          setApiError('Backend state stream geçersiz JSON üretti.');
-          scheduleFallback();
-        }
-      });
-      stream.onerror = () => {
-        if (cancelled) return;
-        setApiError('Backend state stream kesildi; düşük hızlı snapshot yedeği kullanılıyor.');
-        scheduleFallback();
-      };
-    } else {
-      scheduleFallback();
-    }
-
-    return () => {
-      cancelled = true;
-      stream?.close();
-      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
-      if (readinessTimer !== undefined) window.clearInterval(readinessTimer);
-    };
-  }, [apiBaseUrl]);
+    if (!apiSnapshot) return;
+    setMode(apiSnapshot.mode);
+    setStage(apiSnapshot.stage);
+    setRound(apiSnapshot.round);
+    if (apiSnapshot.commandResults.length > 0) setCommandResults(apiSnapshot.commandResults);
+    setSelectedTrackId((current) => {
+      const stillVisible = apiSnapshot.tracks.some((track) => track.trackId === current);
+      const completed = apiSnapshot.missionFlow?.completedTargetIds.includes(current);
+      if (stillVisible && !completed) return current;
+      return apiSnapshot.missionFlow?.selectedTargetId
+        ?? apiSnapshot.tracks[0]?.trackId
+        ?? '';
+    });
+  }, [apiSnapshot]);
 
   const config: OperatorPanelConfig = useMemo(() => {
     const apiReady = Boolean(apiSnapshot && !apiError);
-    const connectionState = dryRun ? 'dry-run' : apiReady ? (apiSnapshot?.dryRun ? 'dry-run' : 'live') : 'offline';
+    const connectionState = apiReady ? (apiSnapshot?.dryRun ? 'dry-run' : 'live') : 'offline';
     return {
-      apiBaseUrl: apiBaseUrl || 'local-dry-run-adapter',
+      apiBaseUrl: apiBaseUrl || 'backend-required',
       connectionState,
-      dryRun,
-      liveArmEnabled: liveArmEnabled && !dryRun,
+      dryRun: apiSnapshot?.dryRun ?? true,
+      liveArmEnabled: apiSnapshot?.liveArmEnabled ?? (liveArmEnabled && apiReady),
     };
-  }, [apiBaseUrl, apiError, apiSnapshot, dryRun, liveArmEnabled]);
+  }, [apiBaseUrl, apiError, apiSnapshot, liveArmEnabled]);
 
   const displayStage = apiSnapshot?.stage ?? stage;
   const displayRound = apiSnapshot?.round ?? round;
-  const visibleTracks = apiSnapshot?.tracks.length ? apiSnapshot.tracks : dryRunTracksByStage[displayStage].map((track) => ({ ...track, round: displayRound }));
-  const selectedTrack = visibleTracks.find((track) => track.trackId === selectedTrackId) ?? visibleTracks[0];
-  const selectedTargetGateOk = targetGateOkForStage(displayStage, selectedTrack);
-  const localFrames = useMemo(() => makeLocalSensorFrames(displayStage, displayRound), [displayStage, displayRound]);
-  const sensorFrames = apiSnapshot ? (apiSnapshot.sensorFrames ?? []) : localFrames;
+  const visibleTracks = apiSnapshot?.tracks ?? [];
+  const authoritativeTargetId = apiSnapshot?.missionFlow?.selectedTargetId ?? '';
+  const authoritativeTrack = visibleTracks.find(
+    (track) => track.trackId === authoritativeTargetId,
+  );
+  const sensorFrames = apiSnapshot?.sensorFrames ?? [];
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
-  const rawLidarSourceFrames = interpretedSensorFrames.length > 0 ? interpretedSensorFrames : localFrames;
   const rawLidarClips = useMemo(
-    () => makeRawLidarClips(displayStage, displayRound, rawLidarSourceFrames),
-    [displayStage, displayRound, rawLidarSourceFrames],
+    () => makeRawLidarClips(displayStage, displayRound, interpretedSensorFrames),
+    [displayStage, displayRound, interpretedSensorFrames],
   );
   const rawCameraFeed = useMemo(
-    () => makeRawCameraFeed(displayStage, displayRound, rawLidarSourceFrames),
-    [displayStage, displayRound, rawLidarSourceFrames],
+    () => makeRawCameraFeed(displayStage, displayRound, interpretedSensorFrames),
+    [displayStage, displayRound, interpretedSensorFrames],
   );
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
-  const safety = evaluateOperatorSafety({
-    estop: operatorStopActive || (apiSnapshot?.safety.estop ?? false),
-    motionZoneOk: apiSnapshot?.safety.motionZoneOk ?? true,
-    fireZoneOk: apiSnapshot?.safety.fireZoneOk ?? true,
-    targetGateOk: selectedTargetGateOk,
-    modeOk: !operatorStopActive && (displayStage === 1 ? mode === 'manual' : mode === 'autonomous' || mode === 'engagement'),
-    backendConnected: apiSnapshot?.safety.backendConnected ?? config.connectionState !== 'offline',
-    perceptionConnected: apiSnapshot?.safety.perceptionConnected ?? config.connectionState === 'live',
-    sensorAdapterConnected: apiSnapshot?.safety.sensorAdapterConnected ?? config.connectionState === 'live',
-    dryRun: config.dryRun,
-    liveArmEnabled: config.liveArmEnabled,
-  });
-  const safetyFireReady = canSendFireIntent(safety, selectedTrack?.trackId);
+  const safety = apiSnapshot?.safety ?? {
+    estop: false,
+    motionZoneOk: false,
+    fireZoneOk: false,
+    targetGateOk: false,
+    modeOk: false,
+    backendConnected: false,
+    perceptionConnected: false,
+    sensorAdapterConnected: false,
+    dryRun: true,
+    liveArmEnabled: false,
+    blockReason: 'BLOCKED_BACKEND' as const,
+    explanation: 'Backend snapshot yok; panel fail-closed.',
+  };
+  const missionStatus = apiSnapshot?.missionFlow?.status ?? 'IDLE';
+  const maintenanceSessionActive = missionStatus === 'MAINTENANCE';
+  const operatorStopActive = missionStatus === 'PAUSED' || missionStatus === 'ESTOP_LATCHED';
+  const safetyFireReady = canSendFireIntent(safety, authoritativeTrack?.trackId)
+    && missionStatus === 'ACTIVE'
+    && authoritativeTrack?.trackId === authoritativeTargetId;
   const isAutonomousFireStage = stageExpectedMode(displayStage) !== 'manual';
-  const autonomousFireKey = `${displayStage}-${displayRound}`;
-  const autonomousFireStarted = isAutonomousFireStage && autonomousFireStartKeys.has(autonomousFireKey);
-  const manualFireReady = !isAutonomousFireStage && safetyFireReady;
-  const autonomousFireReady = isAutonomousFireStage && !autonomousFireStarted;
-  const fireReady = manualFireReady || autonomousFireReady;
-  const fireCaption = isAutonomousFireStage
-    ? autonomousFireStarted
-      ? 'Otonom Ateş Başlatıldı'
-      : 'Otonom Ateş Başlat'
-    : manualFireReady
-      ? 'Hazır'
-      : operatorBlockCopy[safety.blockReason];
-  const maintenanceElapsedSeconds = maintenanceSessionActive && maintenanceSessionStartedAt
-    ? Math.max(0, Math.floor((maintenanceClockMs - maintenanceSessionStartedAt) / 1000))
-    : 0;
-  const maintenanceCountdownSeconds = maintenanceSessionActive
-    ? Math.max(0, maintenanceRemainingSeconds - maintenanceElapsedSeconds)
-    : maintenanceRemainingSeconds;
-  const maintenanceSessionsLeft = Math.max(0, MAINTENANCE_SESSION_LIMIT - maintenanceSessionsUsed);
-  const maintenanceSessionsLeftAfterActive = Math.max(0, maintenanceSessionsLeft - (maintenanceSessionActive ? 1 : 0));
-  const maintenanceReady = !apiBusy && !operatorStopActive && !maintenanceSessionActive && maintenanceSessionsLeft > 0 && maintenanceRemainingSeconds > 0;
+  const fireReady = safetyFireReady && Boolean(apiBaseUrl);
+  const fireCaption = fireReady
+    ? (isAutonomousFireStage ? 'Backend öncelikli hedef Hazır' : 'Manuel hedef sırası Hazır')
+    : operatorBlockCopy[safety.blockReason];
+  const maintenanceCountdownSeconds = apiSnapshot?.maintenanceRemainingBudgetSec ?? 0;
+  const maintenanceReady = Boolean(
+    apiBaseUrl
+    && !apiBusy
+    && missionStatus !== 'MAINTENANCE'
+    && missionStatus !== 'ESTOP_LATCHED'
+    && maintenanceCountdownSeconds >= 30,
+  );
   const maintenanceStatusCopy = maintenanceSessionActive
     ? `Aktif · ${formatDuration(maintenanceCountdownSeconds)}`
-    : maintenanceReady
-      ? `${maintenanceSessionsLeft} hak · ${formatDuration(maintenanceRemainingSeconds)}`
-      : maintenanceRemainingSeconds <= 0
-        ? 'Süre bitti'
-        : 'Hak bitti';
+    : `${formatDuration(maintenanceCountdownSeconds)} bütçe`;
   const telemetryMetadata = telemetryExport?.telemetry ?? apiSnapshot?.telemetry;
   const evidenceEntries = telemetryExport?.entries ?? replayBundle?.entries ?? [];
   const replayHardwareCount = replayBundle?.hardwareResults.length ?? 0;
@@ -2286,7 +2088,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     generatedAt: new Date().toISOString(),
     summary: apiBaseUrl
       ? 'Backend readiness raporu alınamadı; panel temel state üzerinden çalışıyor.'
-      : 'Backend API bağlanmadan yalnız operatör UI kabuğu ve yerel dry-run izleri görülebilir.',
+      : 'Backend API bağlanmadan operatör UI kabuğu fail-closed açılır; hedef veya güvenlik state’i üretilmez.',
     scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
     readinessPercent: apiBaseUrl && !apiError ? 28 : 12,
     physicalOutputEnabled: false,
@@ -2298,9 +2100,9 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         label: 'Operatör Paneli UI',
         status: 'ready',
         owner: 'Frontend',
-        evidence: 'Panel aşama/tur seçimi, radar/LiDAR replay katmanı, sınıf/dost-düşman güveni, FireIntent, Stop, Bakım ve kanıt/replay yüzeylerini gösterir.',
+        evidence: 'Panel backend MissionFlow, SSE/REST snapshot, gerçek track kimliği, deadman, FireIntent, görev stop/resume, bakım ve kanıt/replay yüzeylerini gösterir.',
         nextStep: 'Canlı kamera/perception ve saha kiosk düzeni gerçek donanımla ayrıca denenmeli.',
-        ktrInterface: 'Kullanıcı Arayüzü, StageRequest, SensorFrame',
+        ktrInterface: 'Kullanıcı Arayüzü, StageRequest, ManualAimCommand, TrackState, SafetyState, SensorFrame',
       },
       {
         id: 'backend_api',
@@ -2309,7 +2111,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         owner: 'Backend',
         evidence: apiBaseUrl ? 'API base URL verilmiş; state/readiness yanıtı temel panelde kullanılabilir.' : 'API base URL yok.',
         nextStep: 'Dry-run API sunucusunu başlat ve operatorApi/VITE_GOKKALKAN_OPERATOR_API_BASE ile bağla.',
-        ktrInterface: 'ModeRequest, StageRequest, FireIntent',
+        ktrInterface: 'StageRequest, MissionStop, MissionResume, FireIntent',
       },
       {
         id: 'perception_adapter',
@@ -2334,8 +2136,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         label: 'Hardware Adapter',
         status: 'partial',
         owner: 'Backend + Elektronik',
-        evidence: 'Mock hardware sonucu fiziksel çıkışsız gösterilir; gerçek MCU protokolü seçilmedi.',
-        nextStep: 'MCU mesaj çerçevesi ve pan/tilt limitlerini elektronik/mekanik ekiple netleştir.',
+        evidence: 'Dry-run hardware sonucu fiziksel çıkışsız gösterilir; CAN v1 sözleşmesi host testleriyle doğrulandı.',
+        nextStep: 'Pico/CAN hattını ve gerçek pan/tilt limitlerini HIL’de doğrula.',
         ktrInterface: 'HardwareResult',
       },
       {
@@ -2358,7 +2160,10 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const readinessById = Object.fromEntries(displayReadiness.items.map((item) => [item.id, item])) as Record<string, OperatorReadinessItem | undefined>;
 
   const pushResult = (result: CommandResult) => {
-    setCommandResults((previous) => [result, ...previous].slice(0, 8));
+    setCommandResults((previous) => [
+      result,
+      ...previous.filter((item) => item.commandId !== result.commandId),
+    ].slice(0, 8));
   };
 
   const loadTelemetryEvidence = async () => {
@@ -2434,389 +2239,158 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   };
 
   const resetOperatorPanel = () => {
-    maintenanceFinishingRef.current = false;
-    setMode(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
-    setStage(DEFAULT_OPERATOR_STAGE);
-    setRound(1);
-    setSelectedTrackId(dryRunTracksByStage[DEFAULT_OPERATOR_STAGE][0]?.trackId ?? '');
-    setShotTrackIds(new Set());
-    setAutonomousFireStartKeys(new Set());
-    setLastHardwareResult(undefined);
-    setOperatorStopActive(false);
+    setSelectedTrackId(authoritativeTargetId);
     setMaintenanceOpen(false);
-    setMaintenanceSessionActive(false);
-    setMaintenanceSessionStartedAt(undefined);
-    setMaintenanceClockMs(Date.now());
-    setMaintenanceSessionsUsed(0);
-    setMaintenanceRemainingSeconds(MAINTENANCE_TOTAL_SECONDS);
-    setApiSnapshot(undefined);
-    setApiError('');
-    setApiBusy(false);
-    setReadinessReport(undefined);
-    setReadinessError('');
-    setTelemetryExport(undefined);
-    setReplayBundle(undefined);
-    setEvidenceBusy(false);
     setEvidenceError('');
+    setCommandApiError('');
     setRawLidarOpen(false);
     setRawCameraOpen(false);
-    setEvidenceNotice(apiBaseUrl
-      ? 'Panel Aşama 1 yerel başlangıcına sıfırlandı; backend state değiştirilmedi.'
-      : 'Panel Aşama 1 yerel başlangıcına sıfırlandı.');
-    setCommandResults([makeBootCommandResult()]);
-  };
-
-  const recordMode = (nextMode: Mode) => {
-    setMode(nextMode);
-    if (apiBaseUrl) {
-      setApiBusy(true);
-      void sendOperatorModeRequest(apiBaseUrl, {
-        kind: 'ModeRequest',
-        requestedMode: nextMode,
-        operatorId: 'OP-UI-1',
-        timestamp: new Date().toISOString(),
-        reason: 'operator-panel',
-        dryRun: config.dryRun,
-      })
-        .then((response) => {
-          pushResult(response.result);
-          setApiSnapshot(response.state);
-          setLastHardwareResult(response.hardwareResult ?? undefined);
-          setApiError('');
-        })
-        .catch((error: unknown) => {
-          pushResult(makeCommandResult({
-            commandId: `MODE-BLOCK-${Date.now()}`,
-            kind: 'ModeRequest',
-            accepted: false,
-            dryRun: config.dryRun,
-            safetyBlockReason: 'BLOCKED_BACKEND',
-          }));
-          setApiError(error instanceof Error ? error.message : 'Backend API mode komutunu kabul etmedi.');
-        })
-        .finally(() => setApiBusy(false));
-      return;
-    }
-
-    const accepted = config.connectionState !== 'offline';
-    pushResult(makeCommandResult({
-      commandId: `MODE-${nextMode}-${Date.now()}`,
-      kind: 'ModeRequest',
-      accepted,
-      dryRun: config.dryRun,
-      safetyBlockReason: accepted ? 'ALLOWED' : 'BLOCKED_BACKEND',
-    }));
+    setEvidenceNotice('Görünüm backend snapshot durumuna yeniden eşitlendi; görev state değiştirilmedi.');
   };
 
   const recordStage = (nextStage: Stage, nextRound = 1) => {
+    if (!apiBaseUrl) {
+      setApiError('Backend API bağlantısı yok; StageRequest fail-closed.');
+      return;
+    }
     const boundedRound = Math.max(1, Math.min(stageRoundLimit(nextStage), nextRound));
-    const expectedMode = stageExpectedMode(nextStage);
-    setStage(nextStage);
-    setRound(boundedRound);
-    setMode(expectedMode);
-    const fallbackTrack = dryRunTracksByStage[nextStage][0];
-    if (fallbackTrack) setSelectedTrackId(fallbackTrack.trackId);
-
     const request = makeStageRequest({
       stage: nextStage,
       round: boundedRound,
       dryRun: config.dryRun,
       reason: 'operator-stage-control',
     });
+    setApiBusy(true);
+    void sendOperatorStageRequest(apiBaseUrl, request)
+      .then((response) => {
+        pushResult(response.result);
+        setApiSnapshot(response.state);
+        setApiError('');
+      })
+      .catch((error: unknown) => {
+        setApiError(error instanceof Error ? error.message : 'Backend StageRequest komutunu kabul etmedi.');
+      })
+      .finally(() => setApiBusy(false));
+  };
 
-    if (apiBaseUrl) {
-      setApiBusy(true);
-      void sendOperatorStageRequest(apiBaseUrl, request)
-        .then((response) => {
-          pushResult(response.result);
-          setApiSnapshot(response.state);
-          setStage(response.state.stage);
-          setRound(response.state.round);
-          setMode(response.state.mode);
-          if (response.state.tracks[0]) setSelectedTrackId(response.state.tracks[0].trackId);
-          setLastHardwareResult(undefined);
-          setApiError('');
-        })
-        .catch((error: unknown) => {
-          pushResult(makeCommandResult({
-            commandId: `STAGE-BLOCK-${Date.now()}`,
-            kind: 'StageRequest',
-            accepted: false,
-            dryRun: config.dryRun,
-            safetyBlockReason: 'BLOCKED_BACKEND',
-          }));
-          setApiError(error instanceof Error ? error.message : 'Backend API aşama komutunu kabul etmedi.');
-        })
-        .finally(() => setApiBusy(false));
+  const sendManualAim = (panDeltaDeg: number, tiltDeltaDeg: number) => {
+    if (!apiBaseUrl) {
+      setApiError('Backend API bağlantısı yok; manuel yönelim fail-closed.');
       return;
     }
-
-    pushResult(makeCommandResult({
-      commandId: `STAGE-${nextStage}-${boundedRound}-${Date.now()}`,
-      kind: 'StageRequest',
-      accepted: true,
+    setApiBusy(true);
+    void sendOperatorManualAimCommand(apiBaseUrl, {
+      kind: 'ManualAimCommand',
+      panDeltaDeg,
+      tiltDeltaDeg,
+      rateLimitDegPerSec: 12,
+      deadmanActive: true,
       dryRun: config.dryRun,
-      safetyBlockReason: 'ALLOWED',
-    }));
-  };
-
-  const markManualShotComplete = (intent: FireIntent) => {
-    setShotTrackIds((current) => new Set(current).add(intent.targetId));
-  };
-
-  const markAutonomousFireStarted = (key: string) => {
-    setAutonomousFireStartKeys((current) => new Set(current).add(key));
+    })
+      .then((response) => {
+        pushResult(response.result);
+        setApiSnapshot(response.state);
+        setApiError('');
+      })
+      .catch((error: unknown) => {
+        setApiError(error instanceof Error ? error.message : 'Manuel yönelim niyeti reddedildi.');
+      })
+      .finally(() => setApiBusy(false));
   };
 
   const sendFireIntent = () => {
-    if (isAutonomousFireStage) {
-      if (autonomousFireStarted) {
-        pushResult(makeCommandResult({
-          commandId: `AUTO-BLOCK-${Date.now()}`,
-          kind: 'FireIntent',
-          accepted: false,
-          dryRun: config.dryRun,
-          safetyBlockReason: 'BLOCKED_MODE',
-        }));
-        return;
-      }
-
-      const intentKey = autonomousFireKey;
-      const intent = makeFireIntent({ targetId: `AUTO-S${displayStage}-R${displayRound}`, stage: displayStage, round: displayRound, dryRun: config.dryRun });
-      markAutonomousFireStarted(intentKey);
-      if (apiBaseUrl) {
-        setApiBusy(true);
-        void sendOperatorFireIntent(apiBaseUrl, intent)
-          .then((response) => {
-            pushResult(response.result);
-            setApiSnapshot(response.state);
-            setLastHardwareResult(response.hardwareResult ?? undefined);
-            setApiError('');
-          })
-          .catch((error: unknown) => {
-            pushResult(makeCommandResult({
-              commandId: `AUTO-FIRE-BLOCK-${Date.now()}`,
-              kind: 'FireIntent',
-              accepted: false,
-              dryRun: config.dryRun,
-              safetyBlockReason: 'BLOCKED_BACKEND',
-            }));
-            setLastHardwareResult(undefined);
-            setApiError(error instanceof Error ? error.message : 'Backend API otonom ateş başlatma komutunu kabul etmedi.');
-          })
-          .finally(() => setApiBusy(false));
-        return;
-      }
-
-      const result = makeCommandResult({
-        commandId: intent.requestedAt,
-        kind: intent.kind,
-        accepted: true,
-        dryRun: intent.dryRun,
-        safetyBlockReason: 'ALLOWED',
-      });
-      pushResult({ ...result, message: 'Otonom ateş döngüsü başlatıldı; fiziksel çıkış üretilmedi.' });
-      setLastHardwareResult({
-        adapter: 'local-ui.autonomous-dry-run',
-        commandId: result.commandId,
-        kind: intent.kind,
-        accepted: true,
-        completed: true,
-        physicalOutput: false,
-        message: 'Yerel dry-run otonom ateş başlatma niyetini kaydetti; fiziksel çıkış üretilmedi.',
-        createdAt: result.createdAt,
-      });
+    if (!apiBaseUrl || !authoritativeTrack || !fireReady) {
+      setApiError('Backend-selected hedef veya Safety izni yok; FireIntent gönderilmedi.');
       return;
     }
-
-    if (!selectedTrack || !manualFireReady) {
-      pushResult(makeCommandResult({
-        commandId: `BLOCK-${Date.now()}`,
-        kind: 'FireIntent',
-        accepted: false,
-        dryRun: config.dryRun,
-        safetyBlockReason: safety.blockReason,
-      }));
-      return;
-    }
-
-    const intent = makeFireIntent({ targetId: selectedTrack.trackId, stage: displayStage, round: displayRound, dryRun: config.dryRun });
-    if (apiBaseUrl) {
-      setApiBusy(true);
-      void sendOperatorFireIntent(apiBaseUrl, intent)
-        .then((response) => {
-          pushResult(response.result);
-          setApiSnapshot(response.state);
-          setLastHardwareResult(response.hardwareResult ?? undefined);
-          const fireCompleted = response.result.accepted && (response.result.completed || response.hardwareResult?.completed === true);
-          if (fireCompleted) {
-            markManualShotComplete(intent);
-          }
-          setApiError('');
-        })
-        .catch((error: unknown) => {
-          pushResult(makeCommandResult({
-            commandId: `FIRE-BLOCK-${Date.now()}`,
-            kind: 'FireIntent',
-            accepted: false,
-            dryRun: config.dryRun,
-            safetyBlockReason: 'BLOCKED_BACKEND',
-          }));
-          setLastHardwareResult(undefined);
-          setApiError(error instanceof Error ? error.message : 'Backend API fire intent komutunu kabul etmedi.');
-        })
-        .finally(() => setApiBusy(false));
-      return;
-    }
-
-    const result = makeCommandResult({
-      commandId: intent.requestedAt,
-      kind: intent.kind,
-      accepted: true,
-      dryRun: intent.dryRun,
-      safetyBlockReason: 'ALLOWED',
+    const intent = makeFireIntent({
+      targetId: authoritativeTrack.trackId,
+      stage: displayStage,
+      round: displayRound,
+      dryRun: config.dryRun,
     });
-    pushResult(result);
-    markManualShotComplete(intent);
-    setLastHardwareResult({
-      adapter: 'local-ui.dry-run',
-      commandId: result.commandId,
-      kind: intent.kind,
-      accepted: true,
-      completed: true,
-      physicalOutput: false,
-      message: 'Yerel dry-run panel komutu kaydetti; fiziksel çıkış üretilmedi.',
-      createdAt: result.createdAt,
-    });
+    setApiBusy(true);
+    void sendOperatorFireIntent(apiBaseUrl, intent)
+      .then((response) => {
+        pushResult(response.result);
+        setApiSnapshot(response.state);
+        setLastHardwareResult(response.hardwareResult ?? undefined);
+        setApiError('');
+      })
+      .catch((error: unknown) => {
+        setLastHardwareResult(undefined);
+        setApiError(error instanceof Error ? error.message : 'Backend FireIntent komutunu kabul etmedi.');
+      })
+      .finally(() => setApiBusy(false));
   };
 
   const triggerOperatorStop = () => {
-    if (operatorStopActive) return;
-    setOperatorStopActive(true);
-    setMaintenanceSessionActive(false);
-    setMaintenanceSessionStartedAt(undefined);
-    setMaintenanceOpen(false);
-    setMode('blocked');
-    const result = makeCommandResult({
-      commandId: `STOP-${Date.now()}`,
-      kind: 'ModeRequest',
-      accepted: true,
-      dryRun: config.dryRun,
-      safetyBlockReason: 'ALLOWED',
-    });
-    pushResult(result);
-    setLastHardwareResult({
-      adapter: 'local-ui.safety-gate',
-      commandId: result.commandId,
-      kind: 'ModeRequest',
-      accepted: true,
-      completed: true,
-      physicalOutput: false,
-      message: 'Operatör stop komutu yerel Safety Gate üzerinde kilidi aktif etti; fiziksel çıkış üretilmedi.',
-      createdAt: result.createdAt,
-    });
+    if (!apiBaseUrl) {
+      setApiError('Backend API bağlantısı yok; kontrollü stop doğrulanamadı.');
+      return;
+    }
+    setApiBusy(true);
+    void sendMissionStop(apiBaseUrl)
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setApiError(response.accepted ? '' : 'Backend görev stop geçişini reddetti.');
+      })
+      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Görev durdurulamadı.'))
+      .finally(() => setApiBusy(false));
   };
 
-  /**
-   * handleEStop — yazılım E-Stop tetikleyici (Adım 4b)
-   *
-   * Yerel state'i hemen kilitler, ardından backend'e POST /estop gönderir.
-   * Fiziksel mantar buton bağımsız birincil güvencedir; UI ikincildir.
-   */
-  const handleEStop = async () => {
-    triggerOperatorStop();
-    if (apiBaseUrl) {
-      try {
-        await sendOperatorEStop(apiBaseUrl, { active: true });
-      } catch {
-        // Backend erişilemezse yerel kilit yeterli; hata sessizce görmezden gelinir.
-      }
+  const handleEStop = () => {
+    if (!apiBaseUrl) {
+      setApiError('Backend API bağlantısı yok. Fiziksel E-Stop birincil güvence olarak kullanılmalıdır.');
+      return;
     }
+    setApiBusy(true);
+    void sendOperatorEStop(apiBaseUrl, { active: true })
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setApiError('');
+      })
+      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Yazılım E-Stop doğrulanamadı.'))
+      .finally(() => setApiBusy(false));
   };
 
   const resumeOperatorStop = () => {
-    if (!operatorStopActive) return;
-    setOperatorStopActive(false);
-    setMode(stageExpectedMode(displayStage));
-    const result = makeCommandResult({
-      commandId: `RESUME-${Date.now()}`,
-      kind: 'ModeRequest',
-      accepted: true,
-      dryRun: config.dryRun,
-      safetyBlockReason: 'ALLOWED',
-    });
-    pushResult(result);
-    setLastHardwareResult({
-      adapter: 'local-ui.safety-gate',
-      commandId: result.commandId,
-      kind: 'ModeRequest',
-      accepted: true,
-      completed: true,
-      physicalOutput: false,
-      message: 'Acil durdurma oturumu kapatıldı; panel seçili aşamanın beklenen moduna döndü.',
-      createdAt: result.createdAt,
-    });
+    if (!apiBaseUrl || missionStatus !== 'PAUSED') return;
+    setApiBusy(true);
+    void sendMissionResume(apiBaseUrl)
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setApiError(response.accepted ? '' : 'Backend devam geçişini reddetti.');
+      })
+      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Görev devam ettirilemedi.'))
+      .finally(() => setApiBusy(false));
   };
 
-  const finishMaintenanceSession = (reason: 'operator' | 'expired' = 'operator') => {
-    if (!maintenanceSessionActive || maintenanceFinishingRef.current) return;
-    maintenanceFinishingRef.current = true;
-    const now = Date.now();
-    const elapsedSeconds = maintenanceSessionStartedAt ? Math.max(0, Math.ceil((now - maintenanceSessionStartedAt) / 1000)) : 0;
-    const chargedSeconds = Math.min(maintenanceRemainingSeconds, Math.max(MAINTENANCE_MIN_CHARGE_SECONDS, elapsedSeconds));
-    setMaintenanceSessionActive(false);
-    setMaintenanceSessionStartedAt(undefined);
-    setMaintenanceClockMs(now);
-    setMaintenanceRemainingSeconds((value) => Math.max(0, value - chargedSeconds));
-    setMaintenanceSessionsUsed((value) => Math.min(MAINTENANCE_SESSION_LIMIT, value + 1));
-    setMaintenanceOpen(false);
-    recordMode(stageExpectedMode(displayStage));
-    const result = makeCommandResult({
-      commandId: `MAINTENANCE-END-${Date.now()}`,
-      kind: 'ModeRequest',
-      accepted: true,
-      dryRun: config.dryRun,
-      safetyBlockReason: 'ALLOWED',
-    });
-    pushResult({
-      ...result,
-      message: reason === 'expired'
-        ? 'Bakım süresi doldu; panel otomatik olarak görev moduna döndü.'
-        : `Bakım kapatıldı; toplam bakım hakkından en az ${MAINTENANCE_MIN_CHARGE_SECONDS} saniye düşüldü.`,
-    });
+  const finishMaintenanceSession = () => {
+    if (!apiBaseUrl || !maintenanceSessionActive) return;
+    setApiBusy(true);
+    void sendMaintenanceEnd(apiBaseUrl)
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setMaintenanceOpen(false);
+        setApiError(response.accepted ? '' : 'Backend bakım bitişini reddetti.');
+      })
+      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Bakım bitirilemedi.'))
+      .finally(() => setApiBusy(false));
   };
 
   const openMaintenance = () => {
-    if (!maintenanceReady) {
-      pushResult(makeCommandResult({
-        commandId: `MAINTENANCE-BLOCK-${Date.now()}`,
-        kind: 'ModeRequest',
-        accepted: false,
-        dryRun: config.dryRun,
-        safetyBlockReason: 'BLOCKED_MODE',
-      }));
-      return;
-    }
-    const now = Date.now();
-    maintenanceFinishingRef.current = false;
-    setMaintenanceOpen(true);
-    setMaintenanceSessionActive(true);
-    setMaintenanceSessionStartedAt(now);
-    setMaintenanceClockMs(now);
-    recordMode('maintenance');
+    if (!apiBaseUrl || !maintenanceReady) return;
+    setApiBusy(true);
+    void sendMaintenanceRequest(apiBaseUrl)
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setMaintenanceOpen(response.accepted);
+        setApiError(response.accepted ? '' : 'Backend bakım geçişini reddetti.');
+      })
+      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Bakım başlatılamadı.'))
+      .finally(() => setApiBusy(false));
   };
-
-  useEffect(() => {
-    if (!maintenanceSessionActive) return;
-    const timer = window.setInterval(() => setMaintenanceClockMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [maintenanceSessionActive]);
-
-  useEffect(() => {
-    if (maintenanceSessionActive && maintenanceCountdownSeconds <= 0) {
-      finishMaintenanceSession('expired');
-    }
-  }, [maintenanceSessionActive, maintenanceCountdownSeconds]);
 
   useEffect(() => {
     const lockPage = maintenanceSessionActive || operatorStopActive;
@@ -2852,6 +2426,15 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         onReset={resetOperatorPanel}
         missionRemainingSeconds={apiSnapshot?.missionRemainingSeconds}
       />
+      {(apiError || readinessError) && (
+        <div
+          role="status"
+          className="mb-3 rounded-xl border border-[#ff4757]/30 bg-[#ff4757]/10 p-3 text-sm font-bold text-[#ffbdc4]"
+          data-testid="operator-backend-error"
+        >
+          {apiError || readinessError}
+        </div>
+      )}
 
       <section className="operator-primary-grid">
         <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
@@ -2879,8 +2462,22 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
             onSendFireIntent={sendFireIntent}
             onTriggerOperatorStop={triggerOperatorStop}
             onOpenMaintenance={openMaintenance}
+            onManualAim={sendManualAim}
+            manualAimReady={Boolean(
+              apiBaseUrl
+              && displayStage === 1
+              && mode === 'manual'
+              && missionStatus === 'ACTIVE'
+              && !safety.estop
+            )}
             stageRoundLimit={stageRoundLimit}
           >
+            <TrackList
+              tracks={visibleTracks}
+              selectedTrackId={selectedTrackId}
+              authoritativeTargetId={authoritativeTargetId}
+              onSelect={setSelectedTrackId}
+            />
             <OperatorTrackScene
               compact
               stage={displayStage}
@@ -2912,7 +2509,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         <EventStream commandResults={commandResults} />
       </section>
 
-      <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} />
+      <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} snapshot={apiSnapshot} />
 
       <details className="mt-3 rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
         <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">
@@ -2954,8 +2551,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           <section className="operator-lock-card">
             <span>BAKIM</span>
             <b data-testid="operator-maintenance-countdown">{formatDuration(maintenanceCountdownSeconds)}</b>
-            <p data-testid="operator-maintenance-sessions-left">KALAN BAKIM: {maintenanceSessionsLeftAfterActive}</p>
-            <button type="button" data-testid="operator-maintenance-finish-button" onClick={() => finishMaintenanceSession('operator')}>
+            <p data-testid="operator-maintenance-sessions-left">KALAN BÜTÇE: {formatDuration(maintenanceCountdownSeconds)}</p>
+            <button type="button" data-testid="operator-maintenance-finish-button" onClick={finishMaintenanceSession}>
               Bakımı Bitir
             </button>
           </section>
@@ -2965,11 +2562,15 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       {operatorStopActive && (
         <div className="operator-lock-overlay operator-lock-overlay-emergency" data-testid="operator-stop-overlay" role="dialog" aria-modal="true" aria-label="Acil durdurma">
           <section className="operator-lock-card">
-            <span>ACİL DURDUR</span>
+            <span>{missionStatus === 'ESTOP_LATCHED' ? 'ACİL DURDUR' : 'GÖREV DURAKLATILDI'}</span>
             <b>KİLİTLİ</b>
-            <button type="button" data-testid="operator-stop-resume-button" onClick={resumeOperatorStop}>
-              DEVAM ET
-            </button>
+            {missionStatus === 'PAUSED' ? (
+              <button type="button" data-testid="operator-stop-resume-button" onClick={resumeOperatorStop}>
+                DEVAM ET
+              </button>
+            ) : (
+              <p>Fiziksel sinyal bırakılmalı ve kontrollü backend reset uygulanmalıdır.</p>
+            )}
           </section>
         </div>
       )}

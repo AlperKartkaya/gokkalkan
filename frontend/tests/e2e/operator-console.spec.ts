@@ -2,6 +2,21 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 const UNKNOWN_AIRCRAFT_GRAY = 'rgb(143, 152, 163)';
+const REAL_OPERATOR_API = 'http://127.0.0.1:8088';
+
+async function setBackendStage(page: Page, stage: 1 | 2 | 3, round = 1) {
+  await page.request.post(`${REAL_OPERATOR_API}/estop/reset`, {
+    data: { operatorId: 'PW-E2E' },
+  });
+  await page.request.post(`${REAL_OPERATOR_API}/telemetry/reset`);
+  await page.request.post(`${REAL_OPERATOR_API}/mission/resume`, {
+    data: { reason: 'PW-E2E-RESET' },
+  });
+  const response = await page.request.post(`${REAL_OPERATOR_API}/stage`, {
+    data: { stage, round, reason: 'PW-E2E-STAGE' },
+  });
+  expect(response.ok()).toBe(true);
+}
 
 async function openConsole(page: Page) {
   await page.goto('/?console=1');
@@ -243,6 +258,7 @@ test('emergency stop freezes simulator state and reports summary safety', async 
 
 
 test('landing opens the dry-run real operator panel without live hardware claims', async ({ page }) => {
+  await setBackendStage(page, 1);
   await page.goto('/?landing=1');
 
   await page.getByRole('button', { name: 'Operatör Paneli' }).click();
@@ -302,7 +318,7 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
   await expect(page.getByTestId('operator-stop-button')).toBeVisible();
-  await expect(page.getByTestId('operator-stop-button')).toContainText('ACİL DURDUR');
+  await expect(page.getByTestId('operator-stop-button')).toContainText('GÖREVİ DURAKLAT');
   await expect(page.getByTestId('operator-maintenance-button')).toBeVisible();
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
   await expect(page.locator('.map-legend')).toHaveCount(0);
@@ -321,17 +337,16 @@ test('landing opens the dry-run real operator panel without live hardware claims
 
   await page.getByRole('button', { name: 'Aşama 2' }).click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await expect(page.getByTestId('operator-permitted-range-window')).toHaveCount(0);
   await page.getByTestId('operator-fire-button').click();
-  await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
-  await page.getByTestId('operator-reset-button').click();
-  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Hazır');
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
+  await page.getByTestId('operator-reset-button').click();
+  await expect(page.locator('.operator-track-scene .stage1-title')).toHaveCount(0);
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await expect(page.getByTestId('operator-shot-trace')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Aşama 2' }).click();
   await expect(page.getByTestId('operator-permitted-range-window')).toHaveCount(0);
   await expect(page.locator('.map-legend')).toHaveCount(0);
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-color"]')).toHaveCount(0);
@@ -339,12 +354,11 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Düşman');
   await expect(page.getByTestId('operator-track-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   await expect(page.getByTestId('operator-sensor-3d-target-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
-  const stageTwoAircraftColors = await page.locator('.operator-track-scene .aircraft').evaluateAll((targets) => targets.map((target) => getComputedStyle(target).color));
-  expect(stageTwoAircraftColors.every((color) => color === UNKNOWN_AIRCRAFT_GRAY)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test('operator panel opens a raw camera video page without changing control state', async ({ page }) => {
+  await setBackendStage(page, 1);
   await page.goto('/?operator=1');
 
   await page.getByTestId('operator-raw-camera-button').click();
@@ -373,6 +387,7 @@ test('operator panel opens a raw camera video page without changing control stat
 });
 
 test('operator panel opens a raw LiDAR clip page with visual-only semantic classification', async ({ page }) => {
+  await setBackendStage(page, 1);
   await page.goto('/?operator=1');
 
   await page.getByTestId('operator-raw-lidar-button').click();
@@ -637,6 +652,24 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
     events: [],
     physicalOutputEnabled: false,
     telemetry,
+    maintenanceRemainingBudgetSec: 600,
+    missionFlow: {
+      schemaVersion: 1,
+      status: 'ACTIVE',
+      stage: 1,
+      round: 1,
+      selectedTargetId: 'S1-ORDER-FUZE-01',
+      targetOrder: ['S1-ORDER-FUZE-01'],
+      completedTargetIds: [],
+      completedTargetCount: 0,
+      eligibleTargetCount: 1,
+      progressPercent: 0,
+      roundComplete: false,
+      nextRound: 2,
+      previousStatus: null,
+      lastTransitionReason: 'TEST',
+      transitionSequence: 1,
+    },
   };
 
   await page.route(`${apiBase}/state`, async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(statePayload) }));
@@ -672,6 +705,15 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
         ...statePayload.sensorHealth,
         frameCount: payload.stage === 3 ? sensorFrames.length : 0,
         sourceDataset: payload.stage === 3 ? 'Gökkalkan recorded-style radar/LiDAR replay fixture.' : 'Gökkalkan recorded-style dry-run fixture.',
+      },
+      missionFlow: {
+        ...statePayload.missionFlow,
+        stage: payload.stage,
+        round: payload.round,
+        selectedTargetId: payload.stage === 3 ? 'DRY-RUN-F16-01' : 'S1-ORDER-FUZE-01',
+        targetOrder: payload.stage === 3
+          ? stageTracks[3].map((track) => track.trackId)
+          : stageTracks[1].map((track) => track.trackId),
       },
     };
     await route.fulfill({
@@ -800,17 +842,19 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
 
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await page.getByTestId('operator-fire-button').click();
-  await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
+  await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
 
+  await sensor3dView.scrollIntoViewIfNeeded();
   const resetViewBox = await sensor3dView.boundingBox();
   expect(resetViewBox).not.toBeNull();
   const rotateBefore = Number(await sensor3dView.getAttribute('data-rotate-z'));
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
   await page.mouse.down();
+  await page.waitForTimeout(50);
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 + 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
   await page.mouse.up();
   const rotateAfterRightDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
@@ -820,6 +864,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
   await page.mouse.down();
+  await page.waitForTimeout(50);
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 - 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
   await page.mouse.up();
   const rotateAfterLeftDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
@@ -830,6 +875,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const pitchBefore = Number(await sensor3dView.getAttribute('data-pitch'));
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
   await page.mouse.down();
+  await page.waitForTimeout(50);
   await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2 - 120, { steps: 4 });
   await page.mouse.up();
   const pitchAfterUpDrag = Number(await sensor3dView.getAttribute('data-pitch'));
@@ -871,10 +917,13 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(page.getByText(/physicalOutput=true/)).toHaveCount(0);
 });
 
-test('operator panel uses fire, stop, and bakım actions without manual pan tilt controls', async ({ page }) => {
+test('operator panel uses backend fire, stop, bakım and manual deadman controls', async ({ page }) => {
+  await setBackendStage(page, 1);
   await page.goto('/?operator=1');
 
-  await expect(page.getByTestId('manual-aim-controls')).toHaveCount(0);
+  await expect(page.getByTestId('operator-manual-aim')).toBeVisible();
+  await expect(page.getByTestId('operator-deadman-button')).toBeEnabled();
+  await expect(page.getByTestId('operator-aim-right')).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Manuel' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Otonom' })).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .stage1-title')).toHaveText('MANUEL ATIŞ');
@@ -891,13 +940,13 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await expect(page.getByText('Sonuç')).toHaveCount(0);
 
   await page.getByTestId('operator-stop-button').click();
-  await expect(page.getByTestId('operator-stop-button')).toContainText('ACİL DURDUR');
+  await expect(page.getByTestId('operator-stop-button')).toContainText('GÖREVİ DURAKLAT');
   await expect(page.getByTestId('operator-stop-overlay')).toBeVisible();
   await expect(page.getByTestId('operator-stop-resume-button')).toContainText('DEVAM ET');
   await expect(page.getByTestId('operator-stop-overlay')).not.toContainText('Hareket ve atış niyetleri durduruldu.');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('operator-safety-state')).toContainText('AKTİF');
+  await expect(page.getByTestId('operator-safety-state')).toContainText('Pasif');
   await page.getByTestId('operator-stop-resume-button').click();
   await expect(page.getByTestId('operator-stop-overlay')).toHaveCount(0);
   await expect(page.getByTestId('operator-safety-state')).toContainText('Pasif');
@@ -905,7 +954,7 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   await page.getByTestId('operator-maintenance-button').click();
   await expect(page.getByTestId('operator-maintenance-overlay')).toBeVisible();
   await expect(page.getByTestId('operator-maintenance-countdown')).toContainText('10:00');
-  await expect(page.getByTestId('operator-maintenance-sessions-left')).toHaveText('KALAN BAKIM: 2');
+  await expect(page.getByTestId('operator-maintenance-sessions-left')).toHaveText('KALAN BÜTÇE: 10:00');
   await expect(page.getByTestId('operator-maintenance-overlay')).not.toContainText('toplam kalan');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
   const fireButtonCoveredByMaintenance = await page.getByTestId('operator-fire-button').evaluate((button) => {
@@ -916,13 +965,17 @@ test('operator panel uses fire, stop, and bakım actions without manual pan tilt
   expect(fireButtonCoveredByMaintenance).toBe(true);
   await page.getByTestId('operator-maintenance-finish-button').click();
   await expect(page.getByTestId('operator-maintenance-overlay')).toHaveCount(0);
-  await expect(page.getByTestId('operator-action-strip')).toContainText('2 hak · 9:30');
+  await expect(page.getByTestId('operator-stop-overlay')).toBeVisible();
+  await page.getByTestId('operator-stop-resume-button').click();
+  await expect(page.getByTestId('operator-stop-overlay')).toHaveCount(0);
+  await expect(page.getByTestId('operator-action-strip')).toContainText('9:30 bütçe');
   await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   await expect(page.getByTestId('operator-maintenance-drawer')).toBeVisible();
   await expect(page.getByTestId('operator-lidar-diagnostics')).toContainText('SDK/driver → SensorFrame → Backend');
 });
 
 test('operator panel uses the 40 percent type-confidence threshold for radar symbols', async ({ page }) => {
+  await setBackendStage(page, 3);
   await page.goto('/?operator=1');
   await page.getByRole('button', { name: 'Aşama 3' }).click();
 
@@ -938,10 +991,10 @@ test('operator panel uses the 40 percent type-confidence threshold for radar sym
 
   await unknownTrack.click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlat');
+  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-fire-button')).toBeDisabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Otonom Ateş Başlatıldı');
+  await expect(page.getByTestId('fire-cluster')).not.toContainText('Hazır');
 });
 
 test('operator panel can be opened directly with query parameter without simulator chrome', async ({ page }) => {

@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { fetchHardwareHealth, type HardwareHealthResponse } from '../operatorApiClient';
+import type { OperatorApiSnapshot } from '../operatorApiClient';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -19,12 +20,20 @@ function StatusDot({ ok, label }: { ok: boolean; label: string }) {
         className={`inline-block h-2 w-2 rounded-full ${ok ? 'bg-[#33e68c] shadow-[0_0_6px_#33e68c]' : 'bg-[#ff4757] shadow-[0_0_6px_#ff4757]'}`}
         aria-hidden="true"
       />
-      <span className={ok ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>{label}</span>
+      <span className={ok ? 'text-[#bfffe0]' : 'text-[#ffbdc4]'}>
+        {label}: {ok ? 'UYGUN' : 'KİLİTLİ/YOK'}
+      </span>
     </span>
   );
 }
 
-export function HardwareHealthBadge({ apiBaseUrl }: { apiBaseUrl: string }) {
+export function HardwareHealthBadge({
+  apiBaseUrl,
+  snapshot,
+}: {
+  apiBaseUrl: string;
+  snapshot?: OperatorApiSnapshot;
+}) {
   const [health, setHealth] = useState<HardwareHealthResponse | null>(null);
   const [error, setError] = useState<string>('');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -81,6 +90,17 @@ export function HardwareHealthBadge({ apiBaseUrl }: { apiBaseUrl: string }) {
           <StatusDot ok={health.picoReachable} label="Pico MCU" />
           <StatusDot ok={health.dryRun} label="Dry-Run Modu" />
           <StatusDot ok={!health.physicalOutputEnabled} label="Fiziksel Çıkış Kapalı" />
+          <StatusDot ok={!snapshot?.safety.estop} label="E-Stop Pasif" />
+          <StatusDot ok={Boolean(snapshot?.sensorHealth?.perceptionConnected)} label="Kamera/Perception" />
+          <StatusDot ok={Boolean(snapshot?.sensorHealth?.adapterConnected)} label="LiDAR Adapter" />
+          <StatusDot ok={Boolean(snapshot?.telemetry?.exists)} label="Kayıt/Telemetri" />
+          <span className="col-span-2 text-xs text-[#c8d8e2]">
+            Çalışma profili: <b>{snapshot?.runtimeMode ?? (snapshot?.dryRun ? 'SIM' : 'BİLİNMİYOR')}</b>
+            {' · '}Arm: <b>{snapshot?.liveArmEnabled ? 'AÇIK' : 'KAPALI'}</b>
+          </span>
+          <span className="col-span-2 text-xs text-[#c8d8e2]">
+            Safety kararı: <b>{snapshot?.safety.blockReason ?? 'BACKEND SNAPSHOT YOK'}</b>
+          </span>
           {health.commandCount !== undefined && (
             <span className="col-span-2 text-xs text-[#91a6b7]">
               Komut sayısı: <b className="text-[#c8d8e2]">{health.commandCount}</b>

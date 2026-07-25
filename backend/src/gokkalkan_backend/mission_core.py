@@ -441,8 +441,6 @@ class MissionCore:
         self._core_events.insert(0, event)
         self._core_events = self._core_events[:200]
         self.service.telemetry.append("core_event", event.to_dict())
-        if envelope.target_id:
-            self._selected_target_id = envelope.target_id
         self._publish_snapshot()
         response_domain = copy.deepcopy(domain)
         if "state" in response_domain:
@@ -480,6 +478,10 @@ class MissionCore:
                 return self.service.handle_maintenance_request(payload)
             if envelope.kind == "MaintenanceEnd":
                 return self.service.maintenance_end()
+            if envelope.kind == "MissionStop":
+                return self.service.handle_mission_stop(payload)
+            if envelope.kind == "MissionResume":
+                return self.service.handle_mission_resume(payload)
             if envelope.kind == "TelemetryReset":
                 return self.service.reset_telemetry()
             if envelope.kind == "TracksUpdate":
@@ -500,6 +502,7 @@ class MissionCore:
                     "safety": self.service.evaluate_safety(
                         "ModeRequest"
                     ).to_dict(),
+                    "state": self.service.snapshot(),
                     "physicalOutput": False,
                 }
             if envelope.kind == "EStopReset":
@@ -569,7 +572,9 @@ class MissionCore:
                 mode=str(domain.get("mode", "safe")),
                 stage=int(domain.get("stage", 3)),
                 round=int(domain.get("round", 1)),
-                selected_target_id=self._selected_target_id,
+                selected_target_id=domain.get("missionFlow", {}).get(
+                    "selectedTargetId"
+                ),
                 armed=bool(domain.get("liveArmEnabled", False)),
                 maintenance_active=domain.get("mode") == "maintenance",
                 estop_active=bool(safety.get("estop", False)),
@@ -601,6 +606,7 @@ class MissionCore:
             time.monotonic_ns() - self._last_snapshot_publish_ns
         ) / 1_000_000_000
         if elapsed >= self.snapshot_interval_sec:
+            self.service.expire_stage_timer_if_needed()
             self._publish_snapshot()
 
     def _next_command_sequence(self) -> int:

@@ -140,7 +140,7 @@ oluşturup canlı arm iznini kapatır.
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend durumları, mod seçimi, deadman’li manuel pan/tilt niyeti, FireIntent, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware mock geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi, adapter/TBD bakım çekmecesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
+- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend `MissionFlow`, deadman’li manuel pan/tilt niyeti, FireIntent, görev duraklatma/devam, bakım, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware health, `Finale Hazırlık` arayüz/gap göstergesi ve kapalı gelen JSONL kanıt/replay çekmecesi. Hedef, Safety ve görev state'i backend SSE/REST snapshot'ından gelir; UI sentetik hedef kimliği veya optimistik güvenlik state'i üretmez.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri
@@ -172,7 +172,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 
 | Kaynak → Hedef | Mesaj örnekleri | İlk protokol önerisi | Not |
 | --- | --- | --- | --- |
-| Operatör Paneli → Backend | `StageRequest`, `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP → bounded Mission Core queue | Komutlar niyettir; yetki backend’dedir |
+| Operatör Paneli → Backend | `StageRequest`, `ManualAimCommand`, `FireIntent`, `MissionStop`, `MissionResume`, `MaintenanceStart/End` | localhost/LAN HTTP → bounded Mission Core queue | Komutlar niyettir; görev ve Safety yetkisi backend’dedir |
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
@@ -198,7 +198,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 Şartname belirli bir programlama dili veya yapay zekâ modeli zorunlu kılmaz. Bu repo için teknik yön şu şekilde güncellenmiştir:
 
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
-- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi aşama/tur seçimi, radar/LiDAR biçimli `SensorFrame` replay görünümü, hedef tipi + dost/düşman + menzil yorumu, mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
+- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + Backend API. Yazılım yüzeyi backend-otoriter `MissionFlow`, aşama/tur seçimi, SSE/REST state eşitlemesi, gerçek track kimliği, radar/LiDAR biçimli `SensorFrame` görünümü, hedef tipi + dost/düşman + menzil yorumu, deadman'li manuel pan/tilt niyeti, FireIntent, duraklatma/devam, bakım, Safety/health ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
 - **Vendor LiDAR viewer stratejisi:** RPLIDAR Viewer, Livox Viewer ve benzeri üretici araçları görev arayüzü değildir. Bunlar bakım, kalibrasyon, firmware/IP/serial doğrulama ve ham point cloud kontrolünde dış diagnostic araç olarak kalır. Görev panelindeki veri yolu `SDK/driver → SensorFrame → Backend → Operatör Paneli` olmalıdır; vendor pencere embed/screen-scrape edilmemelidir.
 - **Hedef runtime:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS + `systemd`; hedefte VM yok. Ayrıntı: ADR-001.
 - **Kurulum/paketleme:** Backend `pyproject.toml` ile kurulur; exact Python

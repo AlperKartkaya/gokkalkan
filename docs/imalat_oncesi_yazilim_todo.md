@@ -364,40 +364,56 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
 
 # Faz 8 — Görev state machine ve operatör paneli
 
-- [ ] **MIS-001 — Aşama 1 state machine’ini tamamla** `[WP-01]`
+- [x] **MIS-001 — Aşama 1 state machine’ini tamamla** `[WP-01]`
   - Hedef sırası, 300 saniye, manuel yönelim, deadman ve kullanıcı komutlu FireIntent.
 
-- [ ] **MIS-002 — Aşama 2 state machine’ini tamamla** `[WP-02]`
+- [x] **MIS-002 — Aşama 2 state machine’ini tamamla** `[WP-02]`
   - Gerçek track’lerle otonom tespit/takip, hedef önceliği ve tur ilerlemesi.
   - Hedef tipi sınıflandırması zorunlu varsayılmamalı.
 
-- [ ] **MIS-003 — Aşama 3 state machine’ini tamamla** `[WP-03]`
+- [x] **MIS-003 — Aşama 3 state machine’ini tamamla** `[WP-03]`
   - Dost/düşman, hedef tipi, ölçülmüş menzil ve hedef tipine bağlı menzil kapısı.
 
-- [ ] **MIS-004 — Bakım/stop/resume/E-Stop akışlarını tekleştir** `[WP-04]`
+- [x] **MIS-004 — Bakım/stop/resume/E-Stop akışlarını tekleştir** `[WP-04]`
   - UI local state’i gerçek backend state’inden ayrışmamalı.
   - Bakım bütçesi ve geçiş nedenleri loglanmalı.
 
-- [ ] **UI-001 — Manuel aim ve deadman kontrolünü bağla** `[WP-01]`
+- [x] **UI-001 — Manuel aim ve deadman kontrolünü bağla** `[WP-01]`
   - UI yalnız niyet gönderir; backend limit/Safety kararını verir.
 
-- [ ] **UI-002 — Sentetik hedefleri gerçek track’lerle değiştir** `[WP-02][WP-03]`
+- [x] **UI-002 — Sentetik hedefleri gerçek track’lerle değiştir** `[WP-02][WP-03]`
   - UI hedef kimliği üretmemeli.
   - Hedef seçimi backend/perception kaynaklı track ID kullanmalı.
 
-- [ ] **UI-003 — Health, arm ve blok nedenlerini görünür yap** `[WP-04]`
+- [x] **UI-003 — Health, arm ve blok nedenlerini görünür yap** `[WP-04]`
   - `SIM/HIL/LIVE`, physical output, E-Stop, Pico/CAN, kamera, LiDAR, kayıt ve Safety reason aynı yüzeyde anlaşılmalı.
   - Kritik anlam yalnız renkle verilmemeli.
 
-- [ ] **UI-004 — Backend state stream’e geç**
+- [x] **UI-004 — Backend state stream’e geç**
   - UI optimistik güvenlik state’i üretmemeli.
   - Reconnect ve backend restart sonrası state yeniden senkronize olmalı.
 
-- [ ] **UI-005 — Büyük panel sorumluluklarını böl**
+- [x] **UI-005 — Büyük panel sorumluluklarını böl**
   - Mevcut tasarım dilini koruyarak görev, güvenlik, donanım, sensör ve event yüzeyleri ayrıştırılmalı.
   - Yeni dependency eklemeden önce mevcut bileşen ve yardımcılar kullanılmalı.
 
 **Faz kanıtı:** Aşama 1/2/3, bakım ve E-Stop akışları gerçek backend cevaplarıyla E2E testlerinden geçiyor.
+
+**Uygulama/kanıt notu (2026-07-25):**
+- `MissionFlow`, tek sahipli `MissionCore` içinde hedef sırası, görev ilerlemesi,
+  duraklatma, bakım ve mandallı E-Stop geçişlerinin tek otoritesidir.
+- Aşama 1'in 300 saniyelik sınırı dolduğunda görev fail-closed duraklatılır;
+  manuel yönelim deadman olmadan ve atış kullanıcı niyeti olmadan kabul edilmez.
+- Aşama 2, perception kaynaklı track ID'lerini menzil önceliğiyle kullanır ve
+  tip sınıflandırmasını zorunlu tutmaz. Aşama 3 dost/düşman, hedef tipi ve
+  ölçülmüş menzil kaynağını birlikte kapılar.
+- Operatör paneli hedef, Safety, bakım, görev ve health durumunu SSE/REST
+  backend snapshot'ından alır; sentetik hedef/kimlik ve optimistik güvenlik
+  state'i üretmez. Reconnect/restart tam snapshot ile yeniden eşitlenir.
+- Yazılım kanıtları: `tests/test_phase8_mission_flow.py` ve
+  `frontend/tests/e2e/phase8-backend.spec.ts`. Bunlar gerçek `MissionCore` ve
+  HTTP cevaplarını kullanır fakat **SIM/dry-run kanıtıdır**; fiziksel E-Stop,
+  TFA50-L, kamera, Pico/CAN ve imha hattı kabulünün yerine geçmez.
 
 ---
 

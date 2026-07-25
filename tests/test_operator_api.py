@@ -205,7 +205,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(items["backend_api"]["status"], "ready")
         self.assertEqual(items["telemetry_replay"]["status"], "ready")
         self.assertEqual(items["operator_panel_ui"]["status"], "ready")
-        self.assertNotIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
+        self.assertIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
         self.assertIn("FireIntent", items["operator_panel_ui"]["ktrInterface"])
         self.assertEqual(items["perception_adapter"]["status"], "tbd")
         self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")

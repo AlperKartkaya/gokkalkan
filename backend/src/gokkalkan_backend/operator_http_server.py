@@ -154,6 +154,10 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._submit("MaintenanceStart", payload)
         elif path == "/maintenance/end":
             self._submit("MaintenanceEnd", payload)
+        elif path == "/mission/stop":
+            self._submit("MissionStop", payload)
+        elif path == "/mission/resume":
+            self._submit("MissionResume", payload)
         else:
             self._send_json({"error": "not_found", "path": path}, HTTPStatus.NOT_FOUND)
 
