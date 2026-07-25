@@ -38,7 +38,7 @@ describe('HardwareHealthBadge', () => {
     });
     
     // Physical Output Should be Kapalı
-    expect(screen.getByText('Fiziksel Çıkış Kapalı')).toBeInTheDocument();
+    expect(screen.getByText(/Fiziksel Çıkış Kapalı/)).toBeInTheDocument();
   });
 
   it('renders warning state when hardware is not ok', async () => {
@@ -61,7 +61,7 @@ describe('HardwareHealthBadge', () => {
     });
 
     // CAN BUS should be rendered
-    const canBus = screen.getByText('CAN Veriyolu');
+    const canBus = screen.getByText(/CAN Veriyolu/);
     expect(canBus).toBeInTheDocument();
   });
 });
