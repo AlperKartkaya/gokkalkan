@@ -44,6 +44,12 @@ include = ["gokkalkan_backend*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+  "safety: fail-closed safety and release-blocking invariants",
+  "protocol: firmware, CAN, UART and API wire contracts",
+  "replay: deterministic read-only replay and physical-adapter isolation",
+  "hil: safe-load hardware-in-the-loop harness and reports",
+]
 
 [tool.coverage.run]
 branch = true

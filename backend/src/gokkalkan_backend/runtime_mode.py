@@ -31,6 +31,7 @@ class RuntimeLaunchConfig:
     can_bitrate: int = 500_000
     heartbeat_timeout_sec: float = 2.0
     live_output_enabled: bool = False
+    hil_physical_can_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,9 +75,13 @@ def build_runtime_service(
         )
 
     if config.mode == "HIL":
-        if not _is_virtual_can(config.can_channel, config.can_bustype):
+        if (
+            not _is_virtual_can(config.can_channel, config.can_bustype)
+            and not config.hil_physical_can_enabled
+        ):
             raise RuntimeConfigurationError(
-                "HIL requires a virtual CAN channel; physical CAN was rejected"
+                "HIL requires virtual CAN unless the reviewed monitor-only "
+                "physical CAN profile is explicitly enabled"
             )
         adapter = can_adapter_factory(
             channel=config.can_channel,

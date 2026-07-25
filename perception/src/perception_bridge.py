@@ -148,10 +148,20 @@ class PerceptionBridge:
             time.sleep(sleep_ms)
 
     def _tick(self) -> None:
-        frame = self.camera.get_latest_frame()
-        candidates = self.processor.process(frame, stage=self.stage)
-        if not candidates:
-            return
+        get_sample = getattr(self.camera, "get_latest_sample", None)
+        sample = get_sample() if callable(get_sample) else None
+        frame = sample.image if sample is not None else self.camera.get_latest_frame()
+        try:
+            candidates = self.processor.process(
+                frame,
+                stage=self.stage,
+                receive_monotonic_ns=(
+                    None if sample is None else sample.receive_monotonic_ns
+                ),
+            )
+        except TypeError:
+            # Backward-compatible test/plugin surface.
+            candidates = self.processor.process(frame, stage=self.stage)
         tracks = [c.to_api_dict() for c in candidates]
         self._enqueue_tracks(tracks)
 
@@ -189,7 +199,14 @@ class PerceptionBridge:
                 finally:
                     self._outbound.task_done()
             if time.monotonic() >= next_heartbeat:
-                self._post_heartbeat(healthy=True, reason="process_alive")
+                camera_health = self.camera.health()
+                healthy = bool(camera_health.get("healthy", camera_health.get("running", False)))
+                reason = (
+                    "camera_ready"
+                    if healthy
+                    else str(camera_health.get("status", "camera_unhealthy")).lower()
+                )
+                self._post_heartbeat(healthy=healthy, reason=reason)
                 next_heartbeat = time.monotonic() + self._heartbeat_interval_sec
 
     def _offer_stop_marker(self) -> None:

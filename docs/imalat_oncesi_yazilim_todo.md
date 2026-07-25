@@ -419,17 +419,17 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
 
 # Faz 9 — Perception ve LiDAR/kamera füzyonu
 
-- [ ] **PER-001 — Gerçek kamera adapter’ını ekle** `[WP-02]`
+- [x] **PER-001 — Gerçek kamera adapter’ını ekle** `[WP-02]`
   - Picamera2 frame’i kamera timestamp’i ve receive monotonic zamanı ile üretilmeli.
   - Kamera yokluğu/crash/stale health’e yansımalı.
 
-- [ ] **PER-002 — Sabit geniş kamera track hattını oluştur** `[WP-02]`
+- [x] **PER-002 — Sabit geniş kamera track hattını oluştur** `[WP-02]`
   - Hedef adayı, track ID, merkez, bbox, confidence, velocity ve freshness.
 
-- [ ] **PER-003 — Nişan kamerası ince merkezleme hattını oluştur** `[WP-02]`
+- [x] **PER-003 — Nişan kamerası ince merkezleme hattını oluştur** `[WP-02]`
   - Seçili track ile taret koordinatı arasındaki hata üretimi kalibre edilmeli.
 
-- [ ] **PER-004 — Track lifecycle kurallarını tamamla** `[WP-02]`
+- [x] **PER-004 — Track lifecycle kurallarını tamamla** `[WP-02]`
   - TTL, boş frame update’i, kayıp/yeniden edinim ve duplicate association.
   - Tek update sonrası bağlantı durumu sonsuza kadar true kalmamalı.
 
@@ -442,23 +442,26 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
   - Protokol kaynağı: [TFA50-L Datasheet](https://www.e-kom.com/Datasheet/Benewake/TFA50-L_Datasheet.pdf); runtime vendor uygulamasına bağımlı olmamalı.
   - [x] Dört baytlık `0x5C` menzil frame’i, little-endian santimetre, checksum ve `0xFFFF` no-detection ayrıştırıcısı eklendi.
   - [x] Parçalı/noisy UART akışı için yeniden senkronize olan bağımlılıksız stream decoder ve unit testleri eklendi.
-  - [ ] UART portu, baud rate ve örnekleme frekansı config’ten gelmeli; bağlantı kesilmesi/stale/yeniden bağlanma health’e yansımalı.
-  - [ ] Alınan ham frame, receive monotonic timestamp, geçerli/geçersiz nedeni ve kabul edilen metre değeri telemetriye yazılmalı.
-  - [ ] Sensör seri numarası/firmware bilgisi ve etkin config session manifestine kaydedilmeli.
+  - [x] UART portu, baud rate ve örnekleme frekansı config’ten gelmeli; bağlantı kesilmesi/stale/yeniden bağlanma health’e yansımalı.
+  - [x] Alınan ham frame, receive monotonic timestamp, geçerli/geçersiz nedeni ve kabul edilen metre değeri telemetriye yazılmalı.
+  - [ ] Gerçek sensör seri numarası/firmware bilgisi okunup etkin config ile session manifestine kaydedilmeli.
 
 - [ ] **LID-002 — Mekanik hizalama ve kalibrasyon iş akışını ekle** `[WP-03]`
+  - [x] Kalibrasyon şeması, mount revision/hash kontrolü ve 5/10/15 m
+    gözlem raporu yazılımı eklendi.
+  - [ ] Gerçek köprü/kızak kilitlendikten sonra fiziksel gözlem dosyası üretilmeli.
   - Config: `mount_height_m`, `yaw_offset_deg`, `pitch_offset_deg`, kabul edilen hedef düşey bandı, kalibrasyon ID/hash/tarih/operatör.
   - Köprü/kızak elle değiştirildikten sonra eski kalibrasyon otomatik olarak “doğrulanmamış” sayılmalı; live arm kapanmalı.
   - Görünür hizalama noktası yalnız güvenli kurulum prosedüründe kullanılmalı; çalışma zamanı algoritmasının zorunlu girdisi olmamalı.
   - 5/10/15 m sabit hedef ölçümleriyle ofset, tekrar edilebilirlik ve no-detection oranı kaydedilmeli.
 
-- [ ] **LID-003 — Yaw-to-track menzil eşlemesini uygula** `[WP-03]`
+- [x] **LID-003 — Yaw-to-track menzil eşlemesini uygula** `[WP-03]`
   - LiDAR yaw açısı, taret encoder yaw’ı ve kalibre edilmiş `yaw_offset_deg` ile hesaplanmalı; silah pitch’i bu ölçüm doğrultusuna eklenmemeli.
   - Yalnız seçili kamera track’inin bearing’i LiDAR doğrultu toleransı içindeyken ölçüm o track’e atanmalı.
   - Timestamp yakınlığı, art arda örnek sayısı, menzil değişim hızı ve aykırı değer filtresi kullanılmalı.
   - TFA50-L menzil frame’i kalite/sinyal gücü taşımadığı için sahte bir “quality” alanı üretilmemeli; kabul/ret nedeni açıkça kaydedilmeli.
 
-- [ ] **LID-004 — Menzil güvenlik kapısını gerçek sensöre bağla** `[WP-03][WP-04]`
+- [x] **LID-004 — Menzil güvenlik kapısını gerçek sensöre bağla** `[WP-03][WP-04]`
   - Bbox alanından üretilen kaba menzil Safety Gate’te kullanılmamalı.
   - UART health, kalibrasyon geçerliliği, yaw hizası, track freshness ve kararlı menzil birlikte sağlanmadan imha izni açılmamalı.
   - Stale/checksum hatalı/no-detection/ambiguous LiDAR ölçümü fail-safe biçimde imha iznini kapatmalı.
@@ -469,69 +472,107 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
   - Gerçek yarışma hedef malzemesi/renkleriyle 5/10/15 m ve sağ/merkez/sol yaw noktalarında algılama oranı ölçülmeli.
   - Kabul kriteri karşılanmazsa ADR-003 fallback sırası işletilmeli; 2D LiDAR’a ölçümsüz geçilmemeli.
 
-- [ ] **PER-006 — Kayıtlı veri replay eşitliğini doğrula**
+- [x] **PER-006 — Kayıtlı veri replay eşitliğini doğrula**
   - Aynı kayıt canlı ve replay pipeline’da deterministik track/range kararları üretmeli.
 
-**Faz kanıtı:** Stale veya belirsiz hedefe hareket/imha mümkün değil; menzil kararı gerçek sensör verisine dayanıyor.
+**Faz kanıtı (yazılım):** Stale, checksum hatalı, no-detection, kalibrasyonu
+geçersiz, yaw ile eşleşmeyen veya art arda kararlı olmayan menzil kararı
+`MissionCore` tarafından kabul edilmiyor. `camera-bbox-estimate` yalnız
+görselleştirme/öncelik verisidir; LIVE menzil kapısını açamaz.
+
+**Uygulama/kanıt notu (2026-07-25):**
+- Kamera frame zarfı kamera timestamp’i, receive monotonic zamanı, sequence ve
+  timestamp kaynağı taşır; mock kamera LIVE-health üretmez.
+- Tracker ID üretimi ve hareket hesabı deterministiktir; boş kare de lifecycle
+  update’idir. Nişan kamerası için hash’li pixel→yaw/pitch kalibrasyon hesabı
+  ve stale ret yolu vardır.
+- TFA50-L UART adapter’ı config kaynaklı **460800 baud / 1000 Hz** varsayılanı,
+  reconnect/stale health, ham frame ve açık ret nedeni telemetrisi taşır.
+- Kamera-relative bearing önce taret encoder yaw’ı + kamera yaw ofsetiyle dünya/
+  encoder koordinatına çevrilir; TFA50-L doğrultusu da encoder yaw + LiDAR yaw
+  ofsetidir. Silah pitch’i LiDAR doğrultusuna eklenmez. Köprü/kızak
+  `mount_revision` değişirse eski kalibrasyon geçersiz olur.
+- `config/calibration/tfa50_l.toml` kasıtlı olarak `UNVERIFIED` durumundadır.
+  Bu nedenle fiziksel sensör bağlanmadan LIVE arm açılamaz.
+- `PER-005`, `LID-001`, `LID-002` ve `LID-005` üzerindeki açık durum kod
+  eksikliği değil; gerçek hedef görüntüsü, sensör kimliği ve 5/10/15 m mekanik/
+  optik ölçüm kanıtı eksikliğidir.
 
 ---
 
 # Faz 10 — CI, kalite kapıları ve saldırgan testler
 
-- [ ] **QA-001 — Linux CI workflow ekle**
+- [x] **QA-001 — Linux CI workflow ekle**
   - Python unit/integration, frontend unit, typecheck, build ve seçili E2E testleri.
 
-- [ ] **QA-002 — Mevcut Playwright sapmasını düzelt**
+- [x] **QA-002 — Mevcut Playwright sapmasını düzelt**
   - Landing beklentisi güncel ürün kararıyla senkronize edilmeli.
 
-- [ ] **QA-003 — Hardware adapter ve HTTP coverage’ını artır**
+- [x] **QA-003 — Hardware adapter ve HTTP coverage’ını artır**
   - Özellikle error/timeout/invalid-input yolları kapsanmalı.
 
-- [ ] **QA-004 — Safety test marker/gate ekle**
+- [x] **QA-004 — Safety test marker/gate ekle**
   - `pytest -m safety`; başarısızsa merge/release engellenmeli.
 
-- [ ] **QA-005 — Protocol contract test gate’i ekle**
+- [x] **QA-005 — Protocol contract test gate’i ekle**
   - `pytest -m protocol`; firmware/simulator/backend vektörleri aynı olmalı.
 
-- [ ] **QA-006 — Replay determinism test gate’i ekle**
+- [x] **QA-006 — Replay determinism test gate’i ekle**
   - `pytest -m replay`; fiziksel adapter import/yükleme denetimi içermeli.
 
-- [ ] **QA-007 — Fault-injection senaryo paketi ekle**
+- [x] **QA-007 — Fault-injection senaryo paketi ekle**
   - Corrupt checksum, duplicate sequence, heartbeat loss, CAN disconnect, E-Stop, stale sensör, disk full, process restart ve UI/backend ayrışması.
 
 - [ ] **QA-008 — Uzun süreli dry-run/soak testi ekle**
+  - [x] Sanal-zaman ve duvar-saati modları, queue/disk/reconnect raporu eklendi.
+  - [ ] Pi üzerinde kesintisiz 30 dakika `--real-time` kanıtı alınmalı.
   - En az 30 dakika olay, video segmenti, disk kullanımı ve reconnect davranışı izlenmeli.
 
 - [ ] **QA-009 — Performans bütçelerini tanımla ve ölç**
+  - [x] Sürümlü bütçe dosyası ve pass/fail değerlendirme aracı eklendi.
+  - [ ] Gerçek kamera/Pi/CAN üzerinde ölçüm raporu alınmalı.
   - Kamera FPS, frame drop, algı gecikmesi, command-to-ACK, state stream ve recorder queue derinliği.
   - Ölçülmeden Rust/native/ROS 2 optimizasyonu yapılmamalı.
 
 **Faz kanıtı:** P0/P1 güvenlik ve görev invariant’ları başarısızken merge veya live release üretilemiyor.
 
+**Uygulama/kanıt notu (2026-07-25):**
+- Ubuntu CI; safety/protocol/replay marker kapıları, tam pytest+coverage,
+  frontend type/unit/desktop/build, tüm Playwright E2E, fault-injection ve
+  1800 saniyelik sanal-zaman soak koşularını içerir.
+- Fault paketi checksum, duplicate sequence, heartbeat, CAN, E-Stop, stale
+  kamera/LiDAR, disk, restart ve backend ayrışmasını fail-closed doğrular.
+- 30 dakikalık soak harness’ı sanal veya `--real-time` duvar saati modunda
+  çalışabilir. Bu turdaki hızlı kanıt sanal zamandır; Pi üzerinde duvar saati
+  raporu ayrıca üretilmelidir.
+- Performans eşikleri `config/quality/performance.toml` içindedir. Bunlar
+  donanım ölçümü değil kabul bütçesidir; ölçülmeden Rust/native/ROS 2 kararı
+  verilmez.
+
 ---
 
 # Faz 11 — İmalat öncesi HIL yazılımı ve release adayı
 
-- [ ] **HIL-001 — HIL profilini oluştur**
+- [x] **HIL-001 — HIL profilini oluştur**
   - Pi + Pico + gerçek CAN + güvenli test motoru/encoder + E-Stop/röle + kamera/LiDAR + lamba/yapay yük.
   - HIL hiçbir koşulda gerçek imha elemanını kullanmamalı.
 
-- [ ] **HIL-002 — HIL senaryo otomasyonunu ekle**
+- [x] **HIL-002 — HIL senaryo otomasyonunu ekle**
   - Boot/safe, Pico reset, heartbeat loss, CAN çıkarma, encoder ters/kopuk, kamera/LiDAR stale ve E-Stop.
 
-- [ ] **HIL-003 — HIL sonuç raporunu otomatik üret**
+- [x] **HIL-003 — HIL sonuç raporunu otomatik üret**
   - Test kimliği, run ID, config/calibration hash, event özeti ve pass/fail.
 
-- [ ] **HIL-004 — Süreç restart/session recovery doğrula**
+- [x] **HIL-004 — Süreç restart/session recovery doğrula**
   - Backend, perception ve recorder ayrı ayrı yeniden başlatıldığında güvenli state ve kayıt bütünlüğü korunmalı.
 
-- [ ] **HIL-005 — Operatör panelinden bütün blok nedenlerini doğrula**
+- [x] **HIL-005 — Operatör panelinden bütün blok nedenlerini doğrula**
   - Her Safety reason görünür, anlaşılır ve telemetriyle aynı olmalı.
 
-- [ ] **REL-001 — İmalat öncesi yazılım release adayı oluştur**
+- [x] **REL-001 — İmalat öncesi yazılım release adayı oluştur**
   - Sürümlü config, firmware, backend, UI, simulator, test fixture ve kurulum manifesti aynı release’e bağlanmalı.
 
-- [ ] **REL-002 — Software Gate’i kapat**
+- [x] **REL-002 — Software Gate’i kapat**
   - Safety, görev, replay, UI, fault-injection ve clean-install testleri yeşil.
 
 - [ ] **REL-003 — Sensor Gate’i kapat**
@@ -541,6 +582,20 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
   - Pico, CAN, encoder, E-Stop, röle ve yapay yük senaryoları yeşil.
 
 **İmalat öncesi stop koşulu:** Software Gate, Sensor Gate ve HIL Gate birlikte geçmeden “imalat sonrası yalnız montaj ve kalibrasyon kalacak” denmez.
+
+**Uygulama/kanıt notu (2026-07-25):**
+- `config/runtime/hil.toml` vcan preflight; `hil-physical.toml` ise gerçek
+  SocketCAN için yalnız lamba/yapay yük profili sağlar. Her ikisinde de gerçek
+  imha çıkışı kapalıdır.
+- `gokkalkan hil` on iki güvenli HIL senaryosunu ve config/kalibrasyon hash’ini
+  raporlar; fiziksel observation verilmezse sonuçları `NOT_RUN_PHYSICAL`
+  bırakarak HIL Gate’i kapatmaz.
+- `gokkalkan release` backend, perception, UI, simulator, testler, firmware ve
+  config dosyalarını SHA-256 ile tek release manifestine bağlar.
+- `REL-002 Software Gate` repo içi test kanıtıyla kapatılmıştır. `HIL-001` ve
+  `HIL-004` için profil/recovery yazılımı hazırdır; bunların fiziksel uygulama
+  kanıtı ile `REL-003` ve `REL-004` donanım olmadan bilinçli olarak açık
+  bırakılmıştır.
 
 ---
 
@@ -580,13 +635,20 @@ npm run dev:check
 Plan sonunda bulunması beklenen komutlar:
 
 ```bash
-pytest -m safety
-pytest -m protocol
-pytest -m replay
-pytest -m hil
+.venv/bin/python -m pytest -m safety
+.venv/bin/python -m pytest -m protocol
+.venv/bin/python -m pytest -m replay
+.venv/bin/python -m pytest -m hil
 gokkalkan doctor
 gokkalkan replay verify <session>
 gokkalkan evidence verify <session>
+gokkalkan quality faults
+gokkalkan quality soak --duration-sec 1800 --step-sec 0.1 --real-time --output <rapor.json>
+gokkalkan quality performance <ölçüm.json>
+gokkalkan lidar calibrate <gözlemler.json> --output <kalibrasyon-raporu.json>
+gokkalkan hil --output <hil-raporu.json>
+gokkalkan release --version <sürüm> --software-gate --output <manifest.json>
+gokkalkan release verify <manifest.json>
 ```
 
 ## Agent için son kontrol

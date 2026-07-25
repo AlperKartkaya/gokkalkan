@@ -4,7 +4,9 @@ Bu klasördeki TOML dosyaları `gokkalkan_backend.runtime_config` tarafından
 şema sürümü, tip, aralık ve güvenlik bağıntılarıyla doğrulanır.
 
 - `SIM`: Fiziksel adapter oluşturmaz.
-- `HIL`: Yalnız `vcan*` veya `python-can virtual` kanalını kabul eder.
+- `HIL`: Varsayılan `hil.toml` yalnız `vcan*`/`python-can virtual` preflight
+  kullanır. `hil-physical.toml` gerçek `can0` hattını yalnız izleme ve
+  lamba/yapay yük kabulü için açar; gerçek imha çıkış yetkisi vermez.
 - `LIVE`: Fiziksel CAN, interlock/readiness sağlayıcı adları ve operatör token
   yolu zorunludur; API yalnız loopback adresinde dinler. Örnek dosyada
   `live_output_enabled=false` bırakılmıştır.

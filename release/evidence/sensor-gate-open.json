@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "physicalGatePassed": false,
+  "status": "NOT_RUN_PHYSICAL",
+  "requiredEvidence": [
+    "TFA50-L serial and firmware identity",
+    "recorded 5/10/15 m measurements",
+    "left/center/right yaw measurements",
+    "camera dataset precision/recall/FPS/latency report",
+    "mount revision and calibration hash"
+  ]
+}

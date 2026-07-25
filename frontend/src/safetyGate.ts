@@ -63,4 +63,5 @@ export const blockCopy: Record<BlockReason, string> = {
   BLOCKED_TARGET_GATE: 'Dost/menzil kapısı',
   BLOCKED_MODE: 'Mod uyumsuz',
   BLOCKED_CONNECTION: 'Bağlantı yok',
+  BLOCKED_ZONE_CONFIG: 'Yasak bölge yapılandırması geçersiz',
 };

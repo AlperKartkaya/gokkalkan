@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,6 +33,8 @@ from gokkalkan_backend.digital_twin import (
 )
 from gokkalkan_backend.safety_gate import SafetyDecision
 from gokkalkan_backend.hardware_adapter import CanMcuAdapter
+
+pytestmark = [pytest.mark.replay, pytest.mark.hil]
 
 
 class DigitalTwinTest(unittest.TestCase):

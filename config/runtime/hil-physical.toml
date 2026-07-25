@@ -1,0 +1,57 @@
+schema_version = 1
+profile = "HIL"
+
+[api]
+host = "127.0.0.1"
+port = 8088
+allowed_origins = ["http://127.0.0.1:4173"]
+
+[can]
+channel = "can0"
+bustype = "socketcan"
+bitrate = 500000
+heartbeat_timeout_ms = 1000
+
+[safety]
+pan_min_deg = -75.0
+pan_max_deg = 75.0
+tilt_min_deg = -10.0
+tilt_max_deg = 45.0
+command_timeout_ms = 500
+zone_schema_version = 1
+arm_hold_ms = 2000
+arm_timeout_ms = 3000
+motion_forbidden_zones = []
+fire_forbidden_zones = []
+live_output_enabled = false
+
+[telemetry]
+path = "telemetry_data/operator-api-hil-physical.jsonl"
+max_bytes = 52428800
+min_free_bytes = 268435456
+
+[sensors]
+camera_device = 0
+camera_backend = "auto"
+track_stale_ms = 300
+lidar_stale_ms = 200
+lidar_min_m = 0.2
+lidar_max_m = 50.0
+classification_min_confidence = 0.40
+lidar_port = "/dev/ttyUSB0"
+lidar_baud_rate = 460800
+lidar_sample_hz = 1000
+lidar_serial_number = "UNVERIFIED"
+lidar_firmware_version = "UNVERIFIED"
+lidar_calibration_path = "config/calibration/tfa50_l.toml"
+lidar_mount_revision = "BRIDGE-UNVERIFIED"
+
+[live]
+interlock_provider = ""
+readiness_provider = ""
+operator_token_file = ""
+
+[hil]
+safe_load = "lamp"
+physical_can_enabled = true
+destructive_output_enabled = false

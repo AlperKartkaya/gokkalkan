@@ -57,8 +57,10 @@ release için yeterli kabul edilmez ve yeni LIVE adapter yolu v1 ACK bekler.
 - Bus-off, heartbeat kaybı, Pico reset, E-Stop veya encoder fault; hareket ve ateş
   iznini düşürür ve güvenli stop üretir.
 - Reconnect fiziksel çıkışı kendiliğinden arm etmez.
-- `SIM` fiziksel adapter yüklemez. `HIL` yalnız sanal CAN kabul eder. `LIVE`
-  config + fiziksel interlock + readiness preflight olmadan adapter oluşturmaz.
+- `SIM` fiziksel adapter yüklemez. `HIL` varsayılan olarak sanal CAN kullanır;
+  ayrıca gözden geçirilmiş `hil-physical.toml` ile gerçek CAN hattını
+  **monitor-only ve fiziksel imha çıkışı kapalı** açabilir. `LIVE` config +
+  fiziksel interlock + readiness preflight olmadan adapter oluşturmaz.
 
 ## Reddedilen seçenekler
 

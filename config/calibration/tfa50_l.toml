@@ -1,0 +1,13 @@
+# Bu dosya fiziksel köprü/kızak kilitlendikten ve 5/10/15 m testi yapıldıktan
+# sonra doldurulur. UNVERIFIED değerleri LIVE arm kapısını bilinçli olarak kapatır.
+[calibration]
+id = "UNVERIFIED"
+calibrated_at = "1970-01-01T00:00:00Z"
+operator = "UNVERIFIED"
+mount_height_m = 0.0
+yaw_offset_deg = 0.0
+pitch_offset_deg = 0.0
+vertical_band_min_m = 0.0
+vertical_band_max_m = 0.0
+mount_revision = "BRIDGE-UNVERIFIED"
+verified_ranges_m = []

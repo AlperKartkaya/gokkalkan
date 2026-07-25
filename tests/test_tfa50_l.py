@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import unittest
+import pytest
 
 from gokkalkan_backend.tfa50_l import (
     TFA50LFrameError,
     TFA50LStreamDecoder,
+    frequency_command,
     parse_measurement_frame,
+    parse_identity_response,
 )
+
+pytestmark = pytest.mark.protocol
 
 
 class TFA50LProtocolTest(unittest.TestCase):
@@ -48,6 +53,21 @@ class TFA50LProtocolTest(unittest.TestCase):
         self.assertEqual([item.distance_cm for item in measurements], [4354, 65535])
         self.assertEqual(decoder.rejected_frame_count, 1)
         self.assertGreaterEqual(decoder.discarded_byte_count, 2)
+
+    def test_identity_and_frequency_control_frames_follow_datasheet(self) -> None:
+        self.assertEqual(
+            parse_identity_response(
+                bytes.fromhex("5A 8D 02 10 01 5F"), response_code=0x8D
+            ),
+            "S00272",
+        )
+        self.assertEqual(
+            parse_identity_response(
+                bytes.fromhex("5A 96 02 03 02 62"), response_code=0x96
+            ),
+            "V2.3",
+        )
+        self.assertEqual(frequency_command(1000), bytes.fromhex("5A 0B 02 E7 03 08"))
 
 
 if __name__ == "__main__":

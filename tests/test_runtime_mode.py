@@ -98,6 +98,23 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertFalse(factory.instances[0].options["dry_run"])
         self.assertFalse(factory.instances[0].options["physical_output_capable"])
 
+    def test_reviewed_hil_physical_can_is_monitor_only_without_output_capability(
+        self,
+    ) -> None:
+        factory = RecordingFactory()
+        service = build_runtime_service(
+            RuntimeLaunchConfig(
+                mode="HIL",
+                can_channel="can0",
+                can_bustype="socketcan",
+                hil_physical_can_enabled=True,
+            ),
+            can_adapter_factory=factory,
+        )
+        self.assertEqual(service.runtime_mode, "HIL")
+        self.assertTrue(factory.instances[0].started)
+        self.assertFalse(factory.instances[0].options["physical_output_capable"])
+
     def test_live_mode_requires_explicit_enable_before_adapter_construction(self) -> None:
         factory = RecordingFactory()
 

@@ -11,7 +11,7 @@ HardwareAdapterBase:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from itertools import count
 from math import isfinite
@@ -22,6 +22,7 @@ from typing import Any, Callable, Literal
 
 from .hardware_adapter import HardwareAdapterBase
 from .mission_flow import MissionFlow
+from .range_fusion import FusedRangeDecision
 from .safety_gate import (
     ForbiddenZone,
     LiveArmController,
@@ -426,7 +427,7 @@ class OperatorService:
         self.mission_time_limit_sec: int = STAGE1_TIME_LIMIT_SEC
         boot_msg = {
             "SIM": "SIM modunda başlatıldı; fiziksel adapter yüklenmedi.",
-            "HIL": "HIL modunda başlatıldı; yalnız doğrulanmış sanal CAN hattı kullanılabilir.",
+            "HIL": "HIL modunda başlatıldı; fiziksel çıkış kapalı, yalnız lamba/yapay yük kullanılabilir.",
             "LIVE": "LIVE modunda başlatıldı; fiziksel çıkış ayrıca arm edilene kadar kapalı.",
         }[self.runtime_mode]
         self._append_event(
@@ -1618,6 +1619,56 @@ class OperatorService:
             "source": source,
             "perceptionConnected": True,
         }
+
+    def apply_fused_range(self, decision: FusedRangeDecision) -> dict[str, Any]:
+        """Apply only an accepted calibrated fusion result on the owner thread.
+
+        Rejected, stale or ambiguous measurements immediately close LiDAR
+        health; an HTTP caller cannot manufacture this trusted reducer input.
+        """
+
+        self._require_owner()
+        if not decision.accepted or decision.track_id is None or decision.distance_m is None:
+            self.lidar_ok = False
+            self.sensor_adapter_connected = False
+            self._append_event(
+                "sensor",
+                "LIDAR_RANGE_REJECTED",
+                f"LiDAR menzili reddedildi: {decision.reason}",
+                decision.to_dict(),
+            )
+            return {"ok": False, **decision.to_dict()}
+        matched = False
+        updated: list[DryRunTrack] = []
+        for track in self.tracks:
+            if track.trackId == decision.track_id:
+                updated.append(
+                    replace(
+                        track,
+                        rangeM=decision.distance_m,
+                        source="fused",
+                        updatedAt=self._clock(),
+                    )
+                )
+                matched = True
+            else:
+                updated.append(track)
+        if not matched:
+            self.lidar_ok = False
+            self.sensor_adapter_connected = False
+            return {"ok": False, "reason": "TRACK_NOT_FOUND", **decision.to_dict()}
+        self.tracks = updated
+        self.mission_flow.refresh_tracks(track.to_dict() for track in updated)
+        self.lidar_ok = True
+        self.sensor_adapter_connected = True
+        self._last_lidar_update_monotonic = _time.monotonic()
+        self._append_event(
+            "sensor",
+            "LIDAR_RANGE_FUSED",
+            f"{decision.track_id} için kararlı TFA50-L menzili kabul edildi.",
+            decision.to_dict(),
+        )
+        return {"ok": True, **decision.to_dict()}
 
     def set_perception_health(
         self,

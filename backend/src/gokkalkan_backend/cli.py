@@ -7,6 +7,7 @@ import sys
 from . import (
     doctor,
     operator_http_server,
+    operations_cli,
     session_cli,
     static_server,
     telemetry_recorder,
@@ -25,6 +26,11 @@ Usage:
   gokkalkan scenario fixtures <output>
   gokkalkan replay verify|run <session>
   gokkalkan evidence build|verify ...
+  gokkalkan quality faults|soak|performance ...
+  gokkalkan hil --output REPORT
+  gokkalkan release [build] --version VERSION --output MANIFEST ...
+  gokkalkan release verify MANIFEST
+  gokkalkan lidar calibrate OBSERVATIONS --output REPORT
 """
 
 
@@ -49,6 +55,14 @@ def main(argv: list[str] | None = None) -> int:
         return session_cli.replay_main(command_args)
     if command == "evidence":
         return session_cli.evidence_main(command_args)
+    if command == "quality":
+        return operations_cli.quality_main(command_args)
+    if command == "hil":
+        return operations_cli.hil_main(command_args)
+    if command == "release":
+        return operations_cli.release_main(command_args)
+    if command == "lidar":
+        return operations_cli.lidar_main(command_args)
     print(f"Unknown command: {command}\n\n{_usage()}", file=sys.stderr)
     return 2
 

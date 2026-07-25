@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "calibrationId": "UNVERIFIED",
+  "mountRevision": "BRIDGE-UNVERIFIED",
+  "evidenceClass": "UNVERIFIED",
+  "observations": [
+    {
+      "expectedRangeM": 5.0,
+      "measuredRangeM": null,
+      "yawPosition": "center",
+      "receiveMonotonicNs": 0,
+      "rawHex": "",
+      "note": "Gerçek sensör ölçümüyle değiştirin"
+    }
+  ]
+}

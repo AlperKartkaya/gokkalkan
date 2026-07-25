@@ -39,12 +39,20 @@ max_bytes = 536870912
 min_free_bytes = 1073741824
 
 [sensors]
+camera_backend = "auto"
 camera_device = 0
 track_stale_ms = 300
 lidar_stale_ms = 200
 lidar_min_m = 0.2
 lidar_max_m = 50.0
 classification_min_confidence = 0.40
+lidar_port = "/dev/ttyUSB0"
+lidar_baud_rate = 460800
+lidar_sample_hz = 1000
+lidar_serial_number = "UNVERIFIED"
+lidar_firmware_version = "UNVERIFIED"
+lidar_calibration_path = "config/calibration/tfa50_l.toml"
+lidar_mount_revision = "BRIDGE-UNVERIFIED"
 
 [live]
 interlock_provider = "pico-and-physical-estop-chain"

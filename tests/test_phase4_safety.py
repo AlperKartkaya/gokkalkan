@@ -10,6 +10,8 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+pytestmark = pytest.mark.safety
+
 from gokkalkan_backend.operator_api import DryRunHardwareAdapter, OperatorService
 from gokkalkan_backend.operator_http_server import build_http_server
 from gokkalkan_backend.runtime_config import RuntimeConfigError, load_runtime_config

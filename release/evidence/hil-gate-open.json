@@ -1,0 +1,77 @@
+{
+  "allowsDestructiveOutput": false,
+  "calibrationHash": "83d096cf1b8c82ea4806c477b798e24e643a6c1e2920ec4ae3abd564105c6b6f",
+  "configHash": "02961d4ba604fd06f88ceadd3ab4af05b12c62407c1ce77901b7df9e4547dec0",
+  "physicalGatePassed": false,
+  "profile": "HIL-SAFE-LOAD-V1",
+  "runId": "2b913db9f98311fb",
+  "safeLoad": "lamp",
+  "scenarios": [
+    {
+      "scenario": "boot-safe",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "pico-reset",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "heartbeat-loss",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "can-disconnect",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "encoder-reversed",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "encoder-disconnected",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "camera-stale",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "lidar-stale",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "estop",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "backend-restart",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "perception-restart",
+      "status": "NOT_RUN_PHYSICAL"
+    },
+    {
+      "scenario": "recorder-restart",
+      "status": "NOT_RUN_PHYSICAL"
+    }
+  ],
+  "schemaVersion": 1,
+  "softwareHarness": {
+    "checks": {
+      "backendDivergence": true,
+      "canDisconnect": true,
+      "corruptChecksum": true,
+      "diskFull": true,
+      "duplicateSequence": true,
+      "estop": true,
+      "heartbeatLoss": true,
+      "processRestart": true,
+      "staleCamera": true,
+      "staleLidar": true
+    },
+    "evidenceClass": "SOFTWARE_SIMULATION",
+    "ok": true,
+    "physicalOutput": false
+  }
+}

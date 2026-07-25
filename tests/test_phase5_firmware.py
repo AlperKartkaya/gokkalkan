@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.protocol
+
 from gokkalkan_backend.can_protocol import (
     CAN_ID_ENCODER_V1,
     CAN_ID_FIRMWARE_V1,

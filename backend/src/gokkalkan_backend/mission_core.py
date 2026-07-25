@@ -21,6 +21,7 @@ from .messages import (
     utc_now,
 )
 from .operator_api import OperatorService
+from .range_fusion import FusedRangeDecision
 
 
 class MissionCoreError(RuntimeError):
@@ -530,6 +531,32 @@ class MissionCore:
                     healthy,
                     reason=str(payload.get("reason", "heartbeat")),
                 )
+            if envelope.kind == "FusedRangeUpdate":
+                if not envelope.source.startswith(("sensor-tfa50-l", "hil-tfa50-l")):
+                    raise MessageContractError(
+                        "fused range updates require the trusted TFA50-L adapter"
+                    )
+                try:
+                    decision = FusedRangeDecision(
+                        accepted=bool(payload["accepted"]),
+                        reason=str(payload["reason"]),
+                        track_id=(
+                            None
+                            if payload.get("trackId") is None
+                            else str(payload["trackId"])
+                        ),
+                        distance_m=(
+                            None
+                            if payload.get("rangeM") is None
+                            else float(payload["rangeM"])
+                        ),
+                        source=str(payload["source"]),
+                        calibration_hash=str(payload["calibrationHash"]),
+                        sample_count=int(payload["sampleCount"]),
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise MessageContractError("invalid fused range decision") from exc
+                return self.service.apply_fused_range(decision)
         finally:
             self.service.set_command_context(None)
         raise MessageContractError(f"unsupported command kind: {envelope.kind}")

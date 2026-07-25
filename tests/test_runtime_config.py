@@ -15,6 +15,7 @@ class RuntimeConfigTest(unittest.TestCase):
         expected = {
             "sim.toml": "SIM",
             "hil.toml": "HIL",
+            "hil-physical.toml": "HIL",
             "live.toml": "LIVE",
             "pi-sim.toml": "SIM",
         }

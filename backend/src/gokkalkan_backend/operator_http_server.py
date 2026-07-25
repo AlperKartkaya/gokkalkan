@@ -451,6 +451,7 @@ def main(argv: list[str] | None = None) -> None:
 
     source_files: dict[str, Path] = {
         "runtimeConfig": settings.source,
+        "calibration": settings.sensors.lidar_calibration_path,
         "canIcd": Path("docs/can_icd_v1.md"),
         "lidarCameraPlacement": Path("docs/adr/003-camera-lidar-placement.md"),
     }

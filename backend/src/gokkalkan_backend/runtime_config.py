@@ -86,10 +86,18 @@ class TelemetrySettings:
 @dataclass(frozen=True, slots=True)
 class SensorSettings:
     camera_device: int
+    camera_backend: str
     track_stale_ms: int
     lidar_stale_ms: int
     lidar_min_m: float
     lidar_max_m: float
+    lidar_port: str
+    lidar_baud_rate: int
+    lidar_sample_hz: int
+    lidar_serial_number: str
+    lidar_firmware_version: str
+    lidar_calibration_path: Path
+    lidar_mount_revision: str
     classification_min_confidence: float
 
 
@@ -98,6 +106,13 @@ class LiveSettings:
     interlock_provider: str
     readiness_provider: str
     operator_token_file: str
+
+
+@dataclass(frozen=True, slots=True)
+class HilSettings:
+    safe_load: str
+    physical_can_enabled: bool
+    destructive_output_enabled: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +125,7 @@ class RuntimeSettings:
     telemetry: TelemetrySettings
     sensors: SensorSettings
     live: LiveSettings
+    hil: HilSettings
     source: Path
 
     def launch_config(self) -> RuntimeLaunchConfig:
@@ -120,6 +136,7 @@ class RuntimeSettings:
             can_bitrate=self.can.bitrate,
             heartbeat_timeout_sec=self.can.heartbeat_timeout_ms / 1000.0,
             live_output_enabled=self.safety.live_output_enabled,
+            hil_physical_can_enabled=self.hil.physical_can_enabled,
         )
 
     def with_cli_overrides(
@@ -236,12 +253,20 @@ def _validate_settings(settings: RuntimeSettings) -> None:
         2**40,
     )
     _bounded("sensors.camera_device", settings.sensors.camera_device, 0, 64)
+    if settings.sensors.camera_backend not in {"auto", "picamera2", "opencv", "mock"}:
+        raise RuntimeConfigError("sensors.camera_backend is not supported")
     _bounded("sensors.track_stale_ms", settings.sensors.track_stale_ms, 50, 30_000)
     _bounded("sensors.lidar_stale_ms", settings.sensors.lidar_stale_ms, 50, 30_000)
     _bounded("sensors.lidar_min_m", settings.sensors.lidar_min_m, 0.01, 500.0)
     _bounded("sensors.lidar_max_m", settings.sensors.lidar_max_m, 0.02, 500.0)
     if settings.sensors.lidar_min_m >= settings.sensors.lidar_max_m:
         raise RuntimeConfigError("LiDAR minimum range must be below maximum range")
+    if not settings.sensors.lidar_port.strip():
+        raise RuntimeConfigError("sensors.lidar_port must not be empty")
+    _bounded("sensors.lidar_baud_rate", settings.sensors.lidar_baud_rate, 1_200, 3_000_000)
+    _bounded("sensors.lidar_sample_hz", settings.sensors.lidar_sample_hz, 20, 20_000)
+    if not settings.sensors.lidar_mount_revision.strip():
+        raise RuntimeConfigError("sensors.lidar_mount_revision must not be empty")
     _bounded(
         "sensors.classification_min_confidence",
         settings.sensors.classification_min_confidence,
@@ -257,8 +282,16 @@ def _validate_settings(settings: RuntimeSettings) -> None:
         raise RuntimeConfigError(
             "SIM/HIL profiles cannot enable physical LIVE output"
         )
-    if settings.profile == "HIL" and not virtual_can:
-        raise RuntimeConfigError("HIL profile requires a virtual CAN channel")
+    if settings.profile == "HIL":
+        if settings.hil.safe_load not in {"lamp", "resistive-dummy-load"}:
+            raise RuntimeConfigError("HIL requires an approved safe load")
+        if settings.hil.destructive_output_enabled:
+            raise RuntimeConfigError("HIL cannot enable the real destruction output")
+        if not virtual_can and not settings.hil.physical_can_enabled:
+            raise RuntimeConfigError(
+                "HIL profile requires virtual CAN unless "
+                "hil.physical_can_enabled=true"
+            )
     if settings.profile == "LIVE":
         if "*" in settings.api.allowed_origins:
             raise RuntimeConfigError("LIVE profile cannot use wildcard CORS origin")
@@ -300,6 +333,9 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
     telemetry = _table(raw, "telemetry")
     sensors = _table(raw, "sensors")
     live = _table(raw, "live")
+    hil = raw.get("hil", {})
+    if not isinstance(hil, dict):
+        raise RuntimeConfigError("invalid [hil] table")
     profile = _required(raw, "profile", str).upper()
     if profile not in {"SIM", "HIL", "LIVE"}:
         raise RuntimeConfigError(f"unsupported runtime profile: {profile}")
@@ -338,10 +374,20 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
         ),
         sensors=SensorSettings(
             camera_device=_required(sensors, "camera_device", int),
+            camera_backend=str(sensors.get("camera_backend", "auto")),
             track_stale_ms=_required(sensors, "track_stale_ms", int),
             lidar_stale_ms=_required(sensors, "lidar_stale_ms", int),
             lidar_min_m=_required(sensors, "lidar_min_m", float),
             lidar_max_m=_required(sensors, "lidar_max_m", float),
+            lidar_port=str(sensors.get("lidar_port", "loop://unconfigured")),
+            lidar_baud_rate=int(sensors.get("lidar_baud_rate", 460800)),
+            lidar_sample_hz=int(sensors.get("lidar_sample_hz", 1000)),
+            lidar_serial_number=str(sensors.get("lidar_serial_number", "UNVERIFIED")),
+            lidar_firmware_version=str(sensors.get("lidar_firmware_version", "UNVERIFIED")),
+            lidar_calibration_path=Path(
+                str(sensors.get("lidar_calibration_path", "config/calibration/tfa50_l.toml"))
+            ),
+            lidar_mount_revision=str(sensors.get("lidar_mount_revision", "UNVERIFIED")),
             classification_min_confidence=_required(
                 sensors, "classification_min_confidence", float
             ),
@@ -350,6 +396,13 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
             interlock_provider=_required(live, "interlock_provider", str),
             readiness_provider=_required(live, "readiness_provider", str),
             operator_token_file=_required(live, "operator_token_file", str),
+        ),
+        hil=HilSettings(
+            safe_load=str(hil.get("safe_load", "lamp")),
+            physical_can_enabled=bool(hil.get("physical_can_enabled", False)),
+            destructive_output_enabled=bool(
+                hil.get("destructive_output_enabled", False)
+            ),
         ),
         source=source,
     )
