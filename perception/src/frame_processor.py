@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,6 +55,11 @@ class TrackCandidate:
     confidence:  float           # 0.0–1.0
     range_m:     float           # tahmini mesafe (m)
     bearing_deg: float           # tahmini yatay açı (°)
+    velocity_x_px_s: float = 0.0
+    velocity_y_px_s: float = 0.0
+    freshness_ms: float = 0.0
+    state: str = "TRACKED"
+    receive_monotonic_ns: int = field(default_factory=time.monotonic_ns)
     detected_at: float = field(default_factory=time.time)
 
     def to_api_dict(self) -> dict[str, Any]:
@@ -69,6 +73,14 @@ class TrackCandidate:
             "confidence": round(self.confidence, 3),
             "bboxPx":     [self.cx, self.cy, self.width_px, self.height_px],
             "source":     "perception",
+            "rangeSource": "camera-bbox-estimate",
+            "velocityPxSec": [
+                round(self.velocity_x_px_s, 2),
+                round(self.velocity_y_px_s, 2),
+            ],
+            "freshnessMs": round(self.freshness_ms, 2),
+            "trackState": self.state,
+            "receiveMonotonicNs": self.receive_monotonic_ns,
         }
 
 
@@ -88,9 +100,13 @@ class CentroidTracker:
         self.disappeared:    dict[str, int] = {}
         self.max_disappeared = max_disappeared
         self.max_distance    = max_distance_px
+        self._next_track_number = 1
 
     def update(
-        self, detections: list[tuple[float, float, float, float, float, str]]
+        self,
+        detections: list[tuple[float, float, float, float, float, str]],
+        *,
+        timestamp_ns: int | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Tespitlerle izleri güncelle.
 
@@ -100,6 +116,7 @@ class CentroidTracker:
         Returns:
             Aktif izler: {track_id: {cx, cy, w, h, area, color, age}}
         """
+        now_ns = time.monotonic_ns() if timestamp_ns is None else timestamp_ns
         if not detections:
             # Tüm izlerin kaybolma sayacını artır
             for tid in list(self.disappeared):
@@ -107,12 +124,16 @@ class CentroidTracker:
                 if self.disappeared[tid] > self.max_disappeared:
                     del self.tracks[tid]
                     del self.disappeared[tid]
-            return self.tracks
+            return {
+                tid: track
+                for tid, track in self.tracks.items()
+                if self.disappeared.get(tid, 0) == 0
+            }
 
         if not self.tracks:
             # İlk kare: hepsini yeni iz olarak kaydet
             for det in detections:
-                self._register(det)
+                self._register(det, now_ns)
         else:
             # Mevcut iz merkezleri ile tespitler arasında min-dist eşleştirmesi
             track_ids = list(self.tracks.keys())
@@ -134,11 +155,18 @@ class CentroidTracker:
                 if best_di >= 0 and best_dist < self.max_distance:
                     tid = track_ids[ti]
                     det = detections[best_di]
+                    previous = self.tracks[tid]
+                    elapsed_s = max(
+                        1e-9, (now_ns - int(previous.get("last_seen_ns", now_ns))) / 1e9
+                    )
                     self.tracks[tid].update({
                         "cx": det[0], "cy": det[1],
                         "w": det[2], "h": det[3],
                         "area": det[4], "color": det[5],
                         "age": self.tracks[tid].get("age", 0) + 1,
+                        "velocity_x_px_s": (det[0] - float(previous["cx"])) / elapsed_s,
+                        "velocity_y_px_s": (det[1] - float(previous["cy"])) / elapsed_s,
+                        "last_seen_ns": now_ns,
                     })
                     self.disappeared[tid] = 0
                     used_dets.add(best_di)
@@ -155,17 +183,30 @@ class CentroidTracker:
             # Eşleşmeyen tespitler → yeni iz
             for di, det in enumerate(detections):
                 if di not in used_dets:
-                    self._register(det)
+                    self._register(det, now_ns)
 
-        return self.tracks
+        return {
+            tid: track
+            for tid, track in self.tracks.items()
+            if self.disappeared.get(tid, 0) == 0
+        }
 
-    def _register(self, det: tuple[float, float, float, float, float, str]) -> None:
-        tid = f"PERC-{uuid.uuid4().hex[:8].upper()}"
+    def _register(
+        self,
+        det: tuple[float, float, float, float, float, str],
+        timestamp_ns: int,
+    ) -> None:
+        tid = f"PERC-{self._next_track_number:06d}"
+        self._next_track_number += 1
         self.tracks[tid] = {
             "cx": det[0], "cy": det[1],
             "w": det[2], "h": det[3],
             "area": det[4], "color": det[5],
             "age": 1,
+            "velocity_x_px_s": 0.0,
+            "velocity_y_px_s": 0.0,
+            "first_seen_ns": timestamp_ns,
+            "last_seen_ns": timestamp_ns,
         }
         self.disappeared[tid] = 0
 
@@ -233,7 +274,13 @@ class FrameProcessor:
     # Ana işleme akışı
     # ------------------------------------------------------------------
 
-    def process(self, frame: Any, stage: int = 2) -> list[TrackCandidate]:
+    def process(
+        self,
+        frame: Any,
+        stage: int = 2,
+        *,
+        receive_monotonic_ns: int | None = None,
+    ) -> list[TrackCandidate]:
         """RGB numpy kareyi işle; hedef adayı listesi döndür.
 
         Args:
@@ -244,7 +291,9 @@ class FrameProcessor:
         Returns:
             TrackCandidate listesi (boş olabilir)
         """
+        timestamp_ns = time.monotonic_ns() if receive_monotonic_ns is None else receive_monotonic_ns
         if not _CV_OK or frame is None:
+            self._tracker.update([], timestamp_ns=timestamp_ns)
             return []
 
         self._frames_processed += 1
@@ -305,7 +354,7 @@ class FrameProcessor:
             detections.append((cx, cy, float(w), float(h), area, clr))
 
         # Tracker güncelle
-        active_tracks = self._tracker.update(detections)
+        active_tracks = self._tracker.update(detections, timestamp_ns=timestamp_ns)
 
         # TrackCandidate listesi üret
         candidates: list[TrackCandidate] = []
@@ -345,6 +394,13 @@ class FrameProcessor:
                     confidence  = confidence,
                     range_m     = range_m,
                     bearing_deg = bearing_deg,
+                    velocity_x_px_s=float(tr.get("velocity_x_px_s", 0.0)),
+                    velocity_y_px_s=float(tr.get("velocity_y_px_s", 0.0)),
+                    freshness_ms=max(
+                        0.0,
+                        (timestamp_ns - int(tr.get("last_seen_ns", timestamp_ns))) / 1e6,
+                    ),
+                    receive_monotonic_ns=timestamp_ns,
                 )
             )
         return candidates

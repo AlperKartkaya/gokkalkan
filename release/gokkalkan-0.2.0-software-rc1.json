@@ -1,0 +1,469 @@
+{
+  "components": [
+    {
+      "path": "backend/hardware_mock/.gitkeep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/hardware_mock/firmware_model.py",
+      "sha256": "53601a287d2e0eda5e9b002af0b484684a38414a57fce07badd63bdc701fffb3"
+    },
+    {
+      "path": "backend/hardware_mock/mcu_simulator.py",
+      "sha256": "b6886ec2151d338be18d763392bb57212972dc9c943cc2baeb8195afa9136965"
+    },
+    {
+      "path": "backend/src/.gitkeep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/PKG-INFO",
+      "sha256": "ad7dda9056a5433609c67c07e9f6e728a581a65eb02fd83023f8a72ca77072b1"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/SOURCES.txt",
+      "sha256": "b342de30acd014a133ca09e779eff2684cb78cb3ef8b74e2c98e1003b0ee5232"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/dependency_links.txt",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/entry_points.txt",
+      "sha256": "d8de853a4199acb370ec380ac07d94a7e0e20c91db3d21335ef1fd96df9733d7"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/requires.txt",
+      "sha256": "63a6b5f3eebac3e08faf97c890eaeb2c23af3bcecd4ca47ac26e65e01da4debe"
+    },
+    {
+      "path": "backend/src/gokkalkan.egg-info/top_level.txt",
+      "sha256": "3c93e7a1326c6fe4bda6424167607e0365fe7733a5c34642c99625966027c9d4"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/__init__.py",
+      "sha256": "0e93673699730162d5bf7bb4a42b3252f5c235f3f7243aac51ab7d956dd69330"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/calibration_workflow.py",
+      "sha256": "e49a63902774abdc4344848dc06a7429d56377e327b1b9f47759d96bf6718b0e"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/can_protocol.py",
+      "sha256": "f676bfca3a280f84bb959aac61d01bcdd020e81ca1489e568bdfa634d22a9fcd"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/cli.py",
+      "sha256": "8b37d314c96c4161b2f294834f013c1d0b2a33553b81a8a0d2a79273047c1416"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/digital_twin.py",
+      "sha256": "8b18b8f7efda69e15bee98bfb02deb83162decc36f6dbe2601551438898cc5c6"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/doctor.py",
+      "sha256": "7c2c415f6dd294a0826654323b759925018d0bfdfb887353fbec38f4e3ca3ef2"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/hardware_adapter.py",
+      "sha256": "a0b121a36d0ed6260aa47497628cd577014d71c7efce0243884114a2cf95c931"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/hil_runner.py",
+      "sha256": "d4764b17ad22894f99a41fb0e1073915228d974bc0296ca709f08f0bf3ebf7f0"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/lidar_adapter.py",
+      "sha256": "179e2bba5e8a9ff62dba65893513184e192b6b2b1c6b9b4dd55222c0738f7b28"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/messages.py",
+      "sha256": "bd652ad8a2fc7c71672c661010a1afae8023cc738f8703cd69527d5cdc4c0e42"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/mission_core.py",
+      "sha256": "f57846164e5192f24c112d2223c88ee37ef2d3ff8b1929474ba953bb2cca96c4"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/mission_flow.py",
+      "sha256": "c6b99752ad629555031111a459be837dd3f85b0ee9c167909bc95f0ab84d9cb8"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/operations_cli.py",
+      "sha256": "3f2debc7d44bd4d8801af39702df3c1bed441bdadcc35fa9d09c100d4b065d16"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/operator_api.py",
+      "sha256": "628568bb4d7f756e4f7c6abd9700fa7866fe0a08c5c4b81dffa4da1009a48efa"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/operator_http_server.py",
+      "sha256": "a3507540fb388633f7f8afd483396bf93202721ee56dff31592e31dbbf8444e0"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/range_fusion.py",
+      "sha256": "952c9dd157cf5f5ee2c34c371138e0adf995f9e69a5a12d85999f8ebea057728"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/release_gate.py",
+      "sha256": "d4c16ef860cf5a607fe9355704f11e54b24d98388f7003f863bd7bd3a09f973a"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/runtime_config.py",
+      "sha256": "0c1cebfeefe02d2e7c5fc765629abe66c71f6cd1c10c0c5638bc154201295d8c"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/runtime_mode.py",
+      "sha256": "14940dd3b880ab281cf8f2603e7c807f30c28a19b8ec48335a39e33bd0ccd084"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/safety_gate.py",
+      "sha256": "f9cf3cec7fbf59bc6c4af90f9020e9e27635de6cd05ef20faa7b6750f6d88ab0"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/sensor_pipeline.py",
+      "sha256": "5deeaa26b995839d09a599e77fe16a64da8bc8b3244ea8bf45d7ce2cfbc118ba"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/session_cli.py",
+      "sha256": "1a669d9981c8dfc5565747866070343bb744dde5e5ce5cf7dc79d208f897ab0d"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/static_server.py",
+      "sha256": "87008b795eb27c04b9f0ca647779e92af222e4cab75e6b5983fa3191baec6de0"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/telemetry_log.py",
+      "sha256": "c362cff0cd12845b635c3f4ffd204e9d0dc4e6bb95d12bb39421a7ba1bd63a96"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/telemetry_recorder.py",
+      "sha256": "b45676dbf87faa07edc576504c69432820ac4471e4c74744aa5dd5f7817f697f"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/telemetry_session.py",
+      "sha256": "bf7c367fdc623e0516b3977c4840f8575b0b38626d47e0877dff2a3c4f188370"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/tfa50_l.py",
+      "sha256": "6a7bf73ab548b153e11f9b4b160d42c7ceb948f1a26b7a443cb9c47326b9b3b2"
+    },
+    {
+      "path": "backend/src/gokkalkan_backend/verification.py",
+      "sha256": "7d8aad968febbaae9f83d309756cb3413f5701867573e400446af10d9de58b63"
+    },
+    {
+      "path": "config/calibration/tfa50_l.toml",
+      "sha256": "83d096cf1b8c82ea4806c477b798e24e643a6c1e2920ec4ae3abd564105c6b6f"
+    },
+    {
+      "path": "config/calibration/tfa50_l_observations.example.json",
+      "sha256": "e7a9bc11dac4dff88ccf7e9f6531b6ac24ad74ca86190069be178ff1d1bc3175"
+    },
+    {
+      "path": "config/quality/performance.toml",
+      "sha256": "df635767fc13ebf978a13b28832834cfd90a2133d5942f81bf7068358fb9f1dd"
+    },
+    {
+      "path": "config/runtime/README.md",
+      "sha256": "399a9a01135c1cd86889103f8fe2c238371e1024cd2a89740b0f2d8f5c8d3893"
+    },
+    {
+      "path": "config/runtime/hil-physical.toml",
+      "sha256": "02961d4ba604fd06f88ceadd3ab4af05b12c62407c1ce77901b7df9e4547dec0"
+    },
+    {
+      "path": "config/runtime/hil.toml",
+      "sha256": "96f01cf3fef9ca164c05dd7fd046a0b4e410bad5d4d7b0aa1060494c003bfc37"
+    },
+    {
+      "path": "config/runtime/live.toml",
+      "sha256": "c03cf675bc261c7c29a2b8395f3aca914527f8db05bfe954f0591062eb9827d9"
+    },
+    {
+      "path": "config/runtime/pi-sim.toml",
+      "sha256": "d4ccad79237ed18555668d656b47325b9745e171995859ee42841549036fb650"
+    },
+    {
+      "path": "config/runtime/sim.toml",
+      "sha256": "da6618cbac82deb2e99729612e9ac8ed1c10b1fbe548c31adb6f64ad3aef744d"
+    },
+    {
+      "path": "firmware/pico/CMakeLists.txt",
+      "sha256": "ce49bb83e4af86ddac8e7eaf8703376aeb98b18eacfa5e88c1033a970c8341f3"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "sha256": "98d08dc614d7406ec27cbfad7c45b73d9d9ddd4ece3cbcaed2f94dbc888a9b4a"
+    },
+    {
+      "path": "frontend/src/.gitkeep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "sha256": "13872926ada03b72ac8613c8e3e62f79e708d03de17a22d475f71554f7cebb52"
+    },
+    {
+      "path": "frontend/src/OperatorPanel.tsx",
+      "sha256": "cab9ff2497b2ca6e7e58a3fd03a01b6e9fdc39eeb94e577551a77f533aa3f637"
+    },
+    {
+      "path": "frontend/src/competitionCourse.ts",
+      "sha256": "d40b8a72dfef38695a217170d19d703c8344bf0bb54795e58a7eade80951b9e4"
+    },
+    {
+      "path": "frontend/src/competitionSimulation.test.ts",
+      "sha256": "213dbf9592384e923a668dc07fe1d52ecac241173f8c71385b608cd770eb5198"
+    },
+    {
+      "path": "frontend/src/competitionSimulation.ts",
+      "sha256": "54fc098a891697e8030cb23de4f11df527e53ac8b1d744e19a3784c22996b396"
+    },
+    {
+      "path": "frontend/src/components/CommandConsole.tsx",
+      "sha256": "ce1466d0e7516d37f62b834e69a9c2b89b6e1e3b9552a17a4d551050d3618efc"
+    },
+    {
+      "path": "frontend/src/components/EventStream.tsx",
+      "sha256": "7ac562a322f04fbbe77c3c909d662c242f9ce9fd52ff14dddfabb4c4fa3e302e"
+    },
+    {
+      "path": "frontend/src/components/HardwareHealthBadge.tsx",
+      "sha256": "8f3556953886a3e7cf04f0a23d582887e1bcb9fcb2dd77318a2ef8f88c7a9350"
+    },
+    {
+      "path": "frontend/src/components/MissionHeader.tsx",
+      "sha256": "98fe2595591f9371b3d7b30b9b9beb5e62d745081e85b559001bf6552a5e0b46"
+    },
+    {
+      "path": "frontend/src/components/ReadinessDashboard.tsx",
+      "sha256": "798d929f4140d5d5e9808507c0d858c09a14dc013b2cbd891726b8cd08dd7dc8"
+    },
+    {
+      "path": "frontend/src/components/SafetyAuthorityPanel.tsx",
+      "sha256": "977fba336c20328d4c040b135ad90e4cadeaf3bec8155e6c9fca3e5ea2a33455"
+    },
+    {
+      "path": "frontend/src/components/SensorFusionPanel.tsx",
+      "sha256": "7855b721e1b5b0efab2f73e68251ecd69b72b225e2981da06f0a58ef037b7619"
+    },
+    {
+      "path": "frontend/src/components/TrackList.tsx",
+      "sha256": "99e4f11dd9d1e4b37f4a881b0a19ae22f391549fbf051ede241779828c7b5280"
+    },
+    {
+      "path": "frontend/src/fixtures/rawLidarSemantic2dSample.ts",
+      "sha256": "a28479174bb8c8c03fae26386371c952c8fb09149addd22964d3f4255c3a4644"
+    },
+    {
+      "path": "frontend/src/hooks/useOperatorBackendState.ts",
+      "sha256": "6bbcd509178e19048f2f3cd88c439ee4050e4f88cc5b14d9f1534112a89fcad8"
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "sha256": "055735c1f2a805ceeca8a1376b884c7a8ae1b9d69ad42753b2d23b4e277bfebb"
+    },
+    {
+      "path": "frontend/src/mechanicsConfig.test.ts",
+      "sha256": "c849f418563695b6ca8adb60c2d9b8900ddc624d965fefb14f92ed958a57333f"
+    },
+    {
+      "path": "frontend/src/mechanicsConfig.ts",
+      "sha256": "40bb83ac46ed5de14918b5f479166dffd5abaf14fcc131be84adf7c08c48c0ce"
+    },
+    {
+      "path": "frontend/src/missionConfig.ts",
+      "sha256": "6d5b796f0d1a1739af60ec4d061591824fa1a4810a6810f0ebec94ee410556e7"
+    },
+    {
+      "path": "frontend/src/missionMock.ts",
+      "sha256": "957287453b9010db80d178a5eb9a0e3ad05d0f2e3e8d33f4f998df9bccd948a3"
+    },
+    {
+      "path": "frontend/src/operatorApiClient.test.ts",
+      "sha256": "bc74898ac102177371d6db631af6ef66b7fd6cfdaa613d7c930c3dc903c0d35f"
+    },
+    {
+      "path": "frontend/src/operatorApiClient.ts",
+      "sha256": "357dfab7ff76d1d9dc3df160d99b8a14c09e850eb2a895aa2207a9785d7f24c1"
+    },
+    {
+      "path": "frontend/src/operatorContracts.test.ts",
+      "sha256": "abc73a1c405061535bbef21489dc5aef6805e8ea3d08adc6ff10e4b5bb3af8fc"
+    },
+    {
+      "path": "frontend/src/operatorContracts.ts",
+      "sha256": "69bcc74519124ffbe2bcda9af5543dd9ca538c76aa17fdf0dfe6b092b967eb29"
+    },
+    {
+      "path": "frontend/src/realWorldSimulation.test.ts",
+      "sha256": "840dbfad8f81912e8a1a123c9f04d21dc3a65c488ad70565c3d59df1c2ef29a2"
+    },
+    {
+      "path": "frontend/src/realWorldSimulation.ts",
+      "sha256": "0db1633d3c7fc28673b50f7a66e7810332d7f0ae75b9de0b182fc4390643f034"
+    },
+    {
+      "path": "frontend/src/safetyGate.test.ts",
+      "sha256": "4bf373d315505316d72927a14785ce0f8f4830d900719393731933e867b99945"
+    },
+    {
+      "path": "frontend/src/safetyGate.ts",
+      "sha256": "8cf125704c4c3d7e8f8c4ffe7a4a3aac40d6176930d4705497ff0bb0ba3f9bb4"
+    },
+    {
+      "path": "frontend/src/scenarios/index.ts",
+      "sha256": "58738be5379ae829e3588128cd6db67e0085248e8a99ab3cb057ff73215cd099"
+    },
+    {
+      "path": "frontend/src/scenarios/scenarioReplay.test.ts",
+      "sha256": "f5873515e685ba8cb67d3558a8a0533e4aac2ac6d508302f4d52146cd1237d37"
+    },
+    {
+      "path": "frontend/src/scenarios/stage1.ts",
+      "sha256": "3a53cd8b82b9857d288a1094ade8b43ba0f62fef9dba03b7d07190cb80692bd7"
+    },
+    {
+      "path": "frontend/src/scenarios/stage2.ts",
+      "sha256": "89d912fe2b967ab302ab0d49a0d2c0cd1cd5e93b8015ad86000643896f672d2a"
+    },
+    {
+      "path": "frontend/src/scenarios/stage3.ts",
+      "sha256": "a760f65802ab221046c572db627d0a6e075636a82563dd52f019cdb769574920"
+    },
+    {
+      "path": "frontend/src/scenarios/types.ts",
+      "sha256": "001ff109b079a3e7e6e6ba8759e1afd3740230da1e1f10ab20837f12eb05699b"
+    },
+    {
+      "path": "frontend/src/styles.css",
+      "sha256": "4490ff73f481f1b4385875b1bbfb44828409ea454ab83e6de31b6a64c7f8d62b"
+    },
+    {
+      "path": "frontend/src/telemetry.ts",
+      "sha256": "f08d3d03dacbdca09b2ba58817f57b38624432076111c2184009ef21bae452b4"
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "sha256": "2a6cfd27d5d7e6677a8fb151c62e4b5b4ebcc4b2f6a947f9817a06787b885223"
+    },
+    {
+      "path": "perception/src/.gitkeep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "perception/src/aim_alignment.py",
+      "sha256": "8405aa378577536e6776881edd4984ea41af9f8639a9f592ee9939cee40a6583"
+    },
+    {
+      "path": "perception/src/camera_node.py",
+      "sha256": "b9e12fa56ee7814a64eddfbf381019a4010e8173c6a2b66ae6aa6f31349a8a2c"
+    },
+    {
+      "path": "perception/src/evaluate_dataset.py",
+      "sha256": "26649e1c47751ef9000f6233bd78f79765dcde39bad9f829dd8497c225f68701"
+    },
+    {
+      "path": "perception/src/frame_processor.py",
+      "sha256": "9bd52e9509354d840a7703d624516264a93c71c6b15e4e5aad91f310dab13953"
+    },
+    {
+      "path": "perception/src/perception_bridge.py",
+      "sha256": "7f4cb03ff8c82b0f1fdc680a3f90abd221f5a7cd7587255b27566563ea128b2c"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "4a74ccd5506b96d36eb8a5d86e9a330370a1bab0be0520f288f7e609458588e8"
+    },
+    {
+      "path": "tests/.gitkeep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/test_digital_twin.py",
+      "sha256": "1dadab1e4c2237e0d663bdb548752fe0727637c4aae7df09513a96bc66e0346f"
+    },
+    {
+      "path": "tests/test_doctor.py",
+      "sha256": "87b61052b256dd456d55869b5c333e2f154e0286ca5702c8096161df0d32370c"
+    },
+    {
+      "path": "tests/test_environment_tools.py",
+      "sha256": "0f696a6d8f5dd9429a85f1d3f2dde02a1c6c1fbbfb23a31626d34151b6362404"
+    },
+    {
+      "path": "tests/test_hardware_adapter.py",
+      "sha256": "74943134458c0ccfc787da5d39bc6238c4912a78a61622293bec8f45309b5f42"
+    },
+    {
+      "path": "tests/test_mission_core.py",
+      "sha256": "533c12a0ceaedb171cfcb9b4bd4c39287b4287942bf44d8b73778cea9928cbe1"
+    },
+    {
+      "path": "tests/test_operator_api.py",
+      "sha256": "32293c7a852fae34adc5e07c5b98937b08b95edeafaaa603a5d889b33cc30a84"
+    },
+    {
+      "path": "tests/test_perception_bridge.py",
+      "sha256": "8d6f629ad890a9e5807c57a5014710d8b36d32d3fb82555f8e06c7b80b57de71"
+    },
+    {
+      "path": "tests/test_phase10_quality_gates.py",
+      "sha256": "b6e316c1a89e0ef310d27128c16dd1ae7b522d20febd1ab3d3ac5a151f86bb84"
+    },
+    {
+      "path": "tests/test_phase11_hil_release.py",
+      "sha256": "bd943a79739539a9feacbaf0d0278fa5c1f852cacf53ce5db0d60573d64cf281"
+    },
+    {
+      "path": "tests/test_phase4_safety.py",
+      "sha256": "dc9a272c07ec1004afba192bd7515f0caac0c31e15692a6af98dd2e912cb0533"
+    },
+    {
+      "path": "tests/test_phase5_firmware.py",
+      "sha256": "26a56bebcedbb0b36d061fd096d5400098ff6a5559a10bd66f62f5cc132b9e6a"
+    },
+    {
+      "path": "tests/test_phase8_mission_flow.py",
+      "sha256": "3c17d97b5b3d03c5ab78172f998198ed7d1be1bf7c4df524da1a342454ee0991"
+    },
+    {
+      "path": "tests/test_phase9_sensor_fusion.py",
+      "sha256": "419430e012f6f3992e03dc6ced48e49f51a018ba207ddd788e342a58454f8f40"
+    },
+    {
+      "path": "tests/test_runtime_config.py",
+      "sha256": "70f122d75216278e1bdf34d73417f2f1b06cae65e3c23e0a8d60a4b3be6fdb7a"
+    },
+    {
+      "path": "tests/test_runtime_mode.py",
+      "sha256": "f1cce63b0852ef38abcafe8f9885ef59c623a0433fb84eeca698b454ff2dac8e"
+    },
+    {
+      "path": "tests/test_scenarios.py",
+      "sha256": "4f242613e1fcbee3b4ab7264d9cffd6c3a0115599ad5ffb6369d3acc16e7005d"
+    },
+    {
+      "path": "tests/test_telemetry_session.py",
+      "sha256": "2b0656699679b44de9935c572ccdbec9f91c798dcd602250055aff1429c94d07"
+    },
+    {
+      "path": "tests/test_tfa50_l.py",
+      "sha256": "2aaf09ccd869b085567e1bfc227efef41cf08178534524b805adf5db9ad5d861"
+    }
+  ],
+  "evidence": {
+    "hilSha256": "ce3ad586569c069073de63c93653d28adaa3024e717de827551b49b7aebf69ee",
+    "sensorSha256": "d09048f4edf4d927d74edbbd714f83338a916c314db6b9f6ac66db29362aeeef"
+  },
+  "gates": {
+    "hil": false,
+    "sensor": false,
+    "software": true
+  },
+  "physicalOutput": false,
+  "readyForPhysicalManufacturingClaim": false,
+  "schemaVersion": 1,
+  "version": "0.2.0-software-rc1"
+}

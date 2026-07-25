@@ -1,12 +1,13 @@
 # Raporlar
 
-Bu klasör OTR/KTR rapor materyalleri, diyagram kaynakları ve teslim hazırlık notları için kullanılır. Yarışma şartnamesi (`docs/sartname_v5.pdf` / `docs/sartname_v5.txt`) rapor içeriğinde nihai otoritedir.
+Bu klasör OTR/KTR rapor materyalleri, diyagram kaynakları ve teslim hazırlık notları için kullanılır. Yarışma şartnamesi (`docs/sartname_v1_3.pdf` / `docs/sartname_v1_3.txt`) rapor içeriğinde nihai otoritedir.
 
 ## Güncel odak
 
 - **OTR:** en fazla 10 sayfa.
 - **KTR:** en fazla 30 sayfa; yazılım mimarisi, arayüzler, güvenlik katmanı, görev akışları ve doğrulama planı açık anlatılmalı.
-- **Görev Kabiliyeti Gösterimi Videosu:** tek YouTube linki, 720p+, 2-5 dakika, şartnamedeki yetenek sırasına uygun.
+- **Sistem Kabiliyeti Videoları teslimi:** 17.08.2026 17:00.
+- **Görev Kabiliyeti Gösterimi Videosu:** tek YouTube linki, 720p+, 2-5 dakika, şartnamedeki yetenek sırasına uygun. Kanıt planı: `docs/delivery_video_plan.md`.
 
 ## KTR arayüz bölümü için kaynaklar
 

@@ -7,7 +7,7 @@ export const stage1Scenario: StageScenario = {
   durationSeconds: 92,
   defaultMode: 'manual',
   autoRunning: false,
-  sourceRefs: ['docs/sartname_v5.txt:430-436', 'docs/sartname_v5.txt:469-511'],
+  sourceRefs: ['docs/sartname_v1_3.txt:609-617', 'docs/sartname_v1_3.txt:475-480,578-585,615-617'],
   assumptions: [
     'Şartname Aşama 1 için 5 dakika verir; hands-off prova, operatör eğitiminde hızlı izlenebilmesi için 92 saniyelik hızlandırılmış koşudur.',
     'Hedefler şartnamedeki yaklaşık 5/10/15 m durağan hedef kuralına göre sabit tutulur.',

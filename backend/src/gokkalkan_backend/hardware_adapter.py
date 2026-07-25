@@ -24,6 +24,34 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Callable
 
+from .can_protocol import (
+    CAN_ID_ACK_V1,
+    CAN_ID_ENCODER_V1,
+    CAN_ID_ESTOP_V1,
+    CAN_ID_FAULT_V1,
+    CAN_ID_FIRMWARE_V1,
+    CAN_ID_STATUS_V1,
+    SequenceGuard,
+    unpack_ack as unpack_ack_v1,
+    unpack_encoder as unpack_encoder_v1,
+    unpack_firmware as unpack_firmware_v1,
+    unpack_estop as unpack_estop_v1,
+    unpack_fault as unpack_fault_v1,
+    unpack_status as unpack_status_v1,
+    command_tag,
+    pack_command_meta,
+    pack_fire as pack_fire_v1,
+    pack_pantilt as pack_pantilt_v1,
+    pack_system as pack_system_v1,
+    KIND_FIRE,
+    KIND_PANTILT,
+    KIND_SYSTEM,
+    CAN_ID_COMMAND_META,
+    CAN_ID_FIRE_CMD_V1,
+    CAN_ID_PANTILT_CMD_V1,
+    CAN_ID_SYS_CMD_V1,
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -178,7 +206,7 @@ def unpack_status(data: bytes) -> dict[str, Any] | None:
         dict with panDeg, tiltDeg, estopActive, motionOk, fireReady, errorCode
         None if malformed
     """
-    if len(data) < 7:
+    if len(data) != 8 or data[7] != _xor8(data[:7]):
         return None
     try:
         pan_c, tilt_c, flags, error_code = struct.unpack(">hhBB", data[:6])
@@ -234,18 +262,26 @@ class HardwareAdapterBase(ABC):
 class CanMcuAdapter(HardwareAdapterBase):
     """CAN bus üzerinden Pico RP2040 MCU'ya bağlanan gerçek donanım adaptörü.
 
-    Kullanım — RPi5 üzerinde gerçek donanım (socketcan):
-        adapter = CanMcuAdapter(channel="can0", bustype="socketcan")
-        adapter.start()
-        # ... servis ömrü ...
-        adapter.close()
+    Gerçek donanım adaptörü doğrudan oluşturulmamalıdır. LIVE yapılandırması,
+    fiziksel interlock ve readiness kontrolü için ``runtime_mode`` factory'si
+    kullanılmalıdır.
 
     Kullanım — geliştirme makinesi, sanal CAN (setup_virtual_can.sh sonrası):
-        adapter = CanMcuAdapter(channel="vcan0", bustype="socketcan")
+        adapter = CanMcuAdapter(
+            channel="vcan0",
+            bustype="socketcan",
+            dry_run=False,
+            physical_output_capable=False,
+        )
         adapter.start()
 
     Kullanım — macOS / python-can virtual (OS kurulum gerektirmez):
-        adapter = CanMcuAdapter(channel="test", bustype="virtual")
+        adapter = CanMcuAdapter(
+            channel="test",
+            bustype="virtual",
+            dry_run=False,
+            physical_output_capable=False,
+        )
         adapter.start()
 
     python-can kurulu değilse: uyarı loglanır, mock modda çalışmaya devam eder.
@@ -256,14 +292,18 @@ class CanMcuAdapter(HardwareAdapterBase):
         channel: str = "vcan0",
         bustype: str = "socketcan",
         bitrate: int = 500_000,
+        heartbeat_timeout_sec: float = HEALTH_TIMEOUT_SEC,
         estop_callback: EStopCallback | None = None,
-        dry_run: bool = False,
+        dry_run: bool = True,
+        physical_output_capable: bool = False,
     ) -> None:
         self.channel   = channel
         self.bustype   = bustype
         self.bitrate   = bitrate
+        self._heartbeat_timeout_sec = heartbeat_timeout_sec
         self._estop_cb = estop_callback
         self._dry_run  = dry_run
+        self._physical_output_capable = physical_output_capable
 
         self._bus: Any          = None
         self._lock              = threading.Lock()
@@ -278,7 +318,22 @@ class CanMcuAdapter(HardwareAdapterBase):
             "estopActive": False, "motionOk": True,
             "fireReady": False, "errorCode": 0,
             "receivedAt": None,
+            "firmwareVersion": None,
+            "protocolVersion": 0,
+            "encoderOk": False,
         }
+        self._rx_guards = {
+            CAN_ID_STATUS_V1: SequenceGuard(),
+            CAN_ID_FIRMWARE_V1: SequenceGuard(),
+            CAN_ID_ENCODER_V1: SequenceGuard(),
+            CAN_ID_ESTOP_V1: SequenceGuard(),
+            CAN_ID_FAULT_V1: SequenceGuard(),
+            CAN_ID_ACK_V1: SequenceGuard(),
+        }
+        self._last_ack: dict[str, Any] | None = None
+        self._rejected_rx_count = 0
+        self._tx_sequence = 0
+        self._ack_event = threading.Event()
 
         self._can_available = self._probe_can_import()
 
@@ -314,6 +369,15 @@ class CanMcuAdapter(HardwareAdapterBase):
             "CanMcuAdapter: başlatıldı — kanal=%s bustype=%s bitrate=%d",
             self.channel, self.bustype, self.bitrate,
         )
+
+    def set_estop_callback(self, callback: EStopCallback) -> None:
+        """Bind CAN E-Stop notifications to the Mission Core queue bridge."""
+
+        self._estop_cb = callback
+        with self._lock:
+            active = bool(self._status.get("estopActive", False))
+        if active:
+            callback(True)
 
     def _open_bus(self) -> None:
         try:
@@ -369,11 +433,17 @@ class CanMcuAdapter(HardwareAdapterBase):
         data   = bytes(msg.data)
 
         if arb_id == CAN_ID_STATUS:
-            parsed = unpack_status(data)
+            parsed_v1 = unpack_status_v1(data)
+            parsed = parsed_v1 or unpack_status(data)
             if parsed:
+                sequence = parsed.get("sequence") if parsed_v1 else None
+                if sequence is not None and not self._rx_guards[CAN_ID_STATUS_V1].accept(int(sequence)):
+                    self._rejected_rx_count += 1
+                    return
+                parsed["receivedAt"] = _utc_now()
                 with self._lock:
                     prev_estop = self._status.get("estopActive", False)
-                    self._status = parsed
+                    self._status.update(parsed)
                     if parsed["estopActive"] != prev_estop and self._estop_cb:
                         # E-stop durum değişikliği — callback'i kilitsiz çağır
                         threading.Thread(
@@ -381,10 +451,57 @@ class CanMcuAdapter(HardwareAdapterBase):
                             args=(parsed["estopActive"],),
                             daemon=True,
                         ).start()
+            else:
+                self._rejected_rx_count += 1
+
+        elif arb_id == CAN_ID_FIRMWARE_V1:
+            parsed = unpack_firmware_v1(data)
+            if parsed and self._rx_guards[CAN_ID_FIRMWARE_V1].accept(int(parsed["sequence"])):
+                with self._lock:
+                    self._status.update(parsed)
+                    self._status["receivedAt"] = _utc_now()
+            else:
+                self._rejected_rx_count += 1
+
+        elif arb_id == CAN_ID_ENCODER_V1:
+            parsed = unpack_encoder_v1(data)
+            if parsed and self._rx_guards[CAN_ID_ENCODER_V1].accept(int(parsed["sequence"])):
+                encoder_ok = bool(
+                    parsed["connected"]
+                    and parsed["directionOk"]
+                    and parsed["zeroReferenced"]
+                    and not parsed["overflow"]
+                    and not parsed["deviationFault"]
+                )
+                with self._lock:
+                    self._status.update(parsed)
+                    self._status["encoderOk"] = encoder_ok
+                    self._status["receivedAt"] = _utc_now()
+            else:
+                self._rejected_rx_count += 1
+
+        elif arb_id == CAN_ID_ACK_V1:
+            parsed = unpack_ack_v1(data)
+            if parsed and self._rx_guards[CAN_ID_ACK_V1].accept(int(parsed["sequence"])):
+                with self._lock:
+                    self._last_ack = parsed
+                self._ack_event.set()
+            else:
+                self._rejected_rx_count += 1
 
         elif arb_id == CAN_ID_ESTOP_EVENT:
-            if data:
+            parsed = unpack_estop_v1(data)
+            if parsed:
+                if not self._rx_guards[CAN_ID_ESTOP_V1].accept(int(parsed["sequence"])):
+                    self._rejected_rx_count += 1
+                    return
+                active = bool(parsed["active"])
+            elif len(data) == 1:
                 active = bool(data[0])
+            else:
+                self._rejected_rx_count += 1
+                return
+            if data:
                 with self._lock:
                     self._status["estopActive"] = active
                 if self._estop_cb:
@@ -395,6 +512,17 @@ class CanMcuAdapter(HardwareAdapterBase):
                     "CAN E-Stop acil olayı alındı: aktif=%s", active
                 )
 
+        elif arb_id == CAN_ID_FAULT_V1:
+            parsed = unpack_fault_v1(data)
+            if parsed and self._rx_guards[CAN_ID_FAULT_V1].accept(int(parsed["sequence"])):
+                with self._lock:
+                    self._status["faultCode"] = parsed["fault"]
+                    self._status["faultDetail"] = parsed["detail"]
+                    self._status["motionOk"] = False
+                    self._status["fireReady"] = False
+            else:
+                self._rejected_rx_count += 1
+
     # ------------------------------------------------------------------
     # TX — CAN Mesajı Gönder
     # ------------------------------------------------------------------
@@ -403,6 +531,14 @@ class CanMcuAdapter(HardwareAdapterBase):
         """Tek bir CAN çerçevesi gönderir. Başarısızsa False döner."""
         if self._dry_run or not self._can_available:
             return True   # mock modda başarılı say
+        virtual_channel = self.bustype == "virtual" or self.channel.startswith("vcan")
+        if not self._physical_output_capable and not virtual_channel:
+            logger.error(
+                "Yetkisiz fiziksel CAN çıkışı engellendi (channel=%s, id=0x%03X).",
+                self.channel,
+                can_id,
+            )
+            return False
         if self._bus is None:
             logger.error("CAN bus bağlı değil; mesaj gönderilemedi (id=0x%03X).", can_id)
             return False
@@ -426,6 +562,11 @@ class CanMcuAdapter(HardwareAdapterBase):
         payload = command.get("payload", {})
         ok      = False
         detail: dict[str, Any] = {}
+
+        command_id = str(command.get("commandId", f"CAN-{self._command_count + 1:05d}"))
+        virtual_channel = self.bustype == "virtual" or self.channel.startswith("vcan")
+        if not self._dry_run and (self._physical_output_capable or virtual_channel):
+            return self._execute_v1(command_id, kind, payload, command)
 
         if kind == "ManualAimCommand":
             pan_delta_deg  = float(payload.get("panDeltaDeg",  0.0))
@@ -465,10 +606,17 @@ class CanMcuAdapter(HardwareAdapterBase):
             logger.warning("CanMcuAdapter: tanınmayan komut türü '%s'.", kind)
 
         self._command_count += 1
-        physical_out = ok and not self._dry_run and self._bus is not None
+        physical_out = (
+            ok
+            and not self._dry_run
+            and self._physical_output_capable
+            and self._bus is not None
+        )
 
-        if ok and self._bus is not None and not self._dry_run:
+        if ok and physical_out:
             msg = "CAN komutu Pico MCU'ya iletildi."
+        elif ok and self._bus is not None and not self._dry_run:
+            msg = "CAN komutu HIL/sanal CAN hattına iletildi; fiziksel çıkış yetkisi yok."
         elif ok:
             msg = "Mock/dry-run modda kaydedildi; fiziksel CAN çıkışı yok."
         else:
@@ -492,6 +640,82 @@ class CanMcuAdapter(HardwareAdapterBase):
                 self._commands.pop(0)
         return result
 
+    def _execute_v1(
+        self,
+        command_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        command: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Send one correlated v1 transaction and require a bounded ACK."""
+
+        self._tx_sequence = (self._tx_sequence + 1) & 0xFF
+        sequence = self._tx_sequence
+        if kind == "ManualAimCommand":
+            with self._lock:
+                pan = float(self._status.get("panDeg", 0.0)) + float(payload.get("panDeltaDeg", 0.0))
+                tilt = float(self._status.get("tiltDeg", 0.0)) + float(payload.get("tiltDeltaDeg", 0.0))
+            kind_code, can_id = KIND_PANTILT, CAN_ID_PANTILT_CMD_V1
+            frame = pack_pantilt_v1(sequence, int(pan * 100), int(tilt * 100))
+            flags = 1 if payload.get("deadmanActive") else 0
+        elif kind == "FireIntent":
+            kind_code, can_id = KIND_FIRE, CAN_ID_FIRE_CMD_V1
+            frame = pack_fire_v1(sequence, True, int(payload.get("stage", 1)))
+            flags = 0
+        elif kind == "SysCmd":
+            kind_code, can_id = KIND_SYSTEM, CAN_ID_SYS_CMD_V1
+            frame = pack_system_v1(sequence, 1 if payload.get("arm") else 0)
+            flags = 0
+        else:
+            return self._v1_result(command_id, kind, False, sequence, "NACK_COMMAND")
+
+        self._ack_event.clear()
+        with self._lock:
+            self._last_ack = None
+        sent = self._send_can(
+            CAN_ID_COMMAND_META,
+            pack_command_meta(sequence, command_id, kind_code, flags),
+        ) and self._send_can(can_id, frame)
+        acknowledged = sent and self._ack_event.wait(timeout=0.25)
+        with self._lock:
+            ack = dict(self._last_ack) if self._last_ack else None
+        accepted = bool(
+            acknowledged
+            and ack
+            and ack.get("sequence") == sequence
+            and ack.get("commandTag") == command_tag(command_id)
+            and ack.get("result") == "ACK"
+        )
+        result = self._v1_result(
+            command_id,
+            kind,
+            accepted,
+            sequence,
+            str(ack.get("result") if ack else "ACK_TIMEOUT"),
+        )
+        with self._lock:
+            self._commands.append({"command": command, "result": result})
+        self._command_count += 1
+        return result
+
+    def _v1_result(
+        self, command_id: str, kind: str, accepted: bool, sequence: int, result_code: str
+    ) -> dict[str, Any]:
+        return {
+            "adapter": "can_mcu_adapter",
+            "protocolVersion": 1,
+            "commandId": command_id,
+            "sequence": sequence,
+            "kind": kind,
+            "accepted": accepted,
+            "completed": accepted,
+            "physicalOutput": accepted and self._physical_output_capable and self._bus is not None,
+            "dryRun": not (accepted and self._physical_output_capable and self._bus is not None),
+            "resultCode": result_code,
+            "message": "Pico ACK doğrulandı." if accepted else "Komut fail-closed reddedildi.",
+            "createdAt": _utc_now(),
+        }
+
     # ------------------------------------------------------------------
     # health_check()
     # ------------------------------------------------------------------
@@ -513,7 +737,7 @@ class CanMcuAdapter(HardwareAdapterBase):
         pico_reachable = (
             self._bus is not None
             and age_sec is not None
-            and age_sec < HEALTH_TIMEOUT_SEC
+            and age_sec < self._heartbeat_timeout_sec
         )
         return {
             "adapter":             "can_mcu_adapter",
@@ -525,7 +749,16 @@ class CanMcuAdapter(HardwareAdapterBase):
             "lastStatusAgeSec":    age_sec,
             "mcuStatus":           status,
             "commandCount":        self._command_count,
-            "physicalOutputEnabled": not self._dry_run and self._bus is not None,
+            "protocolVersion":     status.get("protocolVersion", 0),
+            "firmwareVersion":     status.get("firmwareVersion"),
+            "encoderOk":           bool(status.get("encoderOk", False)),
+            "lastAck":             self._last_ack,
+            "rejectedRxCount":     self._rejected_rx_count,
+            "physicalOutputEnabled": (
+                not self._dry_run
+                and self._physical_output_capable
+                and self._bus is not None
+            ),
         }
 
     @property

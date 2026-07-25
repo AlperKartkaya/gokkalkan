@@ -39,10 +39,12 @@ export interface OperatorTelemetryEvent {
 export interface OperatorApiSnapshot {
   app: string;
   version: number;
+  snapshotVersion?: number;
   mode: Mode;
   stage: Stage;
   round: number;
   dryRun: boolean;
+  runtimeMode?: 'SIM' | 'HIL' | 'LIVE';
   liveArmEnabled: boolean;
   tracks: OperatorTrackState[];
   sensorFrames?: OperatorSensorFrame[];
@@ -59,6 +61,35 @@ export interface OperatorApiSnapshot {
   missionRemainingSeconds?: number;
   missionTimeLimitSec?: number;
   missionTimerRunning?: boolean;
+  missionTimeExpired?: boolean;
+  missionCore?: {
+    schemaVersion: number;
+    runId: string;
+    version: number;
+    lastEventSequence: number;
+    lifecycle: string;
+    perceptionHealthy: boolean;
+    faults: string[];
+    updatedAtUtc: string;
+    updatedAtMonotonicNs: number;
+  };
+  missionFlow?: {
+    schemaVersion: number;
+    status: 'IDLE' | 'ACTIVE' | 'PAUSED' | 'MAINTENANCE' | 'ESTOP_LATCHED' | 'ROUND_COMPLETE';
+    stage: Stage;
+    round: number;
+    selectedTargetId: string | null;
+    targetOrder: string[];
+    completedTargetIds: string[];
+    completedTargetCount: number;
+    eligibleTargetCount: number;
+    progressPercent: number;
+    roundComplete: boolean;
+    nextRound: number;
+    previousStatus: string | null;
+    lastTransitionReason: string;
+    transitionSequence: number;
+  };
 }
 
 export interface HardwareResult {
@@ -149,8 +180,20 @@ export interface OperatorApiCommandResponse {
   state: OperatorApiSnapshot;
 }
 
+export interface OperatorStateCommandResponse {
+  accepted: boolean;
+  state: OperatorApiSnapshot;
+  physicalOutput: boolean;
+  reason?: string;
+}
+
 export function normalizeOperatorApiBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
+}
+
+export function operatorStateStreamUrl(baseUrl: string, afterVersion = 0): string {
+  const after = Math.max(0, Math.trunc(afterVersion));
+  return `${normalizeOperatorApiBaseUrl(baseUrl)}/state/stream?after=${after}`;
 }
 
 export async function fetchOperatorSnapshot(baseUrl: string): Promise<OperatorApiSnapshot> {
@@ -196,9 +239,11 @@ export async function resetOperatorTelemetry(baseUrl: string): Promise<OperatorT
 // ── Adım 3: Eksik endpoint'ler ──────────────────────────────────────────────
 
 export interface OperatorEStopResponse {
-  ok: boolean;
-  estop: boolean;
+  accepted: boolean;
+  ok?: boolean;
+  estop?: boolean;
   safety: import('./operatorContracts').OperatorSafetyState;
+  state: OperatorApiSnapshot;
 }
 
 export interface HardwareHealthResponse {
@@ -249,13 +294,27 @@ export async function sendTracksUpdate(baseUrl: string, payload: TracksUpdatePay
 }
 
 /** POST /maintenance — Şartname v1.3: bakım modu başlat (bütçe kontrolü backend tarafında). */
-export async function sendMaintenanceRequest(baseUrl: string): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance`, {});
+export async function sendMaintenanceRequest(baseUrl: string): Promise<OperatorStateCommandResponse> {
+  return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance`, {});
 }
 
-/** POST /maintenance/end — Bakım süresini sonlandır; safe moda dön. */
-export async function sendMaintenanceEnd(baseUrl: string): Promise<Record<string, unknown>> {
-  return requestJson<Record<string, unknown>>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance/end`, {});
+/** POST /maintenance/end — Bakımı bitir; görev PAUSED kalır ve açık resume ister. */
+export async function sendMaintenanceEnd(baseUrl: string): Promise<OperatorStateCommandResponse> {
+  return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance/end`, {});
+}
+
+/** Controlled soft stop; does not replace or clear the physical E-Stop. */
+export async function sendMissionStop(baseUrl: string): Promise<OperatorStateCommandResponse> {
+  return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/mission/stop`, {
+    reason: 'operator-panel',
+  });
+}
+
+/** Resume only a backend PAUSED state; E-Stop remains independently latched. */
+export async function sendMissionResume(baseUrl: string): Promise<OperatorStateCommandResponse> {
+  return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/mission/resume`, {
+    reason: 'operator-panel',
+  });
 }
 
 async function requestJson<T>(url: string, body?: unknown): Promise<T> {

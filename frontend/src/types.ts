@@ -19,7 +19,8 @@ export type BlockReason =
   | 'BLOCKED_FIRE_ZONE'
   | 'BLOCKED_TARGET_GATE'
   | 'BLOCKED_MODE'
-  | 'BLOCKED_CONNECTION';
+  | 'BLOCKED_CONNECTION'
+  | 'BLOCKED_ZONE_CONFIG';
 
 export type CommandIntent = 'move' | 'fire' | 'autonomous_move' | 'autonomous_engage';
 

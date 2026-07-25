@@ -1,0 +1,333 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import sys
+
+import pytest
+
+sys.path.insert(0, str(Path("perception/src").resolve()))
+
+from aim_alignment import AimCalibration, calibrated_aim_error
+from camera_node import CameraNode
+from evaluate_dataset import evaluate_records
+from frame_processor import CentroidTracker
+from gokkalkan_backend.lidar_adapter import TFA50LSerialAdapter, TFA50LSerialConfig
+from gokkalkan_backend.calibration_workflow import evaluate_lidar_observations
+from gokkalkan_backend.range_fusion import (
+    FusedRangeDecision,
+    LidarCalibration,
+    TimedRange,
+    TrackBearing,
+    YawRangeAssociator,
+    world_track_bearing,
+)
+from gokkalkan_backend.operator_api import OperatorService
+from gokkalkan_backend.mission_core import MissionCore
+from gokkalkan_backend.sensor_pipeline import TFA50LFusionPipeline
+
+pytestmark = [pytest.mark.safety, pytest.mark.replay]
+
+
+def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy() -> None:
+    camera = CameraNode(width=8, height=8, fps=100, backend="mock")
+    camera.start()
+    try:
+        for _ in range(100):
+            sample = camera.get_latest_sample()
+            if sample is not None:
+                break
+            import time
+
+            time.sleep(0.001)
+        assert sample is not None
+        assert sample.camera_timestamp_ns > 0
+        assert sample.receive_monotonic_ns > 0
+        health = camera.health()
+        assert health["status"] == "SIMULATED"
+        assert health["healthy"] is False
+        assert health["simulated"] is True
+    finally:
+        camera.stop()
+
+
+def valid_calibration(*, mount_revision: str = "BRIDGE-R1") -> LidarCalibration:
+    return LidarCalibration(
+        calibration_id="CAL-001",
+        calibrated_at="2026-07-25T12:00:00Z",
+        operator="test-operator",
+        mount_height_m=1.1,
+        yaw_offset_deg=0.5,
+        pitch_offset_deg=0.0,
+        vertical_band_min_m=0.8,
+        vertical_band_max_m=1.4,
+        mount_revision=mount_revision,
+        verified_ranges_m=(5.0, 10.0, 15.0),
+    )
+
+
+def test_yaw_range_fusion_requires_calibration_alignment_freshness_and_stability() -> None:
+    associator = YawRangeAssociator(
+        valid_calibration(), current_mount_revision="BRIDGE-R1", required_consecutive=3
+    )
+    track = TrackBearing("TRACK-1", 10.5, 1_000_000_000)
+    decisions = [
+        associator.associate(
+            TimedRange(value, 1_000_000_000 + index * 20_000_000, "5C", True, "VALID"),
+            TrackBearing(track.track_id, track.bearing_deg, 1_000_000_000 + index * 20_000_000),
+            turret_yaw_deg=10.0,
+            now_monotonic_ns=1_000_000_000 + index * 20_000_000,
+        )
+        for index, value in enumerate((10.0, 10.05, 10.0))
+    ]
+    assert [item.reason for item in decisions[:2]] == [
+        "RANGE_NOT_STABLE",
+        "RANGE_NOT_STABLE",
+    ]
+    assert decisions[-1].accepted is True
+    assert decisions[-1].source == "fused:tfa50-l+camera+yaw"
+    assert decisions[-1].distance_m == 10.0
+
+
+def test_camera_relative_bearing_is_converted_to_encoder_world_frame() -> None:
+    assert world_track_bearing(
+        turret_yaw_deg=10.0,
+        image_bearing_deg=0.25,
+        camera_yaw_offset_deg=0.25,
+    ) == 10.5
+
+
+def test_mount_change_and_bad_range_fail_closed() -> None:
+    associator = YawRangeAssociator(
+        valid_calibration(), current_mount_revision="BRIDGE-R2"
+    )
+    decision = associator.associate(
+        TimedRange(None, 1, "5C FF FF 01", False, "NO_DETECTION"),
+        TrackBearing("T", 0.0, 1),
+        turret_yaw_deg=0.0,
+        now_monotonic_ns=1,
+    )
+    assert not decision.accepted
+    assert decision.reason == "CALIBRATION_INVALID_OR_MOUNT_CHANGED"
+
+
+class FakeSerial:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self.chunks = chunks
+        self.closed = False
+        self.writes: list[bytes] = []
+
+    def read(self, _size: int = 64) -> bytes:
+        if not self.chunks:
+            raise OSError("disconnected")
+        return self.chunks.pop(0)
+
+    def close(self) -> None:
+        self.closed = True
+
+    def write(self, data: bytes) -> int:
+        self.writes.append(data)
+        return len(data)
+
+
+def test_uart_adapter_records_valid_invalid_disconnect_and_health() -> None:
+    now = [1_000_000_000]
+    serial = FakeSerial([bytes.fromhex("5C 02 11 00 5C 0A 00 F5")])
+    telemetry: list[tuple[str, dict[str, object]]] = []
+    adapter = TFA50LSerialAdapter(
+        TFA50LSerialConfig(
+            "/dev/fake", 115200, 100, stale_ms=100, initialize_device=False
+        ),
+        serial_factory=lambda **_kwargs: serial,
+        telemetry=lambda kind, payload: telemetry.append((kind, payload)),
+        monotonic_ns=lambda: now[0],
+    )
+
+    events = adapter.poll()
+
+    assert [event.reason for event in events] == [
+        "CHECKSUM_OR_FRAME_INVALID",
+        "VALID",
+    ]
+    assert events[-1].distance_m == 0.1
+    assert adapter.health()["healthy"] is True
+    now[0] += 200_000_000
+    assert adapter.health()["stale"] is True
+    assert adapter.poll() == []
+    assert serial.closed is True
+    assert adapter.health()["connected"] is False
+    assert any(kind == "lidar_disconnected" for kind, _ in telemetry)
+
+
+def test_uart_adapter_reads_identity_sets_frequency_and_restores_ranging() -> None:
+    serial = FakeSerial(
+        [
+            bytes.fromhex("5A 8A 02 00 00 73"),
+            bytes.fromhex("5A 8D 02 10 01 5F"),
+            bytes.fromhex("5A 96 02 03 02 62"),
+            bytes.fromhex("5A 8B 02 E7 03 78"),
+            bytes.fromhex("5C 0A 00 F5"),
+        ]
+    )
+    adapter = TFA50LSerialAdapter(
+        TFA50LSerialConfig("/dev/fake", 460800, 1000, stale_ms=100),
+        serial_factory=lambda **_kwargs: serial,
+        monotonic_ns=lambda: 1_000_000_000,
+    )
+    assert adapter.poll()[-1].distance_m == 0.1
+    manifest = adapter.manifest()
+    assert manifest["serialNumber"] == "S00272"
+    assert manifest["firmwareVersion"] == "V2.3"
+    assert serial.writes[0] == bytes.fromhex("5A 0A 02 00 00 F3")
+    assert serial.writes[-1] == bytes.fromhex("5A 0A 02 02 00 F1")
+
+
+def test_tracker_ids_and_motion_are_deterministic_across_replay() -> None:
+    detections = [(10.0, 10.0, 4.0, 4.0, 16.0, "red")]
+    results = []
+    for _ in range(2):
+        tracker = CentroidTracker(max_disappeared=1)
+        first = tracker.update(detections, timestamp_ns=1_000_000_000)
+        second = tracker.update(
+            [(20.0, 10.0, 4.0, 4.0, 16.0, "red")],
+            timestamp_ns=2_000_000_000,
+        )
+        results.append((list(first), second["PERC-000001"]["velocity_x_px_s"]))
+    assert results == [(["PERC-000001"], 10.0), (["PERC-000001"], 10.0)]
+
+
+@dataclass
+class AimTrack:
+    cx: float
+    cy: float
+    receive_monotonic_ns: int
+
+
+def test_aim_alignment_is_calibrated_and_rejects_stale_track() -> None:
+    calibration = AimCalibration("AIM-CAL-1", 640, 360, 0.05, 0.04)
+    fresh = calibrated_aim_error(
+        AimTrack(650, 350, 1_000_000_000),
+        calibration,
+        now_monotonic_ns=1_100_000_000,
+    )
+    stale = calibrated_aim_error(
+        AimTrack(650, 350, 1),
+        calibration,
+        now_monotonic_ns=1_000_000_000,
+    )
+    assert fresh["valid"] is True
+    assert fresh["yawErrorDeg"] == 0.5
+    assert fresh["pitchErrorDeg"] == 0.4
+    assert stale["reason"] == "TRACK_STALE"
+
+
+def test_dataset_report_exposes_confusion_precision_recall_latency_and_fps() -> None:
+    report = evaluate_records(
+        [
+            {"expected": "red", "predicted": "red", "latencyMs": 10, "elapsedSec": 0.02},
+            {"expected": "blue", "predicted": "red", "latencyMs": 20, "elapsedSec": 0.03},
+        ]
+    )
+    assert report["confusionMatrix"]["blue"]["red"] == 1
+    assert report["perClass"]["red"]["precision"] == 0.5
+    assert report["perClass"]["blue"]["recall"] == 0.0
+    assert report["meanLatencyMs"] == 15.0
+    assert report["fps"] == 40.0
+
+
+def test_mission_core_only_applies_accepted_fused_range() -> None:
+    service = OperatorService()
+    track_id = service.snapshot()["tracks"][0]["trackId"]
+    accepted = FusedRangeDecision(
+        True, "FUSED_STABLE_RANGE", track_id, 10.0, "fused:tfa50-l+camera+yaw", "hash", 3
+    )
+    rejected = FusedRangeDecision(
+        False, "LIDAR_STALE", track_id, None, "tfa50-l", "hash", 0
+    )
+    assert service.apply_fused_range(accepted)["ok"] is True
+    fused = next(track for track in service.snapshot()["tracks"] if track["trackId"] == track_id)
+    assert fused["rangeM"] == 10.0
+    assert fused["source"] == "fused"
+    assert service.apply_fused_range(rejected)["ok"] is False
+    assert service.lidar_ok is False
+    assert service.sensor_adapter_connected is False
+
+
+def test_fused_range_command_requires_trusted_sensor_source() -> None:
+    service = OperatorService()
+    core = MissionCore(service)
+    core.start()
+    try:
+        track_id = core.snapshot()["tracks"][0]["trackId"]
+        payload = {
+            "accepted": True,
+            "reason": "FUSED_STABLE_RANGE",
+            "trackId": track_id,
+            "rangeM": 10.0,
+            "source": "fused:tfa50-l+camera+yaw",
+            "calibrationHash": "hash",
+            "sampleCount": 3,
+        }
+        rejected = core.submit("FusedRangeUpdate", payload, source="operator-http")
+        accepted = core.submit("FusedRangeUpdate", payload, source="sensor-tfa50-l")
+        assert rejected["accepted"] is False
+        assert rejected["error"] == "UNSUPPORTED_COMMAND"
+        assert accepted["accepted"] is True
+        assert accepted["domain"]["source"] == "fused:tfa50-l+camera+yaw"
+    finally:
+        core.stop()
+
+
+def test_calibration_report_requires_real_evidence_and_all_ranges_yaws() -> None:
+    observations = [
+        {
+            "expectedRangeM": expected,
+            "measuredRangeM": expected,
+            "yawPosition": yaw,
+        }
+        for expected in (5.0, 10.0, 15.0)
+        for yaw in ("left", "center", "right", "center", "center")
+    ]
+    simulated = evaluate_lidar_observations(
+        observations,
+        evidence_class="SOFTWARE_FIXTURE",
+        mount_revision="BRIDGE-R1",
+        calibration_id="CAL-1",
+    )
+    physical = evaluate_lidar_observations(
+        observations,
+        evidence_class="PHYSICAL_TFA50_L",
+        mount_revision="BRIDGE-R1",
+        calibration_id="CAL-1",
+    )
+    assert simulated["physicalGatePassed"] is False
+    assert physical["physicalGatePassed"] is True
+
+
+def test_sensor_pipeline_forwards_each_decision_to_mission_callback() -> None:
+    class Adapter:
+        def poll(self) -> list[TimedRange]:
+            return [
+                TimedRange(10.0, 1_000_000_000 + index * 20_000_000, "5C", True, "VALID")
+                for index in range(3)
+            ]
+
+    decisions: list[FusedRangeDecision] = []
+    associator = YawRangeAssociator(
+        valid_calibration(), current_mount_revision="BRIDGE-R1", required_consecutive=3
+    )
+    clock_values = iter((1_000_000_000, 1_020_000_000, 1_040_000_000))
+    pipeline = TFA50LFusionPipeline(
+        Adapter(),  # type: ignore[arg-type]
+        associator,
+        selected_track=lambda: TrackBearing(
+            "TRACK-1",
+            10.5,
+            1_000_000_000 + len(decisions) * 20_000_000,
+        ),
+        turret_yaw_deg=lambda: 10.0,
+        on_decision=decisions.append,
+        monotonic_ns=lambda: next(clock_values),
+    )
+    assert pipeline.tick()[-1].accepted is True
+    assert len(decisions) == 3

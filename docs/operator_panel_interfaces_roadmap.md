@@ -75,8 +75,8 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
    - sıradaki kritik radar/LiDAR, perception, MCU ve arming adımları.
    - Bu gösterge resmi yarışma uygunluk skoru değildir; yalnız uygulanmış yazılım arayüzlerinin durumunu dürüstçe gösterir.
 7. **Kayıt / Replay çekmecesi**
-   - JSONL telemetri yolu ve kayıt sayısı,
-   - `/telemetry/export` kanıt paketi,
+   - SQLite WAL session, segmentli JSONL export yolu ve kayıt sayısı,
+   - `/telemetry/export` görünümü ile `gokkalkan evidence` hash’li kanıt paketi,
    - replay-only olay/komut/hardware sonucu özeti,
    - fiziksel çıkış üretmediğini gösteren açık durum.
 
@@ -157,9 +157,10 @@ Kesin elektronik değerler tasarım netleşince doldurulmalıdır. KTR’de yanl
 Bu geçişte backend tarafında bağımlılıksız Python iskeleti başlatılmıştır:
 
 ```bash
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml
 # KTR/debug kanıtını belirli dosyaya yazmak için:
-PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --host 127.0.0.1 --port 8088 --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
+.venv/bin/gokkalkan operator-api --config config/runtime/sim.toml \
+  --telemetry-jsonl telemetry_data/operator-api-dry-run.jsonl
 ```
 
 Uygulanan endpoint’ler:
@@ -179,7 +180,7 @@ Uygulanan endpoint’ler:
 | `POST /fire-intent` | UI → Backend | `FireIntent` gönderir | safe mod, dost hedef, menzil dışı veya live arming yoksa Hardware Adapter çağrılmaz |
 | `POST /telemetry/reset` | UI/Debug → Backend | dry-run state ve JSONL kanıtını sıfırlar | safe moda döner; fiziksel çıkış üretmez |
 
-İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Sistem Durumu` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi yarışma uygunluk skoru değildir. Kapalı gelen `Kayıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. Bu, gerçek MCU/radar/LiDAR protokolü seçilene kadar KTR’de “uygulanmış yazılımsal arayüz iskeleti” olarak anlatılabilir; kesin elektronik değer yerine `TBD` korunmalıdır.
+İlk `Hardware Adapter`, `hardware_mock.dry_run` olarak davranır. Komut kabul edilse bile sonuçta `physicalOutput=false` ve “fiziksel çıkış üretilmedi” mesajı bulunur. Komut sonuçları, olaylar ve dry-run hardware sonuçları git’e eklenmeyen `telemetry_data/operator-api-dry-run.jsonl` dosyasına JSONL olarak yazılır; `GOKKALKAN_TELEMETRY_JSONL` veya `--telemetry-jsonl` ile farklı yol seçilebilir. Operatör panelindeki `Sistem Durumu` kartı `/readiness` endpoint’inden hangi arayüzlerin hazır/kısmi/TBD/kilitli olduğunu gösterir; bu yüzde resmi yarışma uygunluk skoru değildir. Kapalı gelen `Kayıt / Replay` çekmecesi export/replay endpoint’lerini okuyup KTR/debug kanıtını görselleştirir; replay akışı hardware adapter çağırmaz. MCU hattı ADR-002 ile klasik CAN olarak, menzil sensörü ADR-003 ile TFA50-L olarak seçilmiştir; gerçek firmware, serial adapter ve kalibrasyon tamamlanana kadar canlı arming kilitli kalır.
 
 ## 5.2. Uygulanan dry-run operatör paneli yüzeyi
 
@@ -198,7 +199,7 @@ Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen 
 
 Backend tarafında `ManualAimCommand` artık manuel mod + deadman yanında sayı/bounds doğrulamasından geçer. Bu bounds yazılım guardrail’idir; gerçek servo limitleri ve hızları mekanik/elektronik ekip kararından sonra güncellenecektir.
 
-`SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Public radar/LiDAR veri kaynakları offline test için değerlendirilebilir; örneğin Oxford Radar RobotCar Dataset Navtech FMCW radar ve Velodyne LiDAR verisi sağlar, nuScenes ise kamera/radar/LiDAR sensör süitiyle örneklenebilir. Bu repo şu an büyük dış dataset veya model dosyası commit etmez; gerçek adapter seçilene kadar fixture yalnız arayüz ve KTR kanıtı üretir.
+`SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Public radar/LiDAR veri kaynakları offline arayüz testi için değerlendirilebilir; ancak seçilen TFA50-L tek nokta menzil sensörünün kabulü kendi 5/10/15 m kayıtlarıyla yapılır. Bu repo büyük dış dataset veya model dosyası commit etmez; gerçek UART adapter’ı tamamlanana kadar fixture yalnız arayüz ve KTR kanıtı üretir.
 
 ## 5.3. Vendor LiDAR yazılımı stratejisi
 
@@ -234,7 +235,9 @@ Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı
 Ancak canlı saha testi başlamadan önce şu kararlar hâlâ kapatılmalıdır:
 
 - radar/LiDAR donanımı ve mesaj formatı,
-- MCU haberleşme protokolü,
+- CAN v1 protokolünün gerçek Pico/controller/transceiver HIL kabulü,
 - gerçek panelin dry-run/live geçiş prosedürü,
 - Acil Durdur’un fiziksel kesme hattı ve backend state bildirimi,
-- dry-run için JSONL telemetri/replay yolu uygulanmıştır; canlı saha log saklama, süre/latency metriği ve export saklama politikası ayrıca netleştirilmelidir.
+- SQLite WAL + segmentli JSONL session/replay yolu uygulanmıştır; saha quota,
+  video segment süresi ve retention değerleri fiziksel bilgisayar yük testinde
+  kalibre edilmelidir.

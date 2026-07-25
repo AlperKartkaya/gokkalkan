@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=69,<76"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gokkalkan"
+version = "0.2.0"
+description = "Gökkalkan mission backend, hardware adapters and operator tooling"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+license = { text = "Proprietary - Gökkalkan team use" }
+authors = [{ name = "Gökkalkan" }]
+dependencies = [
+  "python-can==4.3.1",
+  "python-dotenv==1.0.1",
+  "pyserial==3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.3",
+  "pytest-cov==5.0.0",
+  "pytest-html==4.1.1",
+]
+perception-dev = [
+  "numpy==1.26.4",
+  "opencv-python-headless==4.10.0.84",
+]
+
+[project.scripts]
+gokkalkan = "gokkalkan_backend.cli:main"
+gokkalkan-operator-api = "gokkalkan_backend.operator_http_server:main"
+gokkalkan-doctor = "gokkalkan_backend.doctor:main"
+gokkalkan-static-server = "gokkalkan_backend.static_server:main"
+gokkalkan-telemetry-recorder = "gokkalkan_backend.telemetry_recorder:main"
+
+[tool.setuptools]
+package-dir = { "" = "backend/src" }
+
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+include = ["gokkalkan_backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "safety: fail-closed safety and release-blocking invariants",
+  "protocol: firmware, CAN, UART and API wire contracts",
+  "replay: deterministic read-only replay and physical-adapter isolation",
+  "hil: safe-load hardware-in-the-loop harness and reports",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["gokkalkan_backend"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

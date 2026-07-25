@@ -6,10 +6,11 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
 
 Şartname kaynakları:
 
-- `docs/sartname_v5.txt:430-463` — Manuel/Otonom Mod, Acil Durdur, bakım ve patlayıcı yasağı.
-- `docs/sartname_v5.txt:469-511` — Aşama 1, 5/10/15 m durağan hedef, sıra ve puanlama.
-- `docs/sartname_v5.txt:513-540` — Aşama 2, 4 tur, üç kol, A→B parkur, sınıflandırma beklenmez.
-- `docs/sartname_v5.txt:543-580` — Aşama 3, 8 tur, 1 düşman + 2 dost, menzil kapıları.
+- `docs/sartname_v1_3.txt:609-637; 491-504` — Manuel/Otonom Mod, Acil Durdur, bakım ve patlayıcı yasağı.
+- `docs/sartname_v1_3.txt:475-480,578-585,615-617` — Aşama 1, 5/10/15 m ve Manuel Mod yükümlülükleri.
+- `docs/sartname_v1_3.txt:589-595,617-620` — Aşama 2 otonom tespit/takip ve parkurdan çıkmadan imha yükümlülüğü.
+- `docs/sartname_v1_3.txt:599-605,621-623` — Aşama 3 doğru hedefi doğru menzilde imha yükümlülüğü.
+- `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi ayrıntıları.
 
 > Not: Şartname kesin parkur koordinatı, hedef hız profili veya radar/LiDAR donanım modeli vermediği için rota, hız ve sensör değerleri yapılandırılabilir simülasyon varsayımıdır. Bu değerler resmi veri gibi raporlanmamalıdır.
 

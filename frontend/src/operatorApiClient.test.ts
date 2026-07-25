@@ -6,6 +6,7 @@ import {
   fetchOperatorSnapshot,
   fetchOperatorTelemetryExport,
   normalizeOperatorApiBaseUrl,
+  operatorStateStreamUrl,
   resetOperatorTelemetry,
   sendOperatorFireIntent,
   sendOperatorManualAimCommand,
@@ -32,6 +33,7 @@ afterEach(() => {
 describe('operator API client', () => {
   it('normalizes trailing slashes from API base URLs', () => {
     expect(normalizeOperatorApiBaseUrl(' http://127.0.0.1:8088/// ')).toBe('http://127.0.0.1:8088');
+    expect(operatorStateStreamUrl('http://127.0.0.1:8088/', 12.9)).toBe('http://127.0.0.1:8088/state/stream?after=12');
   });
 
   it('fetches the backend state snapshot', async () => {

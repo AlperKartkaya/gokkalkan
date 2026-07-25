@@ -1,0 +1,17 @@
+{
+  "checks": {
+    "backendDivergence": true,
+    "canDisconnect": true,
+    "corruptChecksum": true,
+    "diskFull": true,
+    "duplicateSequence": true,
+    "estop": true,
+    "heartbeatLoss": true,
+    "processRestart": true,
+    "staleCamera": true,
+    "staleLidar": true
+  },
+  "evidenceClass": "SOFTWARE_SIMULATION",
+  "ok": true,
+  "physicalOutput": false
+}

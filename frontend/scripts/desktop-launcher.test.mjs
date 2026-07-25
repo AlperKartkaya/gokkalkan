@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { browserCommandCandidates, buildOperatorUrl, parseDesktopArgs, pythonCandidates } from './desktop-launcher.mjs';
+import { assertSafeBackendHealth, browserCommandCandidates, buildOperatorUrl, parseDesktopArgs, pythonCandidates } from './desktop-launcher.mjs';
 
 test('buildOperatorUrl opens the operator panel with backend API and desktop flag', () => {
   const url = buildOperatorUrl({ uiBaseUrl: 'http://127.0.0.1:5173', apiBaseUrl: 'http://127.0.0.1:8088', desktop: true });
@@ -46,4 +46,18 @@ test('pythonCandidates prefer Windows launcher on Windows and python3 elsewhere'
   assert.equal(pythonCandidates('win32', {})[0].command, 'py');
   assert.equal(pythonCandidates('darwin', {})[0].command, 'python3');
   assert.equal(pythonCandidates('linux', {})[0].command, 'python3');
+});
+
+test('assertSafeBackendHealth accepts only SIM with physical output disabled', async () => {
+  await assertSafeBackendHealth(new Response(JSON.stringify({
+    runtimeMode: 'SIM',
+    physicalOutputEnabled: false,
+  })));
+  await assert.rejects(
+    assertSafeBackendHealth(new Response(JSON.stringify({
+      runtimeMode: 'LIVE',
+      physicalOutputEnabled: true,
+    }))),
+    /Unsafe desktop backend health/,
+  );
 });

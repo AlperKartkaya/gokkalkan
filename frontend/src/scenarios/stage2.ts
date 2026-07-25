@@ -32,7 +32,7 @@ export const stage2Scenario: StageScenario = {
   durationSeconds: 110,
   defaultMode: 'autonomous',
   autoRunning: true,
-  sourceRefs: ['docs/sartname_v5.txt:436-439', 'docs/sartname_v5.txt:513-540'],
+  sourceRefs: ['docs/sartname_v1_3.txt:617-620', 'docs/sartname_v1_3.txt:589-595,617-620'],
   assumptions: [
     'Şartname süre sınırı koymaz; bu hands-off prova 4 turun izlenebilmesi için 110 saniyede tamamlanır.',
     'Hedef tipi sınıflandırması beklenmediği için tüm izler Bilinmeyen olarak kalır; güvenlik kapısı sadece parkur/iz uygunluğunu izler.',

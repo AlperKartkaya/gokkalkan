@@ -1,6 +1,6 @@
 # Gökkalkan Teknik Yönelim ve Yazılım Mimarisi
 
-Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v5.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v5.txt` dosyasında tutulur.
+Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v1_3.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v1_3.txt` dosyasında tutulur.
 
 ## 1. Şartnameye Göre Sistem Hedefi
 
@@ -96,17 +96,33 @@ Temel alt bileşenler:
 - **Hardware Adapter:** Safety Gate’ten geçen yüksek seviye komutu MCU/protokol düzeyine çevirir.
 - **Telemetry Logger:** zaman damgalı mod, hedef, komut, güvenlik, hata ve atış kayıtları üretir.
 
+**Mevcut concurrency sınırı:** `MissionCore`, frozen `MissionState` modelinin tek
+yazarıdır. HTTP, CAN/GPIO callback ve sensör üreticileri bounded kuyruğa
+`CommandEnvelope` bırakır; reducer sıralı `EventEnvelope` ve immutable snapshot
+üretir. UI snapshot’ı SSE üzerinden izler ve yalnız stream kesilirse düşük hızlı
+REST polling kullanır. Ayrıntılar: ADR-004 ve `docs/message_contracts.md`.
+
 ### 4.2. `backend/hardware_mock/` — Donanım Simülasyonu
 
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
 
-**Mevcut durum:** `mcu_simulator.py` çalışır durumda. Sanal CAN (vcan0/virtual) üzerinden gelen komutları alır, pan/tilt durumunu ASCII olarak görselleştirir, E-stop simüle eder ve periyodik 0x200 durum paketi gönderir. Gerçek Pico firmware yazılmadan CAN protokolü test edilebilir.
+**Mevcut durum:** `mcu_simulator.py`, ortak firmware güvenlik modelini kullanarak
+E-Stop/FAULT sırasında komutları reddeder. `docs/can_icd_v1.md`,
+`can_protocol.py` ve `firmware/pico/` altında CRC, sequence, command tag,
+ACK/NACK, encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği vardır.
+Bu, fiziksel Pico flash/CAN/E-Stop/motor hattı kabulünün tamamlandığı anlamına
+gelmez; söz konusu kanıtlar imalat sonrası HIL ve saha testinde üretilecektir.
 
 ### 4.3. `perception/` — Algı, Takip ve Sınıflandırma
 
 `perception/` kamera verisinden hedef adaylarını üretir. Şartname hedeflerin maket, renk/şekil ve balonla temsil edileceğini söylediği için ilk tercih basit, açıklanabilir ve test edilebilir görüntü işleme olmalıdır; yapay zekâ modeli ancak gerçek hedef görselleri ve saha testleri bunu gerektirirse eklenmelidir.
 
-**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim), `frame_processor.py` (HSV renk filtresi + CentroidTracker), `perception_bridge.py` (10Hz poll → POST /tracks/update). Aşama 2 renk-nötr, Aşama 3 kırmızı=Düşman/mavi=Dost.
+**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim),
+`frame_processor.py` (HSV renk filtresi + CentroidTracker),
+`perception_bridge.py` (ayrı `systemd` process’i; bounded latest-wins queue,
+heartbeat ve POST `/tracks/update`). Aşama 2 renk-nötr, Aşama 3
+kırmızı=Düşman/mavi=Dost. Heartbeat kaybı Mission Core’da perception fault’u
+oluşturup canlı arm iznini kapatır.
 
 Önerilen öncelik:
 
@@ -124,7 +140,7 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend durumları, mod seçimi, deadman’li manuel pan/tilt niyeti, FireIntent, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware mock geri bildirimi, `Finale Hazırlık` arayüz/gap göstergesi, adapter/TBD bakım çekmecesi ve kapalı gelen JSONL kanıt/replay çekmecesi.
+- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend `MissionFlow`, deadman’li manuel pan/tilt niyeti, FireIntent, görev duraklatma/devam, bakım, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware health, `Finale Hazırlık` arayüz/gap göstergesi ve kapalı gelen JSONL kanıt/replay çekmecesi. Hedef, Safety ve görev state'i backend SSE/REST snapshot'ından gelir; UI sentetik hedef kimliği veya optimistik güvenlik state'i üretmez.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri
@@ -156,12 +172,12 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 
 | Kaynak → Hedef | Mesaj örnekleri | İlk protokol önerisi | Not |
 | --- | --- | --- | --- |
-| Operatör Paneli → Backend | `StageRequest`, `ModeRequest`, `ManualAimCommand`, `FireIntent`, `MaintenanceRequest` | localhost/LAN HTTP + WebSocket | Komutlar niyettir; yetki backend’dedir |
-| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | WebSocket stream + REST snapshot | UI her blok nedenini Türkçe gösterir |
-| Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | Python içi queue, ZeroMQ/WebSocket veya REST adapter; seçim entegrasyona göre | Saha gecikmesi ölçülmeden kesin protokol dayatılmamalı |
+| Operatör Paneli → Backend | `StageRequest`, `ManualAimCommand`, `FireIntent`, `MissionStop`, `MissionResume`, `MaintenanceStart/End` | localhost/LAN HTTP → bounded Mission Core queue | Komutlar niyettir; görev ve Safety yetkisi backend’dedir |
+| Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
+| Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | CAN bus 500kbps | Elektronik seçim netleşince sabitlendi |
-| Sensor Adapter → Backend/Perception | radar/LiDAR ölçümü, sağlık, zaman damgası | Donanıma göre seri, Ethernet veya SDK adapter | Şimdilik soyut `SensorFrame` |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002 + `can_icd_v1.md`; fiziksel HIL kabulü bekliyor |
+| TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
 
@@ -172,9 +188,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
 | Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
-| MCU haberleşmesi | **Onaylandı** | CAN bus 500kbps; SN65HVD230 (×3) transceiver; ISO 11898-2; Mesaj haritası: 0x100 pan/tilt komutu, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop olayı |
+| MCU haberleşmesi | **Onaylandı** | Klasik CAN 2.0B, 500 kbit/s; SN65HVD230 (×3); ISO 11898-2; 0x100 pan/tilt, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop. Ayrıntı: ADR-002 |
 | Kamera | **Onaylandı** | Raspberry Pi Camera Module 3 (12MP, OT AF, HDR), CSI bağlantı, Picamera2 API |
-| Radar/LiDAR | TBD | 2D LiDAR olasılıklı; seçilen sensörün güç, veri ve zaman damgası arayüzü adapter ile anlatılacak |
+| LiDAR | **Aday seçildi** | Benewake TFA50-L tek nokta UART LiDAR; yaw ile dönen/pitch-sabit merkezî köprü. Gerçek 5/10/15 m kabul testi bekliyor |
 | İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
@@ -182,17 +198,35 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 Şartname belirli bir programlama dili veya yapay zekâ modeli zorunlu kılmaz. Bu repo için teknik yön şu şekilde güncellenmiştir:
 
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
-- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + dry-run Backend API. Yazılım yüzeyi aşama/tur seçimi, radar/LiDAR biçimli `SensorFrame` replay görünümü, hedef tipi + dost/düşman + menzil yorumu, mod seçimi, manuel pan/tilt niyeti, FireIntent, Safety Gate, hardware mock sonucu ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
+- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + Backend API. Yazılım yüzeyi backend-otoriter `MissionFlow`, aşama/tur seçimi, SSE/REST state eşitlemesi, gerçek track kimliği, radar/LiDAR biçimli `SensorFrame` görünümü, hedef tipi + dost/düşman + menzil yorumu, deadman'li manuel pan/tilt niyeti, FireIntent, duraklatma/devam, bakım, Safety/health ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
 - **Vendor LiDAR viewer stratejisi:** RPLIDAR Viewer, Livox Viewer ve benzeri üretici araçları görev arayüzü değildir. Bunlar bakım, kalibrasyon, firmware/IP/serial doğrulama ve ham point cloud kontrolünde dış diagnostic araç olarak kalır. Görev panelindeki veri yolu `SDK/driver → SensorFrame → Backend → Operatör Paneli` olmalıdır; vendor pencere embed/screen-scrape edilmemelidir.
-- **Backend / görev çekirdeği:** Python 3.x.
-- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez, `POST /stage`, `POST /mode`, `POST /manual-aim`, `POST /fire-intent`, `GET /sensor-frames`, JSONL telemetri, `/readiness` entegrasyon hazırlığı endpoint’i ve `/telemetry/export` + `/replay` kanıt endpoint’leri sağlar.
+- **Hedef runtime:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS + `systemd`; hedefte VM yok. Ayrıntı: ADR-001.
+- **Kurulum/paketleme:** Backend `pyproject.toml` ile kurulur; exact Python
+  kilitleri `requirements/`, doğrulanan çalışma profilleri `config/runtime/`,
+  Pi manifesti ve servisler `deploy/` altındadır. Frontend Pi’de Node.js yerine
+  önceden üretilmiş `dist` + bağımlılıksız static/proxy server ile çalışır.
+- **Backend / görev çekirdeği:** Python 3.x; tek sahipli reducer thread,
+  sürümlü immutable mesajlar ve bounded queue. Tam Rust yeniden yazımı yerine
+  ölçülebilir, test edilen sahiplik sınırı kullanılır.
+- **Backend API dry-run geçişi:** bağımlılıksız dry-run HTTP iskeleti
+  (`gokkalkan_backend.operator_http_server`); canlı donanım çıkışı üretmez.
+  Mutasyonlar Mission Core kuyruğuna girer; `GET /state/stream` SSE snapshot,
+  `GET /commands/{id}` komut izleme, SQLite WAL + segmentli JSONL telemetri, `/readiness`,
+  `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
 - **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
 - **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
-- **Donanım haberleşmesi:** pySerial, python-can veya Ethernet tabanlı adapter; kesin seçim MCU/sensör arayüzüne göre yapılmalıdır.
+- **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.
 - **Test:** pytest + frontend için Vitest/Playwright.
-- **Log formatı:** dry-run operatör API için JSONL uygulanmıştır (`telemetry_data/operator-api-dry-run.jsonl`, git’e eklenmez). Canlı saha log saklama politikası ve elektronik entegrasyon metrikleri donanım seçimiyle netleştirilmelidir.
+- **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
+  segmentli JSONL export, session manifest, ortak monotonic zaman tabanlı medya
+  index’i, güvenli replay ve hash’li kanıt paketi uygulanmıştır. Düşük disk,
+  retention veya eksik medya session’ı açıkça geçersiz kanıt yapar. Gerçek saha
+  quota değerleri ile video segment süreleri depolama ve kamera ölçümlerinden
+  sonra kalibre edilmelidir.
 
-ROS2, Hailo veya derin öğrenme tabanlı algı çekirdek zorunluluk değildir. Bu teknolojiler yalnızca gecikme, doğruluk veya entegrasyon testleri açıkça ihtiyaç gösterirse eklenmelidir.
+ROS 2 ve tam Rust yeniden yazımı bu fazın parçası değildir. Yeniden değerlendirme
+eşikleri ADR-001’de tanımlıdır. Hailo veya derin öğrenme tabanlı algı da yalnızca
+gecikme/doğruluk testleri ihtiyaç gösterirse eklenir.
 
 ## 7. İş Paketi Eşlemesi
 

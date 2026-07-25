@@ -1,0 +1,9 @@
+[Unit]
+Description=Gökkalkan software stack
+Requires=gokkalkan-backend.service gokkalkan-frontend.service
+Wants=gokkalkan-perception.service
+After=network.target
+AllowIsolate=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -17,9 +17,9 @@ export interface RangeMarker {
 
 export const COMPETITION_COURSE = {
   source: {
-    stage1: 'docs/sartname_v5.txt:494-498',
-    movingCourse: 'docs/sartname_v5.txt:529-538,543-545,567-568',
-    targetVisuals: 'docs/sartname_v5.txt:573-580',
+    stage1: 'docs/sartname_v1_3.txt:475-480,578-585',
+    movingCourse: 'docs/sartname_v1_3.txt:589-605,617-623',
+    targetVisuals: 'docs/sartname_v1_3.txt:396-399; docs/sartname_v1_3.pdf:§6.2-6.3',
   },
   assumptionNotice:
     'Şartname A/B noktası, üç kol ve 5/10/15 m işaretlerini verir; kesin koordinat/radar-LiDAR modeli vermediği için bu görünüm Şekil 4/5 üzerinden normalize edilmiş eğitim parkurudur.',

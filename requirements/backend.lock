@@ -1,0 +1,9 @@
+# Python 3.11 / Raspberry Pi OS Bookworm backend runtime lock.
+# Direct and transitive packages are exact-pinned.
+packaging==24.2
+msgpack==1.0.8
+python-can==4.3.1
+python-dotenv==1.0.1
+pyserial==3.5
+typing-extensions==4.12.2
+wrapt==1.16.0

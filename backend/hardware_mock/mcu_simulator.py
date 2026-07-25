@@ -35,16 +35,22 @@ import datetime
 # hardware_adapter modülünü proje kökünden içe aktar
 sys.path.insert(0, "backend/src")
 
-from gokkalkan_backend.hardware_adapter import (
-    CENTIDEG_PER_DEG,
-    CAN_ID_ESTOP_EVENT,
-    CAN_ID_FIRE_CMD,
-    CAN_ID_PANTILT_CMD,
-    CAN_ID_STATUS,
-    CAN_ID_SYS_CMD,
+from gokkalkan_backend.can_protocol import (
+    CAN_ID_ACK_V1,
+    CAN_ID_COMMAND_META,
+    CAN_ID_ENCODER_V1,
+    CAN_ID_ESTOP_V1,
+    CAN_ID_FIRMWARE_V1,
+    CAN_ID_FIRE_CMD_V1,
+    CAN_ID_PANTILT_CMD_V1,
+    CAN_ID_STATUS_V1,
+    CAN_ID_SYS_CMD_V1,
+    pack_encoder,
+    pack_estop,
+    pack_firmware,
     pack_status,
-    unpack_pantilt_cmd,
 )
+from gokkalkan_backend.digital_twin import McuDigitalTwin
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -113,6 +119,8 @@ class McuSimulator:
         self.estop:     bool  = False
         self.fire_count: int  = 0
         self.cmd_count:  int  = 0
+        self.twin = McuDigitalTwin()
+        self._status_sequence = 0
 
         self._bus: object      = None
         self._running: bool    = False
@@ -172,40 +180,41 @@ class McuSimulator:
 
         with self._lock:
             self.cmd_count += 1
-
-            if arb_id == CAN_ID_PANTILT_CMD:
-                parsed = unpack_pantilt_cmd(data)
-                if parsed:
-                    self.pan_deg  = parsed["panDeg"]
-                    self.tilt_deg = parsed["tiltDeg"]
-                    if self.verbose:
-                        msg = (f"PanTilt: pan={self.pan_deg:+.2f}°  "
-                               f"tilt={self.tilt_deg:+.2f}°  "
-                               f"rate={parsed['rateDegPerSec']:.1f}°/s  "
-                               f"deadman={parsed['deadmanActive']}")
-                        print(f"\n  ← {msg}")
-                        self._log_event(msg)
-                else:
-                    print("\n  [UYARI] PanTilt paketi checksum hatası!")
-                    self._log_event("PanTilt paketi checksum hatası!")
-
-            elif arb_id == CAN_ID_FIRE_CMD:
-                if data and data[0] == 0x01:
+            before = self.twin.state
+            if arb_id in {
+                CAN_ID_COMMAND_META,
+                CAN_ID_PANTILT_CMD_V1,
+                CAN_ID_FIRE_CMD_V1,
+                CAN_ID_SYS_CMD_V1,
+            }:
+                self.twin.receive(arb_id, data)
+                if before != "FIRING" and self.twin.state == "FIRING":
                     self.fire_count += 1
-                    stage = data[1] if len(data) > 1 else "?"
-                    msg = f"ATEŞ KOMUTU #{self.fire_count} alındı — Aşama {stage}"
-                    print(f"\n  🔥 {msg}")
-                    self._log_event(msg)
-                else:
-                    msg = "Ateş iptal komutu alındı."
-                    print(f"\n  ⛔ {msg}")
-                    self._log_event(msg)
+                feedback = self.twin.dynamics.feedback()
+                self.pan_deg = float(feedback["panDeg"])
+                self.tilt_deg = float(feedback["tiltDeg"])
+                self._send_frames(CAN_ID_ACK_V1, self.twin.step(0))
+                if self.verbose and arb_id != CAN_ID_COMMAND_META:
+                    event = (
+                        f"CAN-v1 0x{arb_id:03X}: {before} → {self.twin.state}; "
+                        f"pan={self.pan_deg:+.2f}° tilt={self.tilt_deg:+.2f}°"
+                    )
+                    print(f"\n  ← {event}")
+                    self._log_event(event)
 
-            elif arb_id == CAN_ID_SYS_CMD:
-                arm = bool(data[0]) if data else False
-                msg = f"Sistem komutu: {'ARM' if arm else 'DISARM'}"
-                print(f"\n  ⚙ {msg}")
-                self._log_event(msg)
+    def _send_frames(self, arbitration_id: int, frames: list[bytes]) -> None:
+        if self._bus is None or not frames:
+            return
+        import can
+
+        for payload in frames:
+            self._bus.send(  # type: ignore[attr-defined]
+                can.Message(
+                    arbitration_id=arbitration_id,
+                    data=payload,
+                    is_extended_id=False,
+                )
+            )
 
     # ------------------------------------------------------------------
     # TX — periyodik durum paketi (Pico → RPi5)
@@ -217,24 +226,61 @@ class McuSimulator:
             if self._bus is None:
                 continue
             with self._lock:
-                pan_c  = int(self.pan_deg  * CENTIDEG_PER_DEG)
-                tilt_c = int(self.tilt_deg * CENTIDEG_PER_DEG)
+                self.twin.heartbeat()
+                delayed_acks = self.twin.step(int(STATUS_INTERVAL_SEC * 1000))
+                feedback = self.twin.dynamics.feedback()
+                self.pan_deg = float(feedback["panDeg"])
+                self.tilt_deg = float(feedback["tiltDeg"])
+                pan_c  = int(self.pan_deg * 100)
+                tilt_c = int(self.tilt_deg * 100)
                 estop  = self.estop
+                state_code = {
+                    "BOOT": 0,
+                    "SAFE": 1,
+                    "READY": 2,
+                    "ARMED": 3,
+                    "FIRING": 4,
+                    "FAULT": 5,
+                }[self.twin.state]
+                self._status_sequence = (self._status_sequence + 1) & 0xFF
             try:
                 import can
                 payload = pack_status(
-                    pan_centideg=pan_c,
-                    tilt_centideg=tilt_c,
-                    estop_active=estop,
-                    motion_ok=not estop,
-                    fire_ready=not estop,
+                    self._status_sequence,
+                    state_code,
+                    (0x01 if estop else 0)
+                    | (0x02 if not estop else 0)
+                    | (0x04 if self.twin.state == "ARMED" else 0)
+                    | 0x08,
+                    1 if self.twin.state == "FAULT" else 0,
+                    0x07,
+                    1,
                 )
-                frame = can.Message(
-                    arbitration_id=CAN_ID_STATUS,
-                    data=payload,
-                    is_extended_id=False,
+                frames = (
+                    (
+                        CAN_ID_STATUS_V1,
+                        payload,
+                    ),
+                    (
+                        CAN_ID_ENCODER_V1,
+                        pack_encoder(
+                            self._status_sequence, pan_c, tilt_c, flags=0x07
+                        ),
+                    ),
+                    (
+                        CAN_ID_FIRMWARE_V1,
+                        pack_firmware(self._status_sequence, 1, 0, 0),
+                    ),
                 )
-                self._bus.send(frame)  # type: ignore[attr-defined]
+                for arbitration_id, frame_payload in frames:
+                    self._bus.send(  # type: ignore[attr-defined]
+                        can.Message(
+                            arbitration_id=arbitration_id,
+                            data=frame_payload,
+                            is_extended_id=False,
+                        )
+                    )
+                self._send_frames(CAN_ID_ACK_V1, delayed_acks)
             except Exception as exc:
                 logger.debug("TX durum hatası: %s", exc)
 
@@ -244,8 +290,8 @@ class McuSimulator:
         try:
             import can
             frame = can.Message(
-                arbitration_id=CAN_ID_ESTOP_EVENT,
-                data=bytes([0x01 if active else 0x00]),
+                arbitration_id=CAN_ID_ESTOP_V1,
+                data=pack_estop(self._status_sequence, active),
                 is_extended_id=False,
             )
             self._bus.send(frame)  # type: ignore[attr-defined]
@@ -273,11 +319,15 @@ class McuSimulator:
                 with self._lock:
                     self.estop = not self.estop
                     active = self.estop
+                    self.twin.inject(estop_active=active)
                 self._send_estop_event(active)
             elif key == "r":
                 with self._lock:
                     self.pan_deg  = 0.0
                     self.tilt_deg = 0.0
+                    if not self.estop:
+                        self.twin = McuDigitalTwin()
+                        self.twin.heartbeat()
                 print("\n  Pozisyon sıfırlandı.")
 
     # ------------------------------------------------------------------
@@ -352,9 +402,21 @@ def main() -> None:
         "--verbose", action="store_true",
         help="Her gelen paketi ayrıntılı yazdır"
     )
+    parser.add_argument("--ack-delay-ms", type=int, default=0)
+    parser.add_argument("--drop-next-ack", action="store_true")
+    parser.add_argument("--corrupt-next-ack", action="store_true")
+    parser.add_argument("--heartbeat-loss", action="store_true")
+    parser.add_argument("--encoder-fault", action="store_true")
     args = parser.parse_args()
 
     sim = McuSimulator(channel=args.channel, bustype=args.bustype, verbose=args.verbose)
+    sim.twin.inject(
+        ack_delay_ms=max(0, args.ack_delay_ms),
+        drop_next_ack=args.drop_next_ack,
+        corrupt_next_ack=args.corrupt_next_ack,
+        heartbeat_lost=args.heartbeat_loss,
+        encoder_fault=args.encoder_fault,
+    )
     sim.run()
 
 

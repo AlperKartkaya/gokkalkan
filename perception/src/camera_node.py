@@ -16,9 +16,21 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedFrame:
+    """A frame and the clocks needed for freshness/replay decisions."""
+
+    image: Any
+    camera_timestamp_ns: int
+    receive_monotonic_ns: int
+    sequence: int
+    timestamp_source: str
 
 # numpy ve opencv isteğe bağlı; kurulu değilse mock frame döner
 try:
@@ -74,7 +86,7 @@ class CameraNode:
         self.fps    = fps
         self.device = device
 
-        self._frame: Any          = None
+        self._sample: CapturedFrame | None = None
         self._lock                = threading.Lock()
         self._running             = False
         self._thread: threading.Thread | None = None
@@ -87,6 +99,8 @@ class CameraNode:
             self._backend = "picamera2"
         elif backend == "opencv":
             self._backend = "opencv"
+        elif backend == "mock":
+            self._backend = "mock"
         elif _try_picamera2():
             self._backend = "picamera2"
         elif _try_opencv():
@@ -129,10 +143,34 @@ class CameraNode:
         Thread-safe: kilit altında okunur.
         """
         with self._lock:
-            return self._frame
+            return None if self._sample is None else self._sample.image
 
-    def health(self) -> dict[str, Any]:
+    def get_latest_sample(self) -> CapturedFrame | None:
+        """Return the immutable latest frame envelope under the same lock."""
+
+        with self._lock:
+            return self._sample
+
+    def health(self, stale_after_sec: float = 1.0) -> dict[str, Any]:
         """Kamera durumu hakkında bilgi döndür."""
+        sample = self.get_latest_sample()
+        age_ms = (
+            None
+            if sample is None
+            else max(0.0, (time.monotonic_ns() - sample.receive_monotonic_ns) / 1_000_000)
+        )
+        stale = sample is None or age_ms is None or age_ms > stale_after_sec * 1000
+        status = (
+            "ERROR"
+            if self._error
+            else "STOPPED"
+            if not self._running
+            else "STALE"
+            if stale
+            else "SIMULATED"
+            if self._backend == "mock"
+            else "READY"
+        )
         return {
             "backend":         self._backend,
             "running":         self._running,
@@ -141,7 +179,36 @@ class CameraNode:
             "error":           self._error,
             "resolution":      f"{self.width}x{self.height}",
             "fps":             self.fps,
+            "status":          status,
+            "healthy":         status == "READY",
+            "simulated":       self._backend == "mock",
+            "stale":           stale,
+            "ageMs":           age_ms,
+            "cameraTimestampNs": None if sample is None else sample.camera_timestamp_ns,
+            "receiveMonotonicNs": None if sample is None else sample.receive_monotonic_ns,
+            "timestampSource": None if sample is None else sample.timestamp_source,
         }
+
+    def _publish(
+        self,
+        frame: Any,
+        *,
+        camera_timestamp_ns: int | None = None,
+        timestamp_source: str,
+    ) -> None:
+        receive_ns = time.monotonic_ns()
+        self._frames_captured += 1
+        sample = CapturedFrame(
+            image=frame,
+            camera_timestamp_ns=camera_timestamp_ns or receive_ns,
+            receive_monotonic_ns=receive_ns,
+            sequence=self._frames_captured,
+            timestamp_source=timestamp_source,
+        )
+        with self._lock:
+            self._sample = sample
+        self._last_capture_at = time.time()
+        self._error = None
 
     # ------------------------------------------------------------------
     # Yakalama döngüleri
@@ -167,11 +234,24 @@ class CameraNode:
             cam.start()
             logger.info("Picamera2 başlatıldı.")
             while self._running:
-                frame = cam.capture_array()
-                with self._lock:
-                    self._frame = frame
-                self._frames_captured += 1
-                self._last_capture_at = time.time()
+                request = cam.capture_request()
+                try:
+                    frame = request.make_array("main")
+                    metadata = request.get_metadata()
+                    sensor_ts = metadata.get("SensorTimestamp")
+                    self._publish(
+                        frame,
+                        camera_timestamp_ns=(
+                            int(sensor_ts) if isinstance(sensor_ts, (int, float)) else None
+                        ),
+                        timestamp_source=(
+                            "picamera2-sensor"
+                            if isinstance(sensor_ts, (int, float))
+                            else "receive-monotonic-fallback"
+                        ),
+                    )
+                finally:
+                    request.release()
             cam.stop()
             cam.close()
         except Exception as exc:
@@ -207,10 +287,7 @@ class CameraNode:
                 continue
             # BGR → RGB dönüşümü (downstream bileşenler RGB bekler)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            with self._lock:
-                self._frame = rgb
-            self._frames_captured += 1
-            self._last_capture_at  = time.time()
+            self._publish(rgb, timestamp_source="receive-monotonic-fallback")
 
         cap.release()
 
@@ -222,8 +299,5 @@ class CameraNode:
             blank = None
         period = 1.0 / self.fps
         while self._running:
-            with self._lock:
-                self._frame = blank
-            self._frames_captured += 1
-            self._last_capture_at  = time.time()
+            self._publish(blank, timestamp_source="simulated-monotonic")
             time.sleep(period)

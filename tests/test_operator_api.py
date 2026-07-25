@@ -205,7 +205,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(items["backend_api"]["status"], "ready")
         self.assertEqual(items["telemetry_replay"]["status"], "ready")
         self.assertEqual(items["operator_panel_ui"]["status"], "ready")
-        self.assertNotIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
+        self.assertIn("ManualAimCommand", items["operator_panel_ui"]["ktrInterface"])
         self.assertIn("FireIntent", items["operator_panel_ui"]["ktrInterface"])
         self.assertEqual(items["perception_adapter"]["status"], "tbd")
         self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")
@@ -225,12 +225,39 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_TARGET_GATE")
         self.assertEqual(len(self.hardware.commands), 0)
 
-    def test_unarmed_live_fire_is_blocked(self) -> None:
+    def test_dry_run_service_ignores_client_live_override(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": False})
+        self.assertTrue(response["result"]["accepted"])
+        self.assertTrue(response["result"]["dryRun"])
+        self.assertTrue(response["safety"]["dryRun"])
+        self.assertEqual(response["result"]["safetyBlockReason"], "ALLOWED")
+        self.assertEqual(len(self.hardware.commands), 1)
+
+    def test_live_service_ignores_client_dry_run_override(self) -> None:
+        live_hardware = DryRunHardwareAdapter(clock=fixed_clock)
+        live_service = OperatorService(
+            clock=fixed_clock,
+            hardware=live_hardware,
+            telemetry=self.telemetry,
+            dry_run=False,
+        )
+
+        response = live_service.handle_fire_intent(
+            {
+                "targetId": "DRY-RUN-F16-01",
+                "stage": 3,
+                "round": 1,
+                "operatorConfirm": True,
+                "dryRun": True,
+            }
+        )
+
         self.assertFalse(response["result"]["accepted"])
+        self.assertFalse(response["result"]["dryRun"])
+        self.assertFalse(response["safety"]["dryRun"])
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_ARMING")
-        self.assertEqual(len(self.hardware.commands), 0)
+        self.assertEqual(live_hardware.commands, [])
 
 
 class OperatorHttpServerTest(unittest.TestCase):

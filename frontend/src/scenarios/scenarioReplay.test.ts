@@ -6,7 +6,7 @@ describe('hands-off competition scenarios', () => {
     ([1, 2, 3] as const).forEach((stage) => {
       const scenario = STAGE_SCENARIOS[stage];
       expect(scenario.stage).toBe(stage);
-      expect(scenario.sourceRefs.join(' ')).toContain('docs/sartname_v5.txt');
+      expect(scenario.sourceRefs.join(' ')).toContain('docs/sartname_v1_3.txt');
       expect(scenario.events.length).toBeGreaterThan(8);
       expect(scenario.targets.every((target) => target.route.length >= 2)).toBe(true);
       expect(scenario.routeAdjustableNote).toContain('route');

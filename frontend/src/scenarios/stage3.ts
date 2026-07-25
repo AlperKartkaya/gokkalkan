@@ -48,7 +48,7 @@ export const stage3Scenario: StageScenario = {
   durationSeconds: 182,
   defaultMode: 'autonomous',
   autoRunning: true,
-  sourceRefs: ['docs/sartname_v5.txt:440-441', 'docs/sartname_v5.txt:543-580'],
+  sourceRefs: ['docs/sartname_v1_3.txt:621-623', 'docs/sartname_v1_3.txt:599-605,621-623'],
   assumptions: [
     'Şartname hedef görsellerinin temsili olduğunu ve nihai tasarımların paylaşılacağını belirtir; bu prova renk/dost-düşman mantığını mock olarak taşır.',
     'Her turda bir düşman ve iki dost unsur bulunur; uygun menzil dışı veya dost hedefte strike üretilmez.',

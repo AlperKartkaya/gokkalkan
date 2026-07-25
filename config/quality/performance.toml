@@ -1,0 +1,8 @@
+[performance]
+# İlk imalat öncesi bütçeler. Bunlar ölçülmüş donanım sonucu değil, kabul eşiğidir.
+camera_fps_min = 20.0
+frame_drop_percent_max = 5.0
+perception_latency_ms_max = 100.0
+command_ack_ms_max = 250.0
+state_stream_ms_max = 500.0
+recorder_queue_depth_max = 256

@@ -1,0 +1,11 @@
+{
+  "diskFreeBytes": 332194934784,
+  "events": 1800,
+  "executionElapsedSec": 0.00034270796459168196,
+  "maxRecorderQueueDepth": 2,
+  "ok": true,
+  "physicalOutput": false,
+  "reconnects": 5,
+  "requestedDurationSec": 1800,
+  "timeMode": "VIRTUAL_TIME"
+}

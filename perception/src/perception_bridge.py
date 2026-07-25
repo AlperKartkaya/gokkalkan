@@ -3,7 +3,9 @@
 CameraNode + FrameProcessor çıktısını Backend API'ye iletir.
 
 Mimari:
-    CameraNode → FrameProcessor → PerceptionBridge → POST /tracks/update → OperatorService
+    Ayrı OS process'i:
+    CameraNode → FrameProcessor → bounded latest-wins queue
+    → HTTP sender/heartbeat → Mission Core command queue
 
 Kullanım:
     bridge = PerceptionBridge(
@@ -22,6 +24,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import queue
 import sys
 import threading
 import time
@@ -64,12 +68,21 @@ class PerceptionBridge:
         poll_hz:     float = DEFAULT_POLL_HZ,
         camera_kw:   dict | None = None,
         processor_kw: dict | None = None,
+        outbound_queue_size: int = 2,
+        heartbeat_interval_sec: float = 1.0,
     ) -> None:
         self.backend_url = backend_url.rstrip("/")
         self.stage       = stage
         self._poll_sec   = 1.0 / max(0.1, poll_hz)
         self._running    = False
         self._thread: threading.Thread | None = None
+        self._sender_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._outbound: queue.Queue[list[dict[str, Any]] | None] = queue.Queue(
+            maxsize=max(1, outbound_queue_size)
+        )
+        self._heartbeat_interval_sec = max(0.2, heartbeat_interval_sec)
+        self._source_sequence = 0
 
         self.camera = CameraNode(**(camera_kw or {}))
         self.processor = FrameProcessor(**(processor_kw or {}))
@@ -79,6 +92,8 @@ class PerceptionBridge:
         self._update_errors  = 0
         self._last_update_at: str | None = None
         self._last_error: str | None = None
+        self._dropped_updates = 0
+        self._heartbeats_sent = 0
 
     # ------------------------------------------------------------------
     # Başlatma / Durdurma
@@ -88,10 +103,17 @@ class PerceptionBridge:
         """Kamerayı ve bridge döngüsünü başlat."""
         self.camera.start()
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(
-            target=self._loop, daemon=True, name="PercBridge"
+            target=self._loop, daemon=True, name="PercProcessor"
+        )
+        self._sender_thread = threading.Thread(
+            target=self._sender_loop,
+            daemon=True,
+            name="PercSender",
         )
         self._thread.start()
+        self._sender_thread.start()
         logger.info(
             "PerceptionBridge başlatıldı — backend=%s stage=%d poll=%.1fHz",
             self.backend_url, self.stage, 1.0 / self._poll_sec,
@@ -102,6 +124,11 @@ class PerceptionBridge:
         self._running = False
         if self._thread:
             self._thread.join(timeout=3.0)
+        self._stop_event.set()
+        self._offer_stop_marker()
+        if self._sender_thread:
+            self._sender_thread.join(timeout=3.0)
+        self._post_heartbeat(healthy=False, reason="graceful_shutdown")
         self.camera.stop()
         logger.info("PerceptionBridge durduruldu.")
 
@@ -121,23 +148,111 @@ class PerceptionBridge:
             time.sleep(sleep_ms)
 
     def _tick(self) -> None:
-        frame = self.camera.get_latest_frame()
-        candidates = self.processor.process(frame, stage=self.stage)
-        if not candidates:
-            return
+        get_sample = getattr(self.camera, "get_latest_sample", None)
+        sample = get_sample() if callable(get_sample) else None
+        frame = sample.image if sample is not None else self.camera.get_latest_frame()
+        try:
+            candidates = self.processor.process(
+                frame,
+                stage=self.stage,
+                receive_monotonic_ns=(
+                    None if sample is None else sample.receive_monotonic_ns
+                ),
+            )
+        except TypeError:
+            # Backward-compatible test/plugin surface.
+            candidates = self.processor.process(frame, stage=self.stage)
         tracks = [c.to_api_dict() for c in candidates]
-        self._post_tracks(tracks)
+        self._enqueue_tracks(tracks)
+
+    def _enqueue_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        """Keep the newest result without blocking the CPU-heavy producer."""
+
+        try:
+            self._outbound.put_nowait(tracks)
+            return
+        except queue.Full:
+            pass
+        try:
+            self._outbound.get_nowait()
+            self._outbound.task_done()
+            self._dropped_updates += 1
+        except queue.Empty:
+            pass
+        self._outbound.put_nowait(tracks)
+
+    def _sender_loop(self) -> None:
+        next_heartbeat = time.monotonic()
+        while True:
+            timeout = max(0.05, next_heartbeat - time.monotonic())
+            try:
+                tracks = self._outbound.get(timeout=timeout)
+            except queue.Empty:
+                if self._stop_event.is_set():
+                    return
+                tracks = None
+            else:
+                try:
+                    if tracks is None:
+                        return
+                    self._post_tracks(tracks)
+                finally:
+                    self._outbound.task_done()
+            if time.monotonic() >= next_heartbeat:
+                camera_health = self.camera.health()
+                healthy = bool(camera_health.get("healthy", camera_health.get("running", False)))
+                reason = (
+                    "camera_ready"
+                    if healthy
+                    else str(camera_health.get("status", "camera_unhealthy")).lower()
+                )
+                self._post_heartbeat(healthy=healthy, reason=reason)
+                next_heartbeat = time.monotonic() + self._heartbeat_interval_sec
+
+    def _offer_stop_marker(self) -> None:
+        while True:
+            try:
+                self._outbound.put_nowait(None)
+                return
+            except queue.Full:
+                try:
+                    self._outbound.get_nowait()
+                    self._outbound.task_done()
+                    self._dropped_updates += 1
+                except queue.Empty:
+                    return
 
     # ------------------------------------------------------------------
     # HTTP POST
     # ------------------------------------------------------------------
 
     def _post_tracks(self, tracks: list[dict[str, Any]]) -> None:
-        url     = f"{self.backend_url}/tracks/update"
-        payload = json.dumps(
+        if self._post_json(
+            "/tracks/update",
             {"source": "perception", "tracks": tracks},
-            ensure_ascii=False,
-        ).encode("utf-8")
+        ):
+            self._updates_sent += 1
+            self._last_update_at = _utc_now()
+
+    def _post_heartbeat(self, *, healthy: bool, reason: str) -> None:
+        if self._post_json(
+            "/perception/heartbeat",
+            {
+                "source": "perception",
+                "healthy": healthy,
+                "reason": reason,
+                "processId": os.getpid(),
+                "queueDepth": self._outbound.qsize(),
+                "droppedUpdates": self._dropped_updates,
+            },
+        ):
+            self._heartbeats_sent += 1
+
+    def _post_json(self, path: str, body: dict[str, Any]) -> bool:
+        self._source_sequence += 1
+        body = {**body, "sourceSequence": self._source_sequence}
+        url = f"{self.backend_url}{path}"
+        payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
             url,
             data=payload,
@@ -150,12 +265,12 @@ class PerceptionBridge:
         try:
             with urllib.request.urlopen(req, timeout=self.CONNECT_TIMEOUT) as resp:
                 resp.read()
-            self._updates_sent  += 1
-            self._last_update_at = _utc_now()
+            return True
         except (urllib.error.URLError, OSError) as exc:
             self._update_errors += 1
             self._last_error     = str(exc)
-            logger.warning("Backend /tracks/update erişilemiyor: %s", exc)
+            logger.warning("Backend %s erişilemiyor: %s", path, exc)
+            return False
 
     # ------------------------------------------------------------------
     # Sağlık bilgisi
@@ -171,6 +286,12 @@ class PerceptionBridge:
             "updateErrors":  self._update_errors,
             "lastUpdateAt":  self._last_update_at,
             "lastError":     self._last_error,
+            "processId":     os.getpid(),
+            "processBoundary": "separate-systemd-process",
+            "outboundQueueDepth": self._outbound.qsize(),
+            "outboundQueueCapacity": self._outbound.maxsize,
+            "droppedUpdates": self._dropped_updates,
+            "heartbeatsSent": self._heartbeats_sent,
             "camera":        self.camera.health(),
             "processor":     self.processor.stats(),
         }

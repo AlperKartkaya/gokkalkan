@@ -144,6 +144,7 @@ export const operatorBlockCopy: Record<OperatorBlockReason, string> = {
   BLOCKED_BACKEND: 'Backend bağlantısı yok; gerçek komut gönderilemez.',
   BLOCKED_SENSOR: 'Perception veya sensör adapter sağlığı doğrulanmadı.',
   BLOCKED_INVALID_COMMAND: 'Komut alanları güvenli sınırlar içinde değil.',
+  BLOCKED_ZONE_CONFIG: 'Yasak bölge yapılandırması geçersiz; komut güvenli biçimde reddedildi.',
 };
 
 export function stageRoundLimit(stage: Stage): number {

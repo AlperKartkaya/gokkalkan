@@ -2,7 +2,7 @@
 
 **Purpose of this file:** define what a coding agent should build when creating a simulator for the **final phase** of the TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri competition.
 
-This is **not** a fictional scenario script. The simulator must reproduce the **real final competition flow** as specified in `sartname_v5.pdf`, especially the three final stages, the manual/autonomous mode differences, the parkour diagrams, the scoring rules, and the interaction requirements.
+This is **not** a fictional scenario script. The simulator must reproduce the **real final competition flow** as specified in `sartname_v1_3.pdf`, especially the three final stages, the manual/autonomous mode differences, the parkour diagrams, the scoring rules, and the interaction requirements.
 
 The simulator should behave like a practice environment for competitors. It should visualize the targets on the real competition-style parkour map, move them along the same conceptual paths shown in the specification diagrams, apply the same scoring logic, and guide the user with an optional contextual onboarding/tutorial.
 

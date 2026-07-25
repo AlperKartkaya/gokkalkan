@@ -1,0 +1,25 @@
+[Unit]
+Description=Gökkalkan static operator UI
+Requires=gokkalkan-backend.service
+After=gokkalkan-backend.service
+
+[Service]
+Type=simple
+User=gokkalkan
+Group=gokkalkan
+WorkingDirectory=/opt/gokkalkan
+ExecStart=/opt/gokkalkan/.venv/bin/gokkalkan static-server --root /opt/gokkalkan/frontend/dist --host 127.0.0.1 --port 4173 --api http://127.0.0.1:8088
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gokkalkan-frontend
+
+[Install]
+WantedBy=gokkalkan.target

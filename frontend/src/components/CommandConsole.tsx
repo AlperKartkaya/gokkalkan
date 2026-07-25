@@ -1,4 +1,5 @@
 import type { Stage } from '../types';
+import { useEffect, useRef, useState } from 'react';
 
 export function CommandConsole({
   displayStage,
@@ -13,6 +14,8 @@ export function CommandConsole({
   onSendFireIntent,
   onTriggerOperatorStop,
   onOpenMaintenance,
+  onManualAim,
+  manualAimReady,
   stageRoundLimit,
   children,
 }: {
@@ -28,9 +31,55 @@ export function CommandConsole({
   onSendFireIntent: () => void;
   onTriggerOperatorStop: () => void;
   onOpenMaintenance: () => void;
+  onManualAim: (panDeltaDeg: number, tiltDeltaDeg: number) => void;
+  manualAimReady: boolean;
   stageRoundLimit: (stage: Stage) => number;
   children?: React.ReactNode;
 }) {
+  const [deadmanActive, setDeadmanActive] = useState(false);
+  const deadmanRef = useRef(false);
+  const aimDisabled = !manualAimReady || !deadmanActive || apiBusy;
+  const updateDeadman = (active: boolean) => {
+    deadmanRef.current = active;
+    setDeadmanActive(active);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        updateDeadman(manualAimReady && !apiBusy);
+        return;
+      }
+      if (!deadmanRef.current || apiBusy) return;
+      const delta = {
+        ArrowUp: [0, 1],
+        KeyW: [0, 1],
+        ArrowDown: [0, -1],
+        KeyS: [0, -1],
+        ArrowLeft: [-1, 0],
+        KeyA: [-1, 0],
+        ArrowRight: [1, 0],
+        KeyD: [1, 0],
+      }[event.code];
+      if (!delta) return;
+      event.preventDefault();
+      onManualAim(delta[0], delta[1]);
+    };
+    const releaseDeadman = (event: KeyboardEvent) => {
+      if (event.code === 'Space') updateDeadman(false);
+    };
+    const releaseDeadmanOnBlur = () => updateDeadman(false);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', releaseDeadman);
+    window.addEventListener('blur', releaseDeadmanOnBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', releaseDeadman);
+      window.removeEventListener('blur', releaseDeadmanOnBlur);
+    };
+  }, [apiBusy, manualAimReady, onManualAim]);
+
   return (
     <>
       <section className="rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-stage-control" aria-label="Aşama ve tur kontrolü">
@@ -67,6 +116,42 @@ export function CommandConsole({
 
       {children}
 
+      <section
+        className="mt-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3"
+        data-testid="operator-manual-aim"
+        aria-label="Manuel yönelim ve deadman"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <b className="text-sm text-[#d7efff]">Manuel Yönelim</b>
+          <span className="text-xs font-black text-[#91a6b7]">
+            {deadmanActive ? 'DEADMAN AKTİF' : 'DEADMAN PASİF'}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="mt-2 w-full rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:opacity-40"
+          data-testid="operator-deadman-button"
+          disabled={!manualAimReady || apiBusy}
+          onPointerDown={() => updateDeadman(true)}
+          onPointerUp={() => updateDeadman(false)}
+          onPointerCancel={() => updateDeadman(false)}
+          onPointerLeave={() => updateDeadman(false)}
+        >
+          BASILI TUT: DEADMAN
+        </button>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <span />
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, 1)} data-testid="operator-aim-up">YUKARI</button>
+          <span />
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(-1, 0)} data-testid="operator-aim-left">SOL</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, -1)} data-testid="operator-aim-down">AŞAĞI</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(1, 0)} data-testid="operator-aim-right">SAĞ</button>
+        </div>
+        <p className="m-0 mt-2 text-[10px] text-[#91a6b7]">
+          Klavye: Space basılıyken ok/WASD. UI yalnız delta/rate/deadman niyeti gönderir; limit ve Safety kararı backend'e aittir.
+        </p>
+      </section>
+
       <section className="operator-action-strip rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 mt-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
         <div className="operator-action-buttons">
           <div className="rounded-xl border border-white/[.08] bg-black/20 p-2.5" data-testid="fire-cluster">
@@ -88,7 +173,7 @@ export function CommandConsole({
               disabled={operatorStopActive || apiBusy}
               onClick={onTriggerOperatorStop}
             >
-              ACİL DURDUR
+              GÖREVİ DURAKLAT
             </button>
             <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#ffbdc4]">{operatorStopActive ? 'AKTİF' : 'Hazır'}</p>
           </div>
