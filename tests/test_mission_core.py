@@ -165,6 +165,11 @@ class MissionCoreTest(unittest.TestCase):
     def test_simultaneous_http_can_and_sensor_sources_share_one_event_order(
         self,
     ) -> None:
+        # Isolate concurrent ingress ordering from the independently tested
+        # perception watchdog. Coverage instrumentation can otherwise make the
+        # 80 ms test timeout expire between valid TracksUpdate commands.
+        self.core.perception_timeout_sec = float("inf")
+
         def submit(index: int) -> dict:
             if index % 3 == 0:
                 return self.core.submit(  # type: ignore[return-value]
@@ -208,6 +213,42 @@ class MissionCoreTest(unittest.TestCase):
             60,
         )
         self.assertEqual(self.core.state.last_event_sequence, 60)
+
+    def test_watchdog_and_external_commands_share_one_contiguous_event_order(
+        self,
+    ) -> None:
+        self.core.perception_timeout_sec = 0.0
+
+        tracks = self.core.submit(
+            "TracksUpdate",
+            {"source": "perception", "tracks": []},
+            source="perception",
+        )
+        self._wait_until(
+            lambda: self.core.state.last_event_sequence == 2,
+            timeout=1.0,
+        )
+        mode = self.core.submit(
+            "ModeRequest",
+            {"requestedMode": "safe"},
+            source="operator-http",
+        )
+
+        events = self.core.snapshot()["coreEvents"]
+        self.assertEqual(tracks["sequence"], 1)  # type: ignore[index]
+        self.assertEqual(mode["sequence"], 3)  # type: ignore[index]
+        self.assertEqual(
+            [event["sequence"] for event in events],
+            [3, 2, 1],
+        )
+        self.assertEqual(
+            [event["payload"]["kind"] for event in events],
+            ["ModeRequest", "PerceptionHealth", "TracksUpdate"],
+        )
+        self.assertEqual(
+            events[1]["causationId"],
+            "perception-heartbeat-watchdog",
+        )
 
     def test_duplicate_is_idempotent_but_changed_content_is_rejected(self) -> None:
         first = self.core.submit(
