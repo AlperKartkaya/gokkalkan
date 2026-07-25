@@ -40,48 +40,7 @@ Perception katmanının işlediği ham kamera karesi ve LiDAR mesafe taraması:
 
 Gökkalkan sistemi, donanım bağımlılığı ile kullanıcı denetimi arasındaki güvenlik sınırlarını tam olarak ayıran **4 Katmanlı (Layered Architecture)** bir yapıya sahiptir:
 
-```mermaid
-graph TD
-    subgraph UI ["1. KULLANICI ARAYÜZÜ (Frontend - React + Vite)"]
-        UI_Panel["Operatör Paneli (OperatorPanel.tsx)"]
-        UI_Radar["2D/3D Radar & Sensör Görünümü"]
-        UI_Estop["E-Stop & Manuel Kumanda"]
-    end
-
-    subgraph CORE ["2. GÖREV & GÜVENLİK ÇEKİRDEĞİ (Backend - Python 3.11)"]
-        API["Operator HTTP Server (8088 / REST & SSE)"]
-        Queue["CommandEnvelope Bounded Queue"]
-        MissionCore["MissionCore (Tek Yazarlı State Reducer)"]
-        SafetyGate{"Safety Gate (Emniyet Kapısı)"}
-        Logger["SQLite WAL & JSONL Logger"]
-    end
-
-    subgraph PERCEPTION ["3. GÖRSEL ALGI (Perception Node - OpenCV)"]
-        CamNode["Camera Node (Picamera2 / OpenCV)"]
-        Tracker["CentroidTracker & HSV Color Filter"]
-        Bridge["Perception Bridge (POST /tracks/update)"]
-    end
-
-    subgraph HW ["4. MİKRODENETLEYİCİ & DONANIM (Pico RP2040 & CAN)"]
-        CanAdapter["CanMcuAdapter (python-can @ 500kbps)"]
-        PicoFirmware["Pico RP2040 C++ Safety Engine"]
-        Motors["DM542 Drivers (Pan/Tilt Step Motors)"]
-        EStopHardware["Physical E-Stop Switch"]
-        LiDAR["Benewake TFA50-L LiDAR (UART)"]
-    end
-
-    UI_Panel -- HTTP POST /manual-aim, /fire-intent --> API
-    API -- CommandEnvelope --> Queue
-    Queue --> MissionCore
-    CamNode --> Tracker --> Bridge -- POST /tracks/update --> API
-    MissionCore --> SafetyGate
-    SafetyGate -- Onaylanan Komutlar --> CanAdapter
-    CanAdapter -- CAN Bus 0x100 / 0x101 --> PicoFirmware
-    PicoFirmware --> Motors
-    EStopHardware -- GPIO / CAN 0x201 --> PicoFirmware
-    LiDAR -- UART 115200 --> Backend
-    MissionCore -- SSE Stream (/state/stream) --> UI_Radar
-```
+![Gökkalkan dört katmanlı sistem mimarisi](assets/codebase_tutorial/system_architecture.svg)
 
 > [!NOTE]
 > UI doğrudan motor veya ateşleme hattına erişemez. UI yalnız yüksek seviyeli komut niyeti gönderir; komut `MissionCore` kuyruğuna girer ve `SafetyGate` onay verirse donanıma iletilir.
@@ -190,67 +149,13 @@ Kamera (Picamera2 / USB) ──> frame_processor.py (HSV Renk Filtresi)
 
 ### A) Ateş Emri ve Emniyet Kontrol Akışı (Sequence Diagram)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Operator as Operatör (UI)
-    participant API as Operator HTTP Server
-    participant Core as MissionCore (Reducer)
-    participant Safety as SafetyGate
-    participant Adapter as CanMcuAdapter
-    participant CAN as CAN Bus (500kbps)
-    participant Pico as Pico RP2040 MCU
-    participant Solenoid as Fiziksel İmha Hattı
-
-    Operator->>API: POST /fire-intent {trackId: "T-01"}
-    API->>Core: Enqueue CommandEnvelope(FIRE_INTENT)
-    Core->>Core: Reducer queue check
-    Core->>Safety: check_fire_intent(state, target)
-    
-    alt E-Stop Basılı VEYA Yasak Bölgede VEYA Deadman Yok
-        Safety-->>Core: REJECT (Gerekçe: E-Stop Latched / Forbidden Area)
-        Core-->>API: CommandResult(Rejected)
-        API-->>Operator: 403 Forbidden + Türkçe Blok Nedeni
-    else Her Şey Güvenli
-        Safety-->>Core: ALLOW (Emniyet Onaylandı)
-        Core->>Adapter: execute(FIRE_AUTHORIZATION)
-        Adapter->>CAN: Send Frame 0x101 [cmd=FIRE, seq=N, crc=CRC8]
-        CAN->>Pico: Interrupt RX (CAN 0x101)
-        Pico->>Pico: C++ State Check (SAFE -> FIRE_ARMED)
-        Pico->>Solenoid: Enable Pulse (Airsoft Yay/Solenoid)
-        Core-->>API: CommandResult(Executed)
-        API-->>Operator: 200 OK (Ateşlendi)
-    end
-```
+![Ateş emri ve emniyet kontrolü sequence diyagramı](assets/codebase_tutorial/fire_safety_sequence.svg)
 
 ---
 
 ### B) Görsel Algı ve Canlı Radar Akış Şeması
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Cam as Kamera (Picamera2 / USB)
-    participant Process as FrameProcessor (OpenCV)
-    participant Tracker as CentroidTracker
-    participant Bridge as PerceptionBridge Process
-    participant Core as MissionCore Backend
-    participant SSE as SSE Stream Manager
-    participant UI as Operatör Paneli Radar
-
-    loop Her Kamera Karesinde (30 FPS)
-        Cam->>Process: RGB Frame
-        Process->>Process: HSV Renk Filtresi (Kırmızı=Düşman, Mavi=Dost)
-        Process->>Tracker: Kontür Merkez Koordinatları (x, y)
-        Tracker->>Tracker: Öklid Mesafesi ile İz Takibi (Track History)
-        Tracker-->>Bridge: TargetTracks [ID: T-1, Class: ENEMY, Pos: (X,Y)]
-        Bridge->>Core: POST /tracks/update {tracks, heartbeat_seq}
-        Core->>Core: Update Frozen MissionState
-        Core->>SSE: Publish EventEnvelope(TRACKS_UPDATED)
-        SSE-->>UI: EventSource message (JSON Snapshot)
-        UI->>UI: Render 2D/3D Radar & Target Marker
-    end
-```
+![Görsel algı ve canlı radar veri akışı sequence diyagramı](assets/codebase_tutorial/perception_radar_sequence.svg)
 
 ---
 
@@ -258,50 +163,7 @@ sequenceDiagram
 
 Yazılımın görev mantığı [`docs/tech_stack.md`](./tech_stack.md) gereğince 3 temel aşamadan oluşur:
 
-```mermaid
-stateDiagram-v2
-    [*] --> SIM_BOOT: Sistem Açılışı (Güvenli Varsayılan)
-    SIM_BOOT --> IDLE: Runtime Mode (SIM / HIL) Onaylandı
-
-    state IDLE {
-        [*] --> READY
-        READY --> MAINTENANCE: Maintenance Mode Request
-        MAINTENANCE --> READY: Maintenance Completed
-    }
-
-    IDLE --> STAGE_1: Stage 1 Select (Manuel Mod)
-    IDLE --> STAGE_2: Stage 2 Select (Otonom Sürü)
-    IDLE --> STAGE_3: Stage 3 Select (Dost/Düşman + Menzil)
-
-    state STAGE_1 {
-        [*] --> MAN_AIMING: Manuel Pan/Tilt Yönelim
-        MAN_AIMING --> MAN_FIRING: FireIntent (Operatör Komutu)
-        MAN_FIRING --> MAN_AIMING: Ateş Tamamlandı
-    }
-
-    state STAGE_2 {
-        [*] --> AUTO_SWARM_TRACK: 3 Kollu Sürü Takibi
-        AUTO_SWARM_TRACK --> AUTO_ENGAGE: Tur İçi İmha Kararı
-        AUTO_ENGAGE --> AUTO_SWARM_TRACK: Sonraki Tur
-    }
-
-    state STAGE_3 {
-        [*] --> CLASSIFY: Kırmızı=Düşman / Mavi=Dost
-        CLASSIFY --> RANGE_GATE_CHECK: Menzil Kapısı Doğrulama
-        RANGE_GATE_CHECK --> AUTO_ENGAGE_3: Düşman + Menzil Uygun
-        RANGE_GATE_CHECK --> HOLD_FIRE: Dost Hedef VEYA Yanlış Menzil
-    }
-
-    state ESTOP_LATCHED {
-        [*] --> ESTOP_ACTIVE: Motor Gücü Kesildi
-        ESTOP_ACTIVE --> ESTOP_RESET_PENDING: Fiziksel Buton Bırakıldı
-        ESTOP_RESET_PENDING --> IDLE: Backend POST /estop/reset
-    }
-
-    STAGE_1 --> ESTOP_LATCHED: E-Stop Triggered (Mantar Buton / CAN 0x201)
-    STAGE_2 --> ESTOP_LATCHED: E-Stop Triggered
-    STAGE_3 --> ESTOP_LATCHED: E-Stop Triggered
-```
+![Yarışma aşamaları ve görev durum makinesi](assets/codebase_tutorial/mission_state_machine.svg)
 
 ---
 
