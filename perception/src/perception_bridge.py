@@ -40,6 +40,7 @@ sys.path.insert(0, "perception/src")
 
 from camera_node import CameraNode
 from frame_processor import FrameProcessor
+from camera_stream_server import CameraStreamService
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ class PerceptionBridge:
         processor_kw: dict | None = None,
         outbound_queue_size: int = 2,
         heartbeat_interval_sec: float = 1.0,
+        camera_stream_host: str = "127.0.0.1",
+        camera_stream_port: int | None = None,
     ) -> None:
         self.backend_url = backend_url.rstrip("/")
         self.stage       = stage
@@ -86,6 +89,11 @@ class PerceptionBridge:
 
         self.camera = CameraNode(**(camera_kw or {}))
         self.processor = FrameProcessor(**(processor_kw or {}))
+        self.camera_stream = (
+            CameraStreamService(camera_stream_host, camera_stream_port)
+            if camera_stream_port is not None
+            else None
+        )
 
         # İstatistikler
         self._updates_sent   = 0
@@ -102,6 +110,8 @@ class PerceptionBridge:
     def start(self) -> None:
         """Kamerayı ve bridge döngüsünü başlat."""
         self.camera.start()
+        if self.camera_stream is not None:
+            self.camera_stream.start()
         self._running = True
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -130,6 +140,8 @@ class PerceptionBridge:
             self._sender_thread.join(timeout=3.0)
         self._post_heartbeat(healthy=False, reason="graceful_shutdown")
         self.camera.stop()
+        if self.camera_stream is not None:
+            self.camera_stream.stop()
         logger.info("PerceptionBridge durduruldu.")
 
     # ------------------------------------------------------------------
@@ -151,6 +163,8 @@ class PerceptionBridge:
         get_sample = getattr(self.camera, "get_latest_sample", None)
         sample = get_sample() if callable(get_sample) else None
         frame = sample.image if sample is not None else self.camera.get_latest_frame()
+        if self.camera_stream is not None:
+            self.camera_stream.update_image(frame, _utc_now())
         try:
             candidates = self.processor.process(
                 frame,
@@ -321,6 +335,17 @@ def main() -> None:
                         help="Kamera backend'ini zorla seç (varsayılan: otomatik)")
     parser.add_argument("--no-classify", action="store_true",
                         help="Renk sınıflandırmasını devre dışı bırak (Aşama 2 gibi)")
+    parser.add_argument(
+        "--camera-stream-host",
+        default="127.0.0.1",
+        help="Ham kamera MJPEG servisinin dinleyeceği adres",
+    )
+    parser.add_argument(
+        "--camera-stream-port",
+        type=int,
+        default=8090,
+        help="Ham kamera MJPEG servis portu",
+    )
     args = parser.parse_args()
 
     bridge = PerceptionBridge(
@@ -329,6 +354,8 @@ def main() -> None:
         poll_hz      = args.poll_hz,
         camera_kw    = {"device": args.device, "backend": args.backend},
         processor_kw = {"classify_colors": not args.no_classify},
+        camera_stream_host=args.camera_stream_host,
+        camera_stream_port=args.camera_stream_port,
     )
 
     bridge.start()

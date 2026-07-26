@@ -31,6 +31,7 @@ Usage:
   gokkalkan release [build] --version VERSION --output MANIFEST ...
   gokkalkan release verify MANIFEST
   gokkalkan lidar calibrate OBSERVATIONS --output REPORT
+  gokkalkan turret calibrate OBSERVATIONS [--output FILE] [--activate]
 """
 
 
@@ -63,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         return operations_cli.release_main(command_args)
     if command == "lidar":
         return operations_cli.lidar_main(command_args)
+    if command == "turret":
+        return operations_cli.turret_main(command_args)
     print(f"Unknown command: {command}\n\n{_usage()}", file=sys.stderr)
     return 2
 

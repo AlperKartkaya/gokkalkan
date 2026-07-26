@@ -1,0 +1,13 @@
+{
+  "calibrationId": "SAHA-TARET-YYYYMMDD-01",
+  "pan": [
+    {"commandedDeg": -20.0, "measuredDeg": -20.0},
+    {"commandedDeg": 0.0, "measuredDeg": 0.0},
+    {"commandedDeg": 20.0, "measuredDeg": 20.0}
+  ],
+  "tilt": [
+    {"commandedDeg": -5.0, "measuredDeg": -5.0},
+    {"commandedDeg": 10.0, "measuredDeg": 10.0},
+    {"commandedDeg": 25.0, "measuredDeg": 25.0}
+  ]
+}

@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .operator_api import OperatorService
+from .ballistic_compensation import BallisticCompensation
 from .mission_core import (
     MissionCommandTimeout,
     MissionCore,
@@ -34,6 +35,7 @@ from .runtime_config import (
 )
 from .telemetry_log import JsonlTelemetryStore
 from .telemetry_session import SessionTelemetryStore
+from .turret_calibration import TurretCalibration
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
@@ -454,6 +456,18 @@ def main(argv: list[str] | None = None) -> None:
         "calibration": settings.sensors.lidar_calibration_path,
         "canIcd": Path("docs/can_icd_v1.md"),
         "lidarCameraPlacement": Path("docs/adr/003-camera-lidar-placement.md"),
+        "turretCalibration": Path(
+            os.environ.get(
+                "GOKKALKAN_TURRET_CALIBRATION_FILE",
+                "config/calibration/turret.toml",
+            )
+        ),
+        "ballisticCalibration": Path(
+            os.environ.get(
+                "GOKKALKAN_BALLISTIC_CALIBRATION_FILE",
+                "config/calibration/airsoft_trajectory.toml",
+            )
+        ),
     }
     for label, environment_name in (
         ("calibration", "GOKKALKAN_CALIBRATION_FILE"),
@@ -487,6 +501,12 @@ def main(argv: list[str] | None = None) -> None:
                 "arm_timeout_seconds": settings.safety.arm_timeout_ms / 1000.0,
                 "disk_min_free_bytes": settings.telemetry.min_free_bytes,
                 "lidar_stale_seconds": settings.sensors.lidar_stale_ms / 1000.0,
+                "turret_calibration": TurretCalibration.from_toml(
+                    source_files["turretCalibration"]
+                ),
+                "ballistic_compensation": BallisticCompensation.from_toml(
+                    source_files["ballisticCalibration"]
+                ),
             },
         )
     except RuntimeConfigurationError as exc:

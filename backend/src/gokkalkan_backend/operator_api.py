@@ -25,6 +25,7 @@ from .course_geometry import (
     CourseTrackEstimator,
     load_course_geometry,
 )
+from .ballistic_compensation import BallisticCompensation
 from .hardware_adapter import HardwareAdapterBase
 from .mission_flow import MissionFlow
 from .range_fusion import FusedRangeDecision
@@ -35,6 +36,7 @@ from .safety_gate import (
     evaluate_safety as evaluate_pure_safety,
 )
 from .telemetry_log import JsonlTelemetryStore
+from .turret_calibration import TurretCalibration
 
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
 Stage = Literal[1, 2, 3]
@@ -366,6 +368,8 @@ class OperatorService:
         disk_min_free_bytes: int = 0,
         lidar_stale_seconds: float = 0.3,
         course_geometry: CourseGeometry | None = None,
+        turret_calibration: TurretCalibration | None = None,
+        ballistic_compensation: BallisticCompensation | None = None,
     ) -> None:
         self._clock = clock
         self._ids = count(1)
@@ -403,12 +407,17 @@ class OperatorService:
         self.disk_min_free_bytes = disk_min_free_bytes
         self.lidar_stale_seconds = lidar_stale_seconds
         self._last_lidar_update_monotonic: float | None = None
+        self.latest_lidar_reading: dict[str, Any] | None = None
         self.estop_physical_active = False
         self.estop_reset_required = False
         self.motion_forbidden_zones = motion_forbidden_zones
         self.fire_forbidden_zones = fire_forbidden_zones
         self.course_geometry = course_geometry or load_course_geometry()
         self.course_estimator = CourseTrackEstimator(self.course_geometry)
+        self.turret_calibration = turret_calibration or TurretCalibration.identity()
+        self.ballistic_compensation = (
+            ballistic_compensation or BallisticCompensation.unverified()
+        )
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
@@ -769,6 +778,11 @@ class OperatorService:
             "telemetry": self.telemetry.metadata(),
             "missionFlow": self.mission_flow.to_dict(),
             "courseGeometry": self.course_geometry.metadata(),
+            "turretCalibration": self.turret_calibration.to_dict(),
+            "ballisticCompensation": self.ballistic_compensation.to_dict(
+                selected.rangeM if selected else None
+            ),
+            "lidarReading": self.latest_lidar_reading,
         }
         result.update(self._mission_timer())
         result.update(self._maintenance_state())
@@ -1311,7 +1325,37 @@ class OperatorService:
         result = self._command_result("ManualAimCommand", accepted, safety.blockReason)
         hardware_result = None
         if accepted:
-            hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "ManualAimCommand", "payload": payload})
+            current_pan, current_tilt, position_ok = self._current_position()
+            hardware_payload = dict(payload)
+            correction = {
+                "active": False,
+                "calibrationId": self.turret_calibration.calibration_id,
+            }
+            if position_ok and self.turret_calibration.active:
+                corrected_pan, corrected_tilt = self.turret_calibration.correct_delta(
+                    current_pan_deg=current_pan,
+                    current_tilt_deg=current_tilt,
+                    pan_delta_deg=float(payload.get("panDeltaDeg", 0.0)),
+                    tilt_delta_deg=float(payload.get("tiltDeltaDeg", 0.0)),
+                )
+                hardware_payload["panDeltaDeg"] = corrected_pan
+                hardware_payload["tiltDeltaDeg"] = corrected_tilt
+                correction = {
+                    "active": True,
+                    "calibrationId": self.turret_calibration.calibration_id,
+                    "requestedPanDeltaDeg": float(payload.get("panDeltaDeg", 0.0)),
+                    "requestedTiltDeltaDeg": float(payload.get("tiltDeltaDeg", 0.0)),
+                    "adapterPanDeltaDeg": corrected_pan,
+                    "adapterTiltDeltaDeg": corrected_tilt,
+                }
+            hardware_result = self.hardware.execute(
+                {
+                    "commandId": result["commandId"],
+                    "kind": "ManualAimCommand",
+                    "payload": hardware_payload,
+                }
+            )
+            hardware_result["turretCalibration"] = correction
             self.telemetry.append("hardware_result", hardware_result)
         self._append_event("command", "ManualAimCommand", result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
@@ -1342,7 +1386,8 @@ class OperatorService:
                 return (0.0, 0.0, False)
             pan = float(status["panDeg"])
             tilt = float(status["tiltDeg"])
-            return (pan, tilt, isfinite(pan) and isfinite(tilt))
+            encoder_ok = bool(status.get("encoderOk", False))
+            return (pan, tilt, encoder_ok and isfinite(pan) and isfinite(tilt))
         except (KeyError, TypeError, ValueError, RuntimeError):
             return (0.0, 0.0, False)
 
@@ -1731,6 +1776,14 @@ class OperatorService:
         if not decision.accepted or decision.track_id is None or decision.distance_m is None:
             self.lidar_ok = False
             self.sensor_adapter_connected = False
+            self.latest_lidar_reading = {
+                "status": "REJECTED",
+                "distanceM": None,
+                "trackId": decision.track_id,
+                "timestamp": self._clock(),
+                "reason": decision.reason,
+                "source": "tfa50-l-1d",
+            }
             self._append_event(
                 "sensor",
                 "LIDAR_RANGE_REJECTED",
@@ -1768,6 +1821,14 @@ class OperatorService:
         self.lidar_ok = True
         self.sensor_adapter_connected = True
         self._last_lidar_update_monotonic = _time.monotonic()
+        self.latest_lidar_reading = {
+            "status": "LIVE_ACCEPTED",
+            "distanceM": decision.distance_m,
+            "trackId": decision.track_id,
+            "timestamp": self._clock(),
+            "reason": decision.reason,
+            "source": "tfa50-l-1d",
+        }
         self._append_event(
             "sensor",
             "LIDAR_RANGE_FUSED",

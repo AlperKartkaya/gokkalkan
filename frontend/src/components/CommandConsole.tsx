@@ -16,6 +16,7 @@ export function CommandConsole({
   onOpenMaintenance,
   onManualAim,
   manualAimReady,
+  turretCalibration,
   stageRoundLimit,
   children,
 }: {
@@ -33,10 +34,12 @@ export function CommandConsole({
   onOpenMaintenance: () => void;
   onManualAim: (panDeltaDeg: number, tiltDeltaDeg: number) => void;
   manualAimReady: boolean;
+  turretCalibration?: { active: boolean; calibrationId: string; status: string };
   stageRoundLimit: (stage: Stage) => number;
   children?: React.ReactNode;
 }) {
   const [deadmanActive, setDeadmanActive] = useState(false);
+  const [aimStepDeg, setAimStepDeg] = useState(1);
   const deadmanRef = useRef(false);
   const aimDisabled = !manualAimReady || !deadmanActive || apiBusy;
   const updateDeadman = (active: boolean) => {
@@ -53,14 +56,14 @@ export function CommandConsole({
       }
       if (!deadmanRef.current || apiBusy) return;
       const delta = {
-        ArrowUp: [0, 1],
-        KeyW: [0, 1],
-        ArrowDown: [0, -1],
-        KeyS: [0, -1],
-        ArrowLeft: [-1, 0],
-        KeyA: [-1, 0],
-        ArrowRight: [1, 0],
-        KeyD: [1, 0],
+        ArrowUp: [0, aimStepDeg],
+        KeyW: [0, aimStepDeg],
+        ArrowDown: [0, -aimStepDeg],
+        KeyS: [0, -aimStepDeg],
+        ArrowLeft: [-aimStepDeg, 0],
+        KeyA: [-aimStepDeg, 0],
+        ArrowRight: [aimStepDeg, 0],
+        KeyD: [aimStepDeg, 0],
       }[event.code];
       if (!delta) return;
       event.preventDefault();
@@ -78,7 +81,7 @@ export function CommandConsole({
       window.removeEventListener('keyup', releaseDeadman);
       window.removeEventListener('blur', releaseDeadmanOnBlur);
     };
-  }, [apiBusy, manualAimReady, onManualAim]);
+  }, [aimStepDeg, apiBusy, manualAimReady, onManualAim]);
 
   return (
     <>
@@ -127,6 +130,19 @@ export function CommandConsole({
             {deadmanActive ? 'DEADMAN AKTİF' : 'DEADMAN PASİF'}
           </span>
         </div>
+        <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
+          <span className={turretCalibration?.active ? 'text-[#33e68c]' : 'text-[#ffbb42]'} data-testid="operator-turret-calibration">
+            Taret kalibrasyonu: {turretCalibration?.active ? turretCalibration.calibrationId : 'AKTİF DEĞİL'}
+          </span>
+          <label>Adım&nbsp;
+            <select className="rounded bg-black px-1 py-0.5 text-white" value={aimStepDeg} onChange={(event) => setAimStepDeg(Number(event.currentTarget.value))}>
+              <option value={0.25}>0,25°</option>
+              <option value={0.5}>0,5°</option>
+              <option value={1}>1°</option>
+              <option value={2}>2°</option>
+            </select>
+          </label>
+        </div>
         <button
           type="button"
           className="mt-2 w-full rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:opacity-40"
@@ -141,11 +157,11 @@ export function CommandConsole({
         </button>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <span />
-          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, 1)} data-testid="operator-aim-up">YUKARI</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, aimStepDeg)} data-testid="operator-aim-up">YUKARI</button>
           <span />
-          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(-1, 0)} data-testid="operator-aim-left">SOL</button>
-          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, -1)} data-testid="operator-aim-down">AŞAĞI</button>
-          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(1, 0)} data-testid="operator-aim-right">SAĞ</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(-aimStepDeg, 0)} data-testid="operator-aim-left">SOL</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(0, -aimStepDeg)} data-testid="operator-aim-down">AŞAĞI</button>
+          <button type="button" disabled={aimDisabled} onClick={() => onManualAim(aimStepDeg, 0)} data-testid="operator-aim-right">SAĞ</button>
         </div>
         <p className="m-0 mt-2 text-[10px] text-[#91a6b7]">
           Klavye: Space basılıyken ok/WASD. UI yalnız delta/rate/deadman niyeti gönderir; limit ve Safety kararı backend'e aittir.

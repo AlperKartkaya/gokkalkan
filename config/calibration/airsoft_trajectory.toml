@@ -1,0 +1,9 @@
+# Fiziksel atış ölçümleri olmadan balistik telafi uygulanmaz.
+[calibration]
+id = "UNVERIFIED"
+status = "UNVERIFIED"
+
+# Saha ölçümünden sonra en az iki [[point]] ekleyin:
+# [[point]]
+# range_m = 5.0
+# elevation_deg = 0.0

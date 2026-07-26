@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .hil_runner import HilProfile, run_hil_plan
 from .calibration_workflow import evaluate_lidar_file
+from .turret_calibration import solve_calibration_file
 from .release_gate import build_release_manifest, verify_release_manifest
 from .runtime_config import load_runtime_config
 from .verification import PerformanceBudget, run_fault_injection_suite, run_soak
@@ -136,3 +137,24 @@ def lidar_main(argv: list[str]) -> int:
     result = evaluate_lidar_file(args.observations, args.output)
     _print(result)
     return 0 if result["physicalGatePassed"] else 1
+
+
+def turret_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="gokkalkan turret")
+    sub = parser.add_subparsers(dest="operation", required=True)
+    calibrate = sub.add_parser("calibrate")
+    calibrate.add_argument("observations")
+    calibrate.add_argument("--output", default="config/calibration/turret.toml")
+    calibrate.add_argument(
+        "--activate",
+        action="store_true",
+        help="Çözümü runtime komut düzeltmesi için ACTIVE işaretle.",
+    )
+    args = parser.parse_args(argv)
+    result = solve_calibration_file(
+        args.observations,
+        args.output,
+        activate=args.activate,
+    )
+    _print(result.to_dict())
+    return 0

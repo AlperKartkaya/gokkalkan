@@ -68,6 +68,32 @@ export interface OperatorApiSnapshot {
       northY: number;
     };
   };
+  turretCalibration?: {
+    calibrationId: string;
+    status: string;
+    calibratedAt: string | null;
+    active: boolean;
+    pan: { gain: number; offsetDeg: number; rmseDeg: number | null; sampleCount: number };
+    tilt: { gain: number; offsetDeg: number; rmseDeg: number | null; sampleCount: number };
+  };
+  ballisticCompensation?: {
+    calibrationId: string;
+    status: string;
+    active: boolean;
+    rangeM: number | null;
+    elevationCorrectionDeg: number | null;
+    mode: 'HOLDOVER_RETICLE';
+    automaticFireAdjustment: false;
+    reason: string;
+  };
+  lidarReading?: {
+    status: 'LIVE_ACCEPTED' | 'REJECTED';
+    distanceM: number | null;
+    trackId: string | null;
+    timestamp: string;
+    reason: string;
+    source: 'tfa50-l-1d';
+  } | null;
   maintenanceBudgetSec?: number;
   maintenanceUsedSec?: number;
   maintenanceRemainingBudgetSec?: number;

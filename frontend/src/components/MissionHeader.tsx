@@ -7,7 +7,6 @@ export function MissionHeader({
   stage,
   mode,
   round,
-  onRawLidarOpen,
   onRawCameraOpen,
   onReset,
   missionRemainingSeconds,
@@ -17,7 +16,6 @@ export function MissionHeader({
   stage: Stage;
   mode: Mode;
   round: number;
-  onRawLidarOpen: () => void;
   onRawCameraOpen: () => void;
   onReset: () => void;
   missionRemainingSeconds?: number;
@@ -49,15 +47,6 @@ export function MissionHeader({
         </div>
       </div>
       <div className="operator-header-actions">
-        <button
-          type="button"
-          className="operator-raw-lidar-button"
-          data-testid="operator-raw-lidar-button"
-          disabled={apiBusy}
-          onClick={onRawLidarOpen}
-        >
-          HAM LİDAR
-        </button>
         <button
           type="button"
           className="operator-raw-camera-button"

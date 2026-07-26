@@ -1,0 +1,15 @@
+# Saha ölçümü yapılmadan komut düzeltmesi uygulanmaz.
+[calibration]
+id = "UNVERIFIED"
+status = "UNVERIFIED"
+calibrated_at = ""
+
+[pan]
+gain = 1.0
+offset_deg = 0.0
+sample_count = 0
+
+[tilt]
+gain = 1.0
+offset_deg = 0.0
+sample_count = 0

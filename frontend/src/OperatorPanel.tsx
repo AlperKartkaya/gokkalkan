@@ -28,12 +28,6 @@ import {
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
-import {
-  SEMANTIC2D_LABELS,
-  SEMANTIC2D_RAW_LIDAR_CLIPS,
-  type RecordedRawLidarPoint,
-  type Semantic2dLabelId,
-} from './fixtures/rawLidarSemantic2dSample';
 import type { Mode, Stage, TargetType } from './types';
 import { MissionHeader } from './components/MissionHeader';
 import { CommandConsole } from './components/CommandConsole';
@@ -214,267 +208,6 @@ function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
   };
 }
 
-function rawLidarTargetTypeClass(type: TargetType | undefined) {
-  if (type === 'F16') return 'f16';
-  if (type === 'Helikopter') return 'helikopter';
-  if (type === 'Balistik Füze') return 'balistik';
-  if (type === 'Mini/Micro İHA') return 'iha';
-  return 'aircraft';
-}
-
-function deterministicUnit(seed: number) {
-  const raw = Math.sin(seed * 12.9898) * 43758.5453;
-  return raw - Math.floor(raw);
-}
-
-function rawLidarSemanticClass(label: Semantic2dLabelId) {
-  switch (label) {
-    case 1: return 'chair';
-    case 2: return 'door';
-    case 3: return 'elevator';
-    case 4: return 'person';
-    case 5: return 'pillar';
-    case 6: return 'sofa';
-    case 7: return 'table';
-    case 8: return 'trash';
-    case 9: return 'wall';
-    default: return 'background';
-  }
-}
-
-function rawLidarAircraftSignature(type: TargetType) {
-  if (type === 'F16') return [
-    { angle: -4.2, range: 0.20, intensity: 0.82 },
-    { angle: -2.0, range: -0.10, intensity: 0.94 },
-    { angle: 0, range: -0.25, intensity: 0.98 },
-    { angle: 2.0, range: -0.10, intensity: 0.94 },
-    { angle: 4.2, range: 0.20, intensity: 0.82 },
-    { angle: -1.2, range: 0.38, intensity: 0.74 },
-    { angle: 1.2, range: 0.38, intensity: 0.74 },
-  ];
-  if (type === 'Helikopter') return [
-    { angle: -3.2, range: 0.25, intensity: 0.68 },
-    { angle: -1.4, range: -0.08, intensity: 0.83 },
-    { angle: 0, range: -0.24, intensity: 0.93 },
-    { angle: 1.4, range: -0.08, intensity: 0.83 },
-    { angle: 3.2, range: 0.25, intensity: 0.68 },
-    { angle: -0.8, range: 0.55, intensity: 0.62 },
-    { angle: 0.8, range: 0.55, intensity: 0.62 },
-  ];
-  if (type === 'Balistik Füze') return [
-    { angle: 0, range: -0.46, intensity: 0.98 },
-    { angle: -0.8, range: -0.20, intensity: 0.86 },
-    { angle: 0.8, range: -0.20, intensity: 0.86 },
-    { angle: 0, range: 0.20, intensity: 0.78 },
-    { angle: -0.4, range: 0.55, intensity: 0.66 },
-    { angle: 0.4, range: 0.55, intensity: 0.66 },
-  ];
-  return [
-    { angle: -2.2, range: 0.12, intensity: 0.78 },
-    { angle: -1.0, range: -0.10, intensity: 0.88 },
-    { angle: 0, range: -0.18, intensity: 0.92 },
-    { angle: 1.0, range: -0.10, intensity: 0.88 },
-    { angle: 2.2, range: 0.12, intensity: 0.78 },
-    { angle: 0, range: 0.42, intensity: 0.64 },
-  ];
-}
-
-function makeRawLidarAircraftPoints(frames: OperatorSensorFrame[], frameIndex: number): RawLidarPoint[] {
-  const fusionTargets = frames.filter((frame) => frame.sensor === 'fusion' && frame.rangeM > 0 && frame.rangeM <= RAW_LIDAR_ENGAGEMENT_RANGE_M);
-  return fusionTargets.flatMap((target, targetIndex) => {
-    const sweepOffset = Math.sin(frameIndex * 0.48 + targetIndex * 0.9);
-    const baseBearing = clampNumber(target.bearingDeg + sweepOffset * 0.7, -78, 78);
-    const baseRange = clampNumber(target.rangeM + sweepOffset * 0.18, 4.4, RAW_LIDAR_ENGAGEMENT_RANGE_M - 0.25);
-    return rawLidarAircraftSignature(target.targetType).map((sample, sampleIndex): RawLidarPoint => {
-      const jitterSeed = (targetIndex + 1) * 1000 + frameIndex * 97 + sampleIndex * 31;
-      const angleJitter = (deterministicUnit(jitterSeed) - 0.5) * 1.25;
-      const rangeJitter = (deterministicUnit(jitterSeed + 17) - 0.5) * 0.22;
-      const rangeM = clampNumber(baseRange + sample.range + rangeJitter + Math.sin(frameIndex * 0.35 + sampleIndex) * 0.04, 4.2, RAW_LIDAR_ENGAGEMENT_RANGE_M - 0.12);
-      const intensity = clampNumber(sample.intensity * target.quality, 0.28, 0.98);
-      return {
-        id: `competition-aircraft-${target.trackId}-${frameIndex}-${sampleIndex}`,
-        angleDeg: Number((baseBearing + sample.angle + angleJitter).toFixed(2)),
-        rangeM: Number(rangeM.toFixed(3)),
-        originalRangeM: Number(rangeM.toFixed(3)),
-        calibratedRangeM: Number(rangeM.toFixed(3)),
-        intensity,
-        quality: clampNumber(0.45 + intensity * 0.5, 0.32, 0.99),
-        semanticLabel: 0,
-        rawClass: 'aircraft',
-        targetType: target.targetType,
-        typeConfidence: target.classificationConfidence,
-        trackId: target.trackId,
-        source: 'return',
-      };
-    });
-  });
-}
-
-function makeRawLidarPersonEchoPoints(environmentPoints: RawLidarPoint[], frameIndex: number): RawLidarPoint[] {
-  return environmentPoints
-    .filter((point) => point.semanticLabel === 4 && point.intensity > 0.02)
-    .flatMap((point, personIndex) => [0, 1, 2].map((echoIndex): RawLidarPoint => {
-      const seed = frameIndex * 809 + personIndex * 131 + echoIndex * 37;
-      const rangeM = clampNumber(
-        Math.max(point.rangeM, RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.65) + (deterministicUnit(seed) - 0.5) * 1.45 + echoIndex * 0.18,
-        RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.35,
-        RAW_LIDAR_DISPLAY_MAX_RANGE_M,
-      );
-      const angleDeg = clampNumber(
-        point.angleDeg + (deterministicUnit(seed + 19) - 0.5) * 9.5,
-        -135,
-        135,
-      );
-      return {
-        ...point,
-        id: `${point.id}-person-echo-${echoIndex}`,
-        angleDeg: Number(angleDeg.toFixed(2)),
-        rangeM: Number(rangeM.toFixed(3)),
-        originalRangeM: point.originalRangeM,
-        calibratedRangeM: point.calibratedRangeM,
-        intensity: clampNumber(point.intensity + 0.12 + deterministicUnit(seed + 41) * 0.22, 0.16, 0.92),
-        quality: clampNumber(point.quality + 0.10, 0.28, 0.96),
-        semanticLabel: 4,
-      };
-    }));
-}
-
-function makeRawLidarClips(stage: Stage, round: number, frames: OperatorSensorFrame[]): RawLidarClip[] {
-  const timestamp = frames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
-
-  return SEMANTIC2D_RAW_LIDAR_CLIPS
-    .filter((recordedClip) => recordedClip.clipId === RAW_LIDAR_ACTIVE_CLIP_ID)
-    .map((recordedClip): RawLidarClip => {
-      const validReturns: RecordedRawLidarPoint[] = [];
-      for (const recordedFrame of recordedClip.frames) {
-        for (const point of recordedFrame.points as readonly RecordedRawLidarPoint[]) {
-          if (point.intensity > 0.02 && point.rangeM > 0 && point.rangeM < recordedClip.originalRangeMaxM * 0.95) {
-            validReturns.push(point);
-          }
-        }
-      }
-      const meanRawRangeM = validReturns.length === 0
-        ? RAW_LIDAR_TARGET_MEAN_RANGE_M
-        : validReturns.reduce((sum, point) => sum + point.rangeM, 0) / validReturns.length;
-      const visualRangeScale = RAW_LIDAR_TARGET_MEAN_RANGE_M / Math.max(1, meanRawRangeM);
-
-      return {
-        clipId: recordedClip.clipId,
-        clipLabel: recordedClip.label,
-        stage,
-        round,
-        timestamp,
-        sourceDataset: `${recordedClip.sourceName} · ${recordedClip.sequence}/${recordedClip.frameStart}–${recordedClip.frameEnd}`,
-        sourceUrl: recordedClip.sourceUrl,
-        license: recordedClip.license,
-        sampleRateHz: recordedClip.sampleRateHz,
-        maxRangeM: RAW_LIDAR_DISPLAY_MAX_RANGE_M,
-        frames: recordedClip.frames.map((recordedFrame, frameIndex): RawLidarFrame => {
-          const environmentPoints = recordedFrame.points.map((point, pointIndex): RawLidarPoint => {
-            const isNoReturn = point.intensity <= 0.01 || point.rangeM >= recordedClip.originalRangeMaxM * 0.95;
-            const calibratedRangeM = isNoReturn
-              ? RAW_LIDAR_DISPLAY_MAX_RANGE_M
-              : clampNumber(point.rangeM * visualRangeScale, 0.35, RAW_LIDAR_DISPLAY_MAX_RANGE_M);
-            const wouldOccupyFrontBand = calibratedRangeM <= RAW_LIDAR_ENGAGEMENT_RANGE_M;
-            const scatterSeed = frameIndex * 409 + pointIndex * 53 + Math.round(point.angleDeg * 10);
-            let displayRangeM = wouldOccupyFrontBand
-              ? clampNumber(RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.38 + deterministicUnit(scatterSeed) * 2.25, RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.25, RAW_LIDAR_DISPLAY_MAX_RANGE_M)
-              : clampNumber(calibratedRangeM + (deterministicUnit(scatterSeed + 23) - 0.5) * 0.62, 0.35, RAW_LIDAR_DISPLAY_MAX_RANGE_M);
-            const displayAngleDeg = clampNumber(
-              point.angleDeg + (deterministicUnit(scatterSeed + 41) - 0.5) * (wouldOccupyFrontBand ? 31 : 9),
-              -135,
-              135,
-            );
-            if (displayRangeM <= RAW_LIDAR_ENGAGEMENT_RANGE_M && displayAngleDeg >= -90 && displayAngleDeg <= 90) {
-              displayRangeM = clampNumber(RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.32 + deterministicUnit(scatterSeed + 67) * 2.35, RAW_LIDAR_ENGAGEMENT_RANGE_M + 0.25, RAW_LIDAR_DISPLAY_MAX_RANGE_M);
-            }
-            return {
-              id: `semantic2d-${recordedClip.sequence}-${recordedFrame.frameFile}-${pointIndex}`,
-              angleDeg: Number(displayAngleDeg.toFixed(2)),
-              rangeM: Number(displayRangeM.toFixed(3)),
-              originalRangeM: point.rangeM,
-              calibratedRangeM: Number(calibratedRangeM.toFixed(3)),
-              intensity: point.intensity,
-              quality: clampNumber(0.32 + point.intensity * 0.62, 0.18, 0.98),
-              semanticLabel: point.label as Semantic2dLabelId,
-              rawClass: 'environment',
-              source: 'recording',
-            };
-          });
-          const personEchoPoints = makeRawLidarPersonEchoPoints(environmentPoints, frameIndex);
-          const aircraftPoints = makeRawLidarAircraftPoints(frames, frameIndex);
-          const points = [...environmentPoints, ...personEchoPoints, ...aircraftPoints];
-
-          return {
-            frameId: `RAW-LIDAR-S${stage}-R${round}`,
-            clipFrameFile: `${recordedFrame.frameFile}.npy`,
-            clipFrameIndex: frameIndex,
-            originalPointCount: recordedClip.originalPointCount,
-            displayedPointCount: points.length,
-            points,
-          };
-        }),
-      };
-    });
-}
-
-function cameraPaintColor(friendFoe: OperatorSensorFrame['friendFoe']) {
-  if (friendFoe === 'Dost') return '#43e36d';
-  if (friendFoe === 'Düşman') return '#ff4d6d';
-  return '#aeb7c3';
-}
-
-function cameraPaintName(friendFoe: OperatorSensorFrame['friendFoe']) {
-  if (friendFoe === 'Dost') return 'Yeşil';
-  if (friendFoe === 'Düşman') return 'Kırmızı';
-  return 'Gri';
-}
-
-function makeRawCameraFeed(stage: Stage, round: number, sensorFrames: OperatorSensorFrame[]): RawCameraFeed {
-  const baseFrames = sensorFrames;
-  const fusionFrames = baseFrames.filter((frame) => frame.sensor === 'fusion');
-  const visualFrames = (fusionFrames.length > 0 ? fusionFrames : baseFrames).slice(0, 4);
-  const timestamp = visualFrames[0]?.timestamp ?? new Date('2026-05-25T20:00:00.000Z').toISOString();
-  const frames = Array.from({ length: 10 }, (_, frameIndex): RawCameraFrame => {
-    const objects = visualFrames.map((frame, index): RawCameraObject => {
-      const drift = Math.sin((frameIndex + index) * 0.72) * 2.8;
-      const bearingOffset = clampNumber(frame.bearingDeg / 45, -1, 1) * 8;
-      return {
-        id: `${frame.trackId}-camera-${frameIndex}`,
-        trackId: frame.trackId,
-        targetType: frame.targetType,
-        paintName: cameraPaintName(frame.friendFoe),
-        paintColor: cameraPaintColor(frame.friendFoe),
-        left: clampPercent(18 + index * 21 + bearingOffset + drift, 9, 86),
-        top: clampPercent(32 + index * 9 + Math.cos((frameIndex + index) * 0.55) * 4, 18, 76),
-        scale: clampNumber(1.16 - frame.rangeM / 28 + index * 0.04, 0.62, 1.06),
-        blur: clampNumber(frame.rangeM / 34, 0.06, 0.56),
-      };
-    });
-    return {
-      frameId: `RAW-CAMERA-S${stage}-R${round}`,
-      frameIndex,
-      timestamp: new Date(Date.parse(timestamp) + frameIndex * 33).toISOString(),
-      exposureMs: 4.2 + (frameIndex % 3) * 0.4,
-      gainDb: 6.8 + (frameIndex % 4) * 0.3,
-      whiteBalanceK: 5200 + (frameIndex % 5) * 80,
-      objects,
-    };
-  });
-
-  return {
-    feedId: `RAW-CAMERA-S${stage}-R${round}`,
-    stage,
-    round,
-    sourceName: 'Gökkalkan kamera adapterı',
-    sourceUrl: 'local://gokkalkan/camera-adapter',
-    resolution: '1280×720',
-    fps: 30,
-    lens: 'RGB kamera · 70° FOV',
-    frames,
-  };
-}
-
 type Vec3 = [number, number, number];
 type SensorBatch = { positions: number[]; colors: number[] };
 type SensorOverlayPoint = {
@@ -483,79 +216,6 @@ type SensorOverlayPoint = {
   left: number;
   top: number;
   visible: boolean;
-};
-
-type RawLidarPoint = {
-  id: string;
-  angleDeg: number;
-  rangeM: number;
-  originalRangeM?: number;
-  calibratedRangeM?: number;
-  intensity: number;
-  quality: number;
-  semanticLabel: Semantic2dLabelId;
-  rawClass?: 'aircraft' | 'environment';
-  targetType?: TargetType;
-  typeConfidence?: number;
-  trackId?: string;
-  source: 'recording' | 'return' | 'noise' | 'reference';
-};
-
-type RawLidarFrame = {
-  frameId: string;
-  clipFrameFile: string;
-  clipFrameIndex: number;
-  originalPointCount: number;
-  displayedPointCount: number;
-  points: RawLidarPoint[];
-};
-
-type RawLidarClip = {
-  clipId: string;
-  clipLabel: string;
-  stage: Stage;
-  round: number;
-  timestamp: string;
-  sourceDataset: string;
-  sourceUrl: string;
-  license: string;
-  sampleRateHz: number;
-  maxRangeM: number;
-  frames: RawLidarFrame[];
-};
-
-type RawCameraObject = {
-  id: string;
-  trackId: string;
-  targetType: TargetType;
-  paintName: 'Kırmızı' | 'Yeşil' | 'Gri';
-  paintColor: string;
-  left: number;
-  top: number;
-  scale: number;
-  blur: number;
-};
-
-type RawCameraFrame = {
-  frameId: string;
-  frameIndex: number;
-  timestamp: string;
-  exposureMs: number;
-  gainDb: number;
-  whiteBalanceK: number;
-  objects: RawCameraObject[];
-};
-
-type RawCameraFeed = {
-  feedId: string;
-  stage: Stage;
-  round: number;
-  sourceName: string;
-  sourceUrl: string;
-  resolution: string;
-  fps: number;
-  lens: string;
-  frames: RawCameraFrame[];
 };
 
 type SensorGlResources = {
@@ -569,14 +229,6 @@ type SensorGlResources = {
 
 const SENSOR_DOME_POSITION: Vec3 = [7.7, 0, 0];
 const SENSOR_DEFAULT_DISTANCE = defaultSensorView.distance;
-const RAW_LIDAR_ENGAGEMENT_RANGE_M = 15;
-const RAW_LIDAR_DISPLAY_MAX_RANGE_M = 18;
-const RAW_LIDAR_TARGET_MEAN_RANGE_M = 10;
-const RAW_LIDAR_ACTIVE_CLIP_ID = 'corridor';
-const RAW_LIDAR_ZOOM_MIN = 0.65;
-const RAW_LIDAR_ZOOM_DEFAULT = 0.85;
-const RAW_LIDAR_ZOOM_MAX = 1;
-const RAW_LIDAR_ZOOM_STEP = 0.05;
 
 const sensorPalette = {
   grid: [0.18, 0.52, 0.95] as Vec3,
@@ -1226,452 +878,35 @@ function OperatorTrackScene({
   );
 }
 
-function rawLidarPointInFrontEngagement(point: Pick<RawLidarPoint, 'angleDeg' | 'rangeM'>) {
-  return point.rangeM <= RAW_LIDAR_ENGAGEMENT_RANGE_M && point.angleDeg >= -90 && point.angleDeg <= 90;
-}
-
-function RawLidarDiagnosticPage({ clips, onBack }: { clips: RawLidarClip[]; onBack: () => void }) {
-  const [frameIndex, setFrameIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [classificationEnabled, setClassificationEnabled] = useState(false);
-  const [zoom, setZoom] = useState(RAW_LIDAR_ZOOM_DEFAULT);
-  const clip = (clips[0]) as RawLidarClip;
-
-  const frame = clip.frames[frameIndex] ?? clip.frames[0];
-  const frontEngagementPoints = useMemo(
-    () => (frame?.points ?? []).filter(rawLidarPointInFrontEngagement),
-    [frame],
-  );
-  const frontAircraftPoints = frontEngagementPoints.filter((point) => point.rawClass === 'aircraft');
-  const frontAircraftTracks = useMemo(() => {
-    const tracks = new Map<string, { trackId: string; targetType: TargetType; rangeM: number; angleDeg: number; signal: number; typeConfidence: number }>();
-    for (const point of frontAircraftPoints) {
-      if (!point.trackId || !point.targetType) continue;
-      const current = tracks.get(point.trackId);
-      if (!current || point.intensity > current.signal) {
-        tracks.set(point.trackId, {
-          trackId: point.trackId,
-          targetType: point.targetType,
-          rangeM: point.rangeM,
-          angleDeg: point.angleDeg,
-          signal: point.intensity,
-          typeConfidence: clampNumber(point.typeConfidence ?? point.quality, 0, 1),
-        });
-      }
-    }
-    return Array.from(tracks.values()).sort((a, b) => a.rangeM - b.rangeM);
-  }, [frontAircraftPoints]);
-  const nearestFrontPoint = frontAircraftPoints.reduce<RawLidarPoint | undefined>(
-    (nearest, point) => (!nearest || point.rangeM < nearest.rangeM ? point : nearest),
-    undefined,
-  );
-  const signalStrength = frontAircraftPoints.length === 0
-    ? 0
-    : Math.round(clampNumber(
-      (frontAircraftPoints.reduce((sum, point) => sum + point.intensity, 0) / frontAircraftPoints.length) * 100,
-      0,
-      100,
-    ));
-  const otherObjectCounts = useMemo(() => {
-    const counts = new Map<Semantic2dLabelId, number>();
-    for (const point of frame?.points ?? []) {
-      if (point.rawClass !== 'environment' || point.rangeM <= RAW_LIDAR_ENGAGEMENT_RANGE_M || point.intensity <= 0.02) continue;
-      counts.set(point.semanticLabel, (counts.get(point.semanticLabel) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .filter(([label]) => label !== 0)
-      .sort((a, b) => {
-        if (a[0] === 4 && b[0] !== 4) return -1;
-        if (b[0] === 4 && a[0] !== 4) return 1;
-        return b[1] - a[1];
-      });
-  }, [frame]);
-  const engagementRadius = (RAW_LIDAR_ENGAGEMENT_RANGE_M / clip.maxRangeM) * 44;
-  const engagementRangeTicks = [5, 10, 15].map((range) => ({
-    range,
-    radius: (range / clip.maxRangeM) * 44,
-  }));
-
-  useEffect(() => {
-    setFrameIndex(0);
-    setPlaying(false);
-  }, [clip]);
-
-  useEffect(() => {
-    if (!playing || clip.frames.length < 2) return undefined;
-    const playbackMs = Math.max(180, Math.round(1000 / Math.min(clip.sampleRateHz, 3)));
-    const timer = window.setInterval(() => {
-      setFrameIndex((current) => (current + 1) % clip.frames.length);
-    }, playbackMs);
-    return () => window.clearInterval(timer);
-  }, [clip.frames.length, clip.sampleRateHz, playing]);
-
-  function moveFrame(direction: -1 | 1) {
-    setPlaying(false);
-    setFrameIndex((current) => (current + direction + clip.frames.length) % clip.frames.length);
-  }
-
-  function adjustZoom(delta: number) {
-    setZoom((current) => clampNumber(Number((current + delta).toFixed(2)), RAW_LIDAR_ZOOM_MIN, RAW_LIDAR_ZOOM_MAX));
-  }
-
-  function resetZoom() {
-    setZoom(RAW_LIDAR_ZOOM_DEFAULT);
-  }
-
+function RawCameraDiagnosticPage({ streamUrl, onBack }: { streamUrl: string; onBack: () => void }) {
+  const [failed, setFailed] = useState(false);
   return (
-    <main className="raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-lidar-page" data-clip-id={clip.clipId}>
-      <div className="raw-lidar-shell">
-        <header className="raw-lidar-header">
-          <div className="min-w-0">
-            <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Diagnostik</p>
-            <h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM LİDAR</h1>
-          </div>
-          <button
-            type="button"
-            className="raw-lidar-back-button"
-            data-testid="raw-lidar-back-button"
-            onClick={onBack}
-          >
-            OPERATÖR PANELİNE DÖN
-          </button>
-        </header>
-
-        <section className="raw-lidar-grid">
-          <article className="raw-lidar-canvas-card" aria-label="Ham LiDAR polar nokta bulutu">
-            <div
-              className="raw-lidar-scan-frame"
-              onWheel={(event) => {
-                event.preventDefault();
-                adjustZoom(event.deltaY < 0 ? RAW_LIDAR_ZOOM_STEP : -RAW_LIDAR_ZOOM_STEP);
-              }}
-            >
-              <div className="raw-lidar-zone-label" data-testid="raw-lidar-zone-label">ÖN ATIŞ BÖLGESİ</div>
-              <svg className="raw-lidar-scan" viewBox="0 0 100 100" data-testid="raw-lidar-svg" role="img" aria-label="Ham LiDAR polar tarama noktaları">
-                <defs>
-                  <radialGradient id="raw-lidar-glow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="rgba(72,168,255,.18)" />
-                    <stop offset="72%" stopColor="rgba(37,216,255,.05)" />
-                    <stop offset="100%" stopColor="rgba(37,216,255,0)" />
-                  </radialGradient>
-                  <filter id="raw-lidar-point-glow" x="-80%" y="-80%" width="260%" height="260%">
-                    <feGaussianBlur stdDeviation="0.7" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-                <g
-                  className="raw-lidar-zoom-layer"
-                  data-testid="raw-lidar-zoom-layer"
-                  data-zoom={zoom.toFixed(2)}
-                  style={{ transform: `scale(${zoom})` } as CSSProperties}
-                >
-                  <rect x="0" y="0" width="100" height="100" rx="6" fill="url(#raw-lidar-glow)" />
-                  <path className="raw-lidar-rear-mask" d="M2 50 A48 48 0 0 0 98 50 L98 98 L2 98 Z" data-testid="raw-lidar-rear-mask" />
-                  <path
-                    className="raw-lidar-engagement-zone"
-                    d={`M50 50 L${50 - engagementRadius} 50 A${engagementRadius} ${engagementRadius} 0 0 1 ${50 + engagementRadius} 50 Z`}
-                    data-testid="raw-lidar-engagement-zone"
-                  />
-                  {engagementRangeTicks.map(({ range, radius }) => (
-                    <g key={range} className="raw-lidar-ring">
-                      <path d={`M${50 - radius} 50 A${radius} ${radius} 0 0 1 ${50 + radius} 50`} />
-                    </g>
-                  ))}
-                  {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
-                    const radians = ((angle - 90) * Math.PI) / 180;
-                    const x = 50 + Math.cos(radians) * 44;
-                    const y = 50 + Math.sin(radians) * 44;
-                    return (
-                      <line key={angle} className="raw-lidar-axis" x1="50" y1="50" x2={x} y2={y} />
-                    );
-                  })}
-                  <circle className="raw-lidar-origin" cx="50" cy="50" r="1.3" />
-                  {frame?.points.map((point) => {
-                    const radius = (point.rangeM / clip.maxRangeM) * 44;
-                    const radians = ((point.angleDeg - 90) * Math.PI) / 180;
-                    const x = 50 + Math.cos(radians) * radius;
-                    const y = 50 + Math.sin(radians) * radius;
-                    const size = point.source === 'reference' ? 0.26 : 0.34 + point.intensity * 0.48;
-                    const frontEngagement = rawLidarPointInFrontEngagement(point);
-                    const semanticClass = rawLidarSemanticClass(point.semanticLabel);
-                    const aircraftClass = point.rawClass === 'aircraft' ? `aircraft target-${rawLidarTargetTypeClass(point.targetType)}` : 'environment';
-                    const classificationClass = classificationEnabled
-                      ? point.rawClass === 'aircraft'
-                        ? 'classified'
-                        : `classified semantic-${semanticClass}`
-                      : '';
-                    return (
-                      <circle
-                        key={point.id}
-                        className={`raw-lidar-point ${point.source} ${aircraftClass} ${classificationClass}`}
-                        cx={x}
-                        cy={y}
-                        r={size}
-                        style={{ '--raw-intensity': point.intensity.toFixed(2), '--raw-quality': point.quality.toFixed(2) } as CSSProperties}
-                        data-testid="raw-lidar-point"
-                        data-source={point.source}
-                        data-front-engagement={frontEngagement ? 'true' : 'false'}
-                        data-range-m={point.rangeM.toFixed(2)}
-                        data-raw-range-m={(point.originalRangeM ?? point.rangeM).toFixed(2)}
-                        data-raw-class={point.rawClass ?? 'environment'}
-                        data-target-type={point.targetType ?? ''}
-                        data-track-id={point.trackId ?? ''}
-                        data-semantic-label={point.semanticLabel}
-                        data-semantic-name={point.rawClass === 'aircraft' ? point.targetType : SEMANTIC2D_LABELS[point.semanticLabel]}
-                      />
-                    );
-                  })}
-                </g>
-              </svg>
-            </div>
-            <div className="raw-lidar-controls" data-testid="raw-lidar-clip-controls">
-              <button type="button" data-testid="raw-lidar-play-toggle" onClick={() => setPlaying((current) => !current)}>
-                {playing ? 'DURAKLAT' : 'OYNAT'}
-              </button>
-              <button type="button" data-testid="raw-lidar-prev-frame" onClick={() => moveFrame(-1)}>‹</button>
-              <input
-                type="range"
-                min="0"
-                max={Math.max(0, clip.frames.length - 1)}
-                value={frameIndex}
-                aria-label="LiDAR klip karesi"
-                data-testid="raw-lidar-frame-slider"
-                onChange={(event) => {
-                  setPlaying(false);
-                  setFrameIndex(Number(event.currentTarget.value));
-                }}
-              />
-              <button type="button" data-testid="raw-lidar-next-frame" onClick={() => moveFrame(1)}>›</button>
-              <span data-testid="raw-lidar-clip-progress">KARE {frameIndex + 1}/{clip.frames.length}</span>
-              <div className="raw-lidar-zoom-controls" data-testid="raw-lidar-zoom-controls">
-                <button type="button" data-testid="raw-lidar-zoom-out" disabled={zoom <= RAW_LIDAR_ZOOM_MIN} onClick={() => adjustZoom(-RAW_LIDAR_ZOOM_STEP)}>−</button>
-                <span data-testid="raw-lidar-zoom-level">{Math.round(zoom * 100)}%</span>
-                <button type="button" data-testid="raw-lidar-zoom-in" disabled={zoom >= RAW_LIDAR_ZOOM_MAX} onClick={() => adjustZoom(RAW_LIDAR_ZOOM_STEP)}>+</button>
-                <button type="button" data-testid="raw-lidar-zoom-reset" disabled={Math.abs(zoom - RAW_LIDAR_ZOOM_DEFAULT) < 0.001} onClick={resetZoom}>SIFIRLA</button>
-              </div>
-            </div>
-          </article>
-
-          <aside className="raw-lidar-side-card">
-            <div className="raw-lidar-frame-card">
-              <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Çerçeve</p>
-              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-lidar-frame-id">Menzil Taraması</h2>
-              <p className="raw-lidar-current-frame" data-testid="raw-lidar-current-frame">KARE {String(frameIndex + 1).padStart(2, '0')} / {String(clip.frames.length).padStart(2, '0')}</p>
-            </div>
-            <div className="raw-lidar-reading-card" data-testid="raw-lidar-reading-card">
-              <p>LiDAR hedef izi</p>
-              <div>
-                <span>En yakın hedef</span>
-                <strong data-testid="raw-lidar-nearest-contact">{nearestFrontPoint ? `${nearestFrontPoint.rangeM.toFixed(1)} m` : 'Yok'}</strong>
-              </div>
-              <div>
-                <span>Tür</span>
-                <strong>{nearestFrontPoint?.targetType ? targetLabel[nearestFrontPoint.targetType] : '—'}</strong>
-              </div>
-              <div>
-                <span>Açı</span>
-                <strong>{nearestFrontPoint ? `${nearestFrontPoint.angleDeg.toFixed(0)}°` : '—'}</strong>
-              </div>
-              <div>
-                <span>Sinyal</span>
-                <strong>{frontAircraftPoints.length > 0 ? `%${signalStrength}` : '—'}</strong>
-              </div>
-              <div>
-                <span>Ön bölge</span>
-                <strong>{frontAircraftTracks.length > 0 ? `${frontAircraftTracks.length} hava hedefi` : 'Temiz'}</strong>
-              </div>
-            </div>
-            <div className="raw-lidar-classifier-card" data-testid="raw-lidar-classifier-card">
-              <div className="raw-lidar-classifier-head">
-                <div>
-                  <p>HEDEF KÜMELERİ</p>
-                  <strong>{classificationEnabled ? `${frontAircraftTracks.length} hava hedefi · ${otherObjectCounts.length} obje tipi` : 'Hazır'}</strong>
-                </div>
-                <button
-                  type="button"
-                  className={classificationEnabled ? 'active' : ''}
-                  data-testid="raw-lidar-classification-toggle"
-                  aria-pressed={classificationEnabled}
-                  onClick={() => setClassificationEnabled((current) => !current)}
-                >
-                  SINIFLANDIRMA {classificationEnabled ? 'AÇIK' : 'KAPALI'}
-                </button>
-              </div>
-              <div className="raw-lidar-semantic-summary" data-testid="raw-lidar-semantic-summary">
-                {classificationEnabled ? (
-                  <>
-                    <div className="raw-lidar-semantic-group" data-testid="raw-lidar-aircraft-group">
-                      <span className="semantic-group-title">Hava hedefleri</span>
-                      {frontAircraftTracks.length > 0 ? frontAircraftTracks.map((track) => (
-                        <span key={track.trackId} className={`semantic-chip target-${rawLidarTargetTypeClass(track.targetType)}`} data-testid={`raw-lidar-target-${rawLidarTargetTypeClass(track.targetType)}`}>
-                          {targetLabel[track.targetType]} <b>%{Math.round(track.typeConfidence * 100)}</b>
-                        </span>
-                      )) : <span className="semantic-chip raw">Yok</span>}
-                    </div>
-                    <div className="raw-lidar-semantic-group" data-testid="raw-lidar-other-objects-group">
-                      <span className="semantic-group-title">Diğer objeler</span>
-                      {otherObjectCounts.length > 0 ? otherObjectCounts.map(([label, count]) => (
-                        <span key={label} className={`semantic-chip semantic-${rawLidarSemanticClass(label)}`} data-testid={`raw-lidar-semantic-${label}`}>
-                          {SEMANTIC2D_LABELS[label]} <b>{count}</b>
-                        </span>
-                      )) : <span className="semantic-chip raw">Yok</span>}
-                    </div>
-                  </>
-                ) : (
-                  <span className="semantic-chip raw">Hedef kümeleri hazır</span>
-                )}
-              </div>
-            </div>
-          </aside>
-        </section>
-      </div>
+    <main className="raw-camera-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-camera-page">
+      <header className="flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4 max-[760px]:flex-col max-[760px]:items-stretch">
+        <div><p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Fiziksel sensör akışı</p><h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM KAMERA</h1></div>
+        <button type="button" className="min-h-12 rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-4 text-xs font-black tracking-[.12em] text-[#ffe4ad] max-[760px]:w-full" data-testid="raw-camera-back-button" onClick={onBack}>OPERATÖR PANELİNE DÖN</button>
+      </header>
+      <section className="mt-4 rounded-xl border border-[#48a8ff]/25 bg-black/40 p-3">
+        <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
+        {failed && <div className="grid aspect-video place-items-center rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/8 p-8 text-center" data-testid="raw-camera-offline"><div><b>FİZİKSEL KAMERA AKIŞI YOK</b><p className="mt-2 text-sm text-[#ffbdc4]">Sentetik görüntü üretilmedi. Perception bridge ve MJPEG servisini doğrulayın.</p></div></div>}
+        <p className="mb-0 mt-3 break-all text-xs text-[#91a6b7]">Kaynak: {streamUrl}</p>
+      </section>
     </main>
   );
 }
 
-function RawCameraDiagnosticPage({ feed, onBack }: { feed: RawCameraFeed; onBack: () => void }) {
-  const [frameIndex, setFrameIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const frame = feed.frames[frameIndex] ?? feed.frames[0];
-  const colorCounts = useMemo(() => {
-    const counts = new Map<RawCameraObject['paintName'], number>();
-    for (const object of frame.objects) {
-      counts.set(object.paintName, (counts.get(object.paintName) ?? 0) + 1);
-    }
-    return Array.from(counts.entries());
-  }, [frame]);
-
-  useEffect(() => {
-    setFrameIndex(0);
-    setPlaying(false);
-  }, [feed]);
-
-  useEffect(() => {
-    if (!playing || feed.frames.length < 2) return undefined;
-    const timer = window.setInterval(() => {
-      setFrameIndex((current) => (current + 1) % feed.frames.length);
-    }, Math.max(120, Math.round(1000 / Math.min(feed.fps, 8))));
-    return () => window.clearInterval(timer);
-  }, [feed.fps, feed.frames.length, playing]);
-
-  function moveFrame(direction: -1 | 1) {
-    setPlaying(false);
-    setFrameIndex((current) => (current + direction + feed.frames.length) % feed.frames.length);
-  }
-
+function Stage1CameraSupport({ streamUrl, lidarRangeM, lidarLive, correctionDeg, calibrationActive }: { streamUrl: string; lidarRangeM?: number; lidarLive: boolean; correctionDeg?: number | null; calibrationActive: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const holdoverTop = correctionDeg == null ? 50 : clampNumber(50 + correctionDeg * 4, 50, 78);
   return (
-    <main className="raw-camera-page raw-lidar-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-camera-page">
-      <div className="raw-lidar-shell">
-        <header className="raw-lidar-header">
-          <div className="min-w-0">
-            <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Diagnostik</p>
-            <h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM KAMERA</h1>
-          </div>
-          <button
-            type="button"
-            className="raw-lidar-back-button"
-            data-testid="raw-camera-back-button"
-            onClick={onBack}
-          >
-            OPERATÖR PANELİNE DÖN
-          </button>
-        </header>
-
-        <section className="raw-lidar-grid raw-camera-grid">
-          <article className="raw-lidar-canvas-card raw-camera-video-card" aria-label="Ham kamera video akışı">
-            <div className="raw-camera-video-frame" data-testid="raw-camera-video-frame">
-              <div className="raw-camera-sky" />
-              <div className="raw-camera-horizon" />
-              <div className="raw-camera-noise" />
-              <div className="raw-camera-reticle" aria-hidden="true" />
-              {frame.objects.map((object) => (
-                <span
-                  key={object.id}
-                  className="raw-camera-object"
-                  data-testid="raw-camera-object"
-                  data-paint={object.paintName}
-                  style={{
-                    '--camera-left': `${object.left}%`,
-                    '--camera-top': `${object.top}%`,
-                    '--camera-scale': object.scale.toFixed(2),
-                    '--camera-blur': `${object.blur.toFixed(2)}px`,
-                    color: object.paintColor,
-                  } as CSSProperties}
-                >
-                  <OperatorTargetSilhouette type={object.targetType} className="raw-camera-object-icon" />
-                </span>
-              ))}
-              <div className="raw-camera-osd">
-                <span data-testid="raw-camera-status">{playing ? 'CANLI' : 'DURAKLATILDI'}</span>
-                <span>{feed.resolution}</span>
-                <span>{feed.fps} FPS</span>
-              </div>
-            </div>
-            <div className="raw-lidar-controls raw-camera-controls" data-testid="raw-camera-controls">
-              <button type="button" data-testid="raw-camera-play-toggle" onClick={() => setPlaying((current) => !current)}>
-                {playing ? 'DURAKLAT' : 'OYNAT'}
-              </button>
-              <button type="button" data-testid="raw-camera-prev-frame" onClick={() => moveFrame(-1)}>‹</button>
-              <input
-                type="range"
-                min="0"
-                max={Math.max(0, feed.frames.length - 1)}
-                value={frameIndex}
-                aria-label="Kamera karesi"
-                data-testid="raw-camera-frame-slider"
-                onChange={(event) => {
-                  setPlaying(false);
-                  setFrameIndex(Number(event.currentTarget.value));
-                }}
-              />
-              <button type="button" data-testid="raw-camera-next-frame" onClick={() => moveFrame(1)}>›</button>
-              <span data-testid="raw-camera-frame-progress">KARE {frameIndex + 1}/{feed.frames.length}</span>
-            </div>
-          </article>
-
-          <aside className="raw-lidar-side-card">
-            <div>
-              <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Video</p>
-              <h2 className="m-0 mt-1 text-2xl font-black text-white" data-testid="raw-camera-frame-id">{frame.frameId}</h2>
-              <p className="raw-lidar-current-frame" data-testid="raw-camera-current-frame">Frame {String(frame.frameIndex + 1).padStart(2, '0')}</p>
-            </div>
-            <div className="raw-lidar-metric-grid">
-              <EvidenceRow label="Aşama / Tur" value={`Aşama ${feed.stage} · Tur ${feed.round}`} />
-              <EvidenceRow label="Çözünürlük" value={feed.resolution} />
-              <EvidenceRow label="FPS" value={`${feed.fps}`} />
-              <EvidenceRow label="Lens" value={feed.lens} />
-              <EvidenceRow label="Pozlama" value={`${frame.exposureMs.toFixed(1)} ms`} />
-              <EvidenceRow label="Kazanç" value={`${frame.gainDb.toFixed(1)} dB`} />
-              <EvidenceRow label="Beyaz ayarı" value={`${frame.whiteBalanceK} K`} />
-              <EvidenceRow label="Zaman" value={frame.timestamp} />
-            </div>
-            <div className="raw-camera-color-card" data-testid="raw-camera-color-card">
-              <p>RENK ÖRNEKLERİ</p>
-              <div>
-                {colorCounts.map(([paintName, count]) => (
-                  <span
-                    key={paintName}
-                    className={`raw-camera-color-chip ${paintName === 'Kırmızı' ? 'red' : paintName === 'Yeşil' ? 'green' : 'gray'}`}
-                    data-testid={`raw-camera-color-${paintName}`}
-                  >
-                    {paintName} <b>{count}</b>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <p className="raw-lidar-source" data-testid="raw-camera-source">
-              {feed.sourceName}
-            </p>
-          </aside>
-        </section>
-      </div>
-    </main>
+    <section className="relative min-h-[520px] overflow-hidden rounded-xl bg-black" data-testid="stage1-camera-support">
+      {!failed ? <img src={streamUrl} alt="Aşama 1 canlı nişan kamerası" className="absolute inset-0 h-full w-full object-contain" onError={() => setFailed(true)} data-testid="stage1-camera-stream" /> : <div className="absolute inset-0 grid place-items-center text-center text-[#ffbdc4]" data-testid="stage1-camera-offline"><div><b>KAMERA AKIŞI BEKLENİYOR</b><p className="text-sm">Sentetik hedef gösterilmez.</p></div></div>}
+      <div className="pointer-events-none absolute inset-0" aria-label="Nişangâh katmanı"><span className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#25d8ff] shadow-[0_0_14px_#25d8ff]" /><span className="absolute left-1/2 top-1/2 h-px w-20 -translate-x-1/2 bg-[#25d8ff]" /><span className="absolute left-1/2 top-1/2 h-20 w-px -translate-y-1/2 bg-[#25d8ff]" />{correctionDeg != null && <span className="absolute left-1/2 h-6 w-6 -translate-x-1/2 rounded-full border-2 border-[#ffbb42]" style={{ top: `${holdoverTop}%` }} data-testid="stage1-impact-reticle" />}</div>
+      <div className="absolute left-3 top-3 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono" data-testid="stage1-lidar-range"><span className="block text-[10px] text-[#91a6b7]">1D LİDAR · BORESIGHT · {lidarLive ? 'CANLI' : 'REPLAY/BEKLEME'}</span><b className="text-xl text-white">{lidarRangeM == null ? '---' : `${lidarRangeM.toFixed(2)} m`}</b></div>
+      <div className="absolute bottom-3 left-3 right-3 flex justify-between gap-3 rounded-lg bg-black/75 px-3 py-2 text-xs"><span>Merkez: kamera/taret ekseni</span><span data-testid="stage1-ballistic-state">{correctionDeg != null ? `Sarı: tahmini darbe noktası · +${correctionDeg.toFixed(2)}°` : calibrationActive ? 'Menzil atış tablosu dışında' : 'Balistik kalibrasyon aktif değil'}</span></div>
+    </section>
   );
 }
-
 
 function SensorFusion3DView({
   stage,
@@ -1960,6 +1195,9 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const isDesktopShell = queryParams.get('desktop') === '1';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
   const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
+  const cameraStreamUrl = queryParams.get('cameraStream')?.trim()
+    || (import.meta.env.VITE_GOKKALKAN_CAMERA_STREAM_URL as string | undefined)?.trim()
+    || 'http://127.0.0.1:8090/camera/live.mjpg';
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
   const [mode, setMode] = useState<Mode>(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
   const [stage, setStage] = useState<Stage>(DEFAULT_OPERATOR_STAGE);
@@ -1994,7 +1232,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   const [evidenceError, setEvidenceError] = useState('');
   const [evidenceNotice, setEvidenceNotice] = useState('');
-  const [rawLidarOpen, setRawLidarOpen] = useState(false);
   const [rawCameraOpen, setRawCameraOpen] = useState(false);
   const [commandResults, setCommandResults] = useState<CommandResult[]>([makeBootCommandResult()]);
 
@@ -2035,14 +1272,12 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const sensorFrames = apiSnapshot?.sensorFrames ?? [];
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
-  const rawLidarClips = useMemo(
-    () => makeRawLidarClips(displayStage, displayRound, interpretedSensorFrames),
-    [displayStage, displayRound, interpretedSensorFrames],
-  );
-  const rawCameraFeed = useMemo(
-    () => makeRawCameraFeed(displayStage, displayRound, interpretedSensorFrames),
-    [displayStage, displayRound, interpretedSensorFrames],
-  );
+  const selectedLidarFrame = sensorFrames.find(
+    (frame) => frame.sensor === 'lidar' && frame.trackId === authoritativeTargetId,
+  ) ?? sensorFrames.find((frame) => frame.sensor === 'lidar');
+  const liveLidarRangeM = apiSnapshot?.lidarReading?.distanceM
+    ?? selectedLidarFrame?.rangeM
+    ?? authoritativeTrack?.rangeM;
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
   const safety = apiSnapshot?.safety ?? {
     estop: false,
@@ -2247,7 +1482,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     setMaintenanceOpen(false);
     setEvidenceError('');
     setCommandApiError('');
-    setRawLidarOpen(false);
     setRawCameraOpen(false);
     setEvidenceNotice('Görünüm backend snapshot durumuna yeniden eşitlendi; görev state değiştirilmedi.');
   };
@@ -2409,12 +1643,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     };
   }, [maintenanceSessionActive, operatorStopActive]);
 
-  if (rawLidarOpen) {
-    return <RawLidarDiagnosticPage clips={rawLidarClips} onBack={() => setRawLidarOpen(false)} />;
-  }
-
   if (rawCameraOpen) {
-    return <RawCameraDiagnosticPage feed={rawCameraFeed} onBack={() => setRawCameraOpen(false)} />;
+    return <RawCameraDiagnosticPage streamUrl={cameraStreamUrl} onBack={() => setRawCameraOpen(false)} />;
   }
 
   return (
@@ -2425,7 +1655,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
         stage={displayStage}
         mode={mode}
         round={displayRound}
-        onRawLidarOpen={() => setRawLidarOpen(true)}
         onRawCameraOpen={() => setRawCameraOpen(true)}
         onReset={resetOperatorPanel}
         missionRemainingSeconds={apiSnapshot?.missionRemainingSeconds}
@@ -2442,14 +1671,24 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
 
       <section className="operator-primary-grid">
         <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
-          <SensorFusion3DView
-            stage={displayStage}
-            frames={interpretedSensorFrames}
-            selectedTrackId={selectedTrackId}
-            shotTrackIds={shotTrackIds}
-            onSelect={setSelectedTrackId}
-            connectedSensorFramesEmpty={connectedSensorFramesEmpty}
-          />
+          {displayStage === 1 ? (
+            <Stage1CameraSupport
+              streamUrl={cameraStreamUrl}
+              lidarRangeM={liveLidarRangeM}
+              lidarLive={apiSnapshot?.lidarReading?.status === 'LIVE_ACCEPTED'}
+              correctionDeg={apiSnapshot?.ballisticCompensation?.elevationCorrectionDeg}
+              calibrationActive={apiSnapshot?.ballisticCompensation?.active ?? false}
+            />
+          ) : (
+            <SensorFusion3DView
+              stage={displayStage}
+              frames={interpretedSensorFrames}
+              selectedTrackId={selectedTrackId}
+              shotTrackIds={shotTrackIds}
+              onSelect={setSelectedTrackId}
+              connectedSensorFramesEmpty={connectedSensorFramesEmpty}
+            />
+          )}
         </section>
 
         <aside className="operator-side-rail">
@@ -2474,6 +1713,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
               && missionStatus === 'ACTIVE'
               && !safety.estop
             )}
+            turretCalibration={apiSnapshot?.turretCalibration}
             stageRoundLimit={stageRoundLimit}
           >
             <TrackList
