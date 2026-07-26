@@ -20,6 +20,11 @@ import time as _time
 import shutil
 from typing import Any, Callable, Literal
 
+from .course_geometry import (
+    CourseGeometry,
+    CourseTrackEstimator,
+    load_course_geometry,
+)
 from .hardware_adapter import HardwareAdapterBase
 from .mission_flow import MissionFlow
 from .range_fusion import FusedRangeDecision
@@ -190,6 +195,7 @@ class DryRunTrack:
     confidence: float
     source: Literal["perception", "radar-lidar", "fused", "dry-run"] = "dry-run"
     updatedAt: str = field(default_factory=utc_now)
+    courseState: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -203,6 +209,7 @@ class DryRunTrack:
             "confidence": self.confidence,
             "source": self.source,
             "updatedAt": self.updatedAt,
+            "courseState": self.courseState,
         }
 
 
@@ -358,6 +365,7 @@ class OperatorService:
         backend_readiness_ok: bool = False,
         disk_min_free_bytes: int = 0,
         lidar_stale_seconds: float = 0.3,
+        course_geometry: CourseGeometry | None = None,
     ) -> None:
         self._clock = clock
         self._ids = count(1)
@@ -399,6 +407,8 @@ class OperatorService:
         self.estop_reset_required = False
         self.motion_forbidden_zones = motion_forbidden_zones
         self.fire_forbidden_zones = fire_forbidden_zones
+        self.course_geometry = course_geometry or load_course_geometry()
+        self.course_estimator = CourseTrackEstimator(self.course_geometry)
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
@@ -606,16 +616,38 @@ class OperatorService:
         if self.stage == 1:
             return 0 < range_m <= 15
         if self.stage == 2:
-            return target.get("friendFoe") != "Dost" and 0 < range_m <= 15
+            return (
+                target.get("friendFoe") != "Dost"
+                and 0 < range_m <= 15
+                and self._course_gate_ok(target)
+            )
         if target.get("friendFoe") != "Düşman":
             return False
         measured_source_ok = (
             self.dry_run
             or target.get("source") in {"radar-lidar", "fused"}
         )
-        return measured_source_ok and target_range_gate(
-            str(target.get("targetType")),
-            range_m,
+        return (
+            measured_source_ok
+            and self._course_gate_ok(target)
+            and target_range_gate(
+                str(target.get("targetType")),
+                range_m,
+            )
+        )
+
+    @staticmethod
+    def _course_gate_ok(target: dict[str, Any]) -> bool:
+        """Fail closed outside the canonical poligon when mapping is present."""
+
+        course_state = target.get("courseState")
+        if course_state is None:
+            return True
+        return (
+            isinstance(course_state, dict)
+            and course_state.get("insidePoligon") is True
+            and course_state.get("predictionValid") is True
+            and course_state.get("lifecycle") == "ACTIVE_IN_POLIGON"
         )
 
     def _sensor_health(self) -> dict[str, Any]:
@@ -736,6 +768,7 @@ class OperatorService:
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
             "missionFlow": self.mission_flow.to_dict(),
+            "courseGeometry": self.course_geometry.metadata(),
         }
         result.update(self._mission_timer())
         result.update(self._maintenance_state())
@@ -947,6 +980,7 @@ class OperatorService:
         self.mode = "safe"
         self.stage = 3
         self.round = 1
+        self.course_estimator.reset()
         self.tracks = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.command_results = []
@@ -1237,6 +1271,7 @@ class OperatorService:
             self.stage = requested_stage  # type: ignore[assignment]
             self.round = requested_round
             self.mode = stage_expected_mode(self.stage)
+            self.course_estimator.reset()
             self.tracks = self._tracks_for_stage(self.stage, self.round)
             self.sensor_frames = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
             self.mission_flow.start_stage(
@@ -1567,7 +1602,17 @@ class OperatorService:
             if "lidar" in source_lower or "radar" in source_lower or "sensor" in source_lower
             else "perception"
         )
-        updated: list[DryRunTrack] = []
+        normalized: list[
+            tuple[
+                str,
+                str,
+                str,
+                float,
+                float,
+                float,
+                Literal["perception", "radar-lidar", "fused"],
+            ]
+        ] = []
         for raw in tracks_data:
             if not isinstance(raw, dict):
                 continue
@@ -1582,22 +1627,66 @@ class OperatorService:
                     track_source = "perception"
                 else:
                     track_source = default_track_source
-                track = DryRunTrack(
-                    trackId    = str(raw.get("trackId", f"LIVE-{now}")),
-                    stage      = self.stage,
-                    round      = self.round,
-                    targetType = str(raw.get("targetType", "Mini/Micro İHA")),
-                    friendFoe  = str(raw.get("friendFoe",  "Bilinmeyen")),
-                    rangeM     = float(raw.get("rangeM",    0.0)),
-                    bearingDeg = float(raw.get("bearingDeg", 0.0)),
-                    confidence = float(raw.get("confidence", 0.5)),
-                    source     = track_source,
-                    updatedAt  = now,
+                track_id = str(raw.get("trackId", f"LIVE-{now}"))
+                range_m = float(raw.get("rangeM", 0.0))
+                bearing_deg = float(raw.get("bearingDeg", 0.0))
+                confidence = float(raw.get("confidence", 0.5))
+                if not all(
+                    isfinite(value)
+                    for value in (range_m, bearing_deg, confidence)
+                ):
+                    raise ValueError("rangeM, bearingDeg ve confidence sonlu olmalıdır")
+                if range_m < 0 or not 0 <= confidence <= 1:
+                    raise ValueError(
+                        "rangeM negatif olamaz; confidence 0-1 arasında olmalıdır"
+                    )
+                normalized.append(
+                    (
+                        track_id,
+                        str(raw.get("targetType", "Mini/Micro İHA")),
+                        str(raw.get("friendFoe", "Bilinmeyen")),
+                        range_m,
+                        bearing_deg,
+                        confidence,
+                        track_source,
+                    )
                 )
-                updated.append(track)
             except (TypeError, ValueError) as exc:
                 return {"ok": False, "error": f"Geçersiz track verisi: {exc}"}
 
+        updated: list[DryRunTrack] = []
+        observed_track_ids: set[str] = set()
+        for (
+            track_id,
+            target_type,
+            friend_foe,
+            range_m,
+            bearing_deg,
+            confidence,
+            track_source,
+        ) in normalized:
+            course_state = self.course_estimator.update(
+                track_id,
+                range_m,
+                bearing_deg,
+            )
+            observed_track_ids.add(track_id)
+            track = DryRunTrack(
+                trackId=track_id,
+                stage=self.stage,
+                round=self.round,
+                targetType=target_type,
+                friendFoe=friend_foe,
+                rangeM=range_m,
+                bearingDeg=bearing_deg,
+                confidence=confidence,
+                source=track_source,
+                updatedAt=now,
+                courseState=course_state.to_dict(),
+            )
+            updated.append(track)
+
+        self.course_estimator.mark_absent(observed_track_ids)
         self.tracks = updated
         self.mission_flow.refresh_tracks(track.to_dict() for track in updated)
         self.perception_connected = True
@@ -1611,13 +1700,24 @@ class OperatorService:
             "perception",
             "TRACKS_UPDATE",
             f"{len(updated)} track güncellendi (kaynak={source}).",
-            {"count": len(updated), "source": source},
+            {
+                "count": len(updated),
+                "source": source,
+                "courseStates": [
+                    track.courseState for track in updated
+                    if track.courseState is not None
+                ],
+            },
         )
         return {
             "ok": True,
             "count": len(updated),
             "source": source,
             "perceptionConnected": True,
+            "courseMappedCount": sum(
+                bool(track.courseState and track.courseState["insidePoligon"])
+                for track in updated
+            ),
         }
 
     def apply_fused_range(self, decision: FusedRangeDecision) -> dict[str, Any]:
@@ -1642,12 +1742,18 @@ class OperatorService:
         updated: list[DryRunTrack] = []
         for track in self.tracks:
             if track.trackId == decision.track_id:
+                course_state = self.course_estimator.update(
+                    track.trackId,
+                    decision.distance_m,
+                    track.bearingDeg,
+                )
                 updated.append(
                     replace(
                         track,
                         rangeM=decision.distance_m,
                         source="fused",
                         updatedAt=self._clock(),
+                        courseState=course_state.to_dict(),
                     )
                 )
                 matched = True

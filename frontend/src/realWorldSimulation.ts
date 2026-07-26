@@ -107,12 +107,6 @@ function round1(value: number) {
   return Number(value.toFixed(1));
 }
 
-function validRangeForType(type: TargetType, elapsed: number, seed: number) {
-  const midpoint = type === 'F16' ? 12.4 : type === 'Mini/Micro İHA' ? 6.3 : 8.6;
-  const min = type === 'F16' ? 10 : type === 'Mini/Micro İHA' ? 0 : 5;
-  return round1(clamp(midpoint + jitter(elapsed, seed, 0.06), min + 0.2, 14.7));
-}
-
 function movingProgress(elapsed: number, lane: 1 | 2 | 3, offset = 0) {
   return (elapsed / realWorldSimulationConfig.tourSeconds + lane * 0.11 + offset) % 1;
 }
@@ -176,7 +170,7 @@ export function generateRealWorldTracks(stage: Stage, elapsed: number): Track[] 
         confidence: clamp(0.74 + Math.max(0, wave(elapsed, 0.7, lane)) * 0.18 - realWorldSimulationConfig.packetLossPercent / 200, 0.55, 0.96),
         range,
         velocity: round1(1.7 + lane * 0.46 + Math.max(0, wave(elapsed, 0.4, lane)) * 0.35),
-        direction: `A→B · ${COMPETITION_COURSE.lanes[lane - 1].label} · parkurdan çıkmadan`,
+        direction: `Poligon giriş→çıkış · ${COMPETITION_COURSE.lanes[lane - 1].label} · dış dönüş modellenmez`,
         rangeGate: rangeGateFor(type, range),
         candidate: lane === 2 || progress > 0.42,
       };
@@ -192,9 +186,11 @@ export function generateRealWorldTracks(stage: Stage, elapsed: number): Track[] 
     const progress = movingProgress(elapsed, lane, 0.26 - index * 0.06);
     const point = pointAtProgress(lane, progress);
     const geometryRange = courseRangeFromPoint(point);
-    const range = friendFoe === 'Düşman'
-      ? validRangeForType(type, elapsed, index + 3)
-      : round1(clamp(geometryRange + index * 0.4 + jitter(elapsed, index + 8, 0.05), 4.5, 16.8));
+    const range = round1(clamp(
+      geometryRange + jitter(elapsed, index + 8, 0.05),
+      0,
+      18.5,
+    ));
     const gate = rangeGateFor(type, range);
     return {
       id: `S3-${friendFoe === 'Düşman' ? 'X' : 'F'}${index + 1}`,
@@ -208,7 +204,7 @@ export function generateRealWorldTracks(stage: Stage, elapsed: number): Track[] 
       confidence: clamp(0.78 + Math.max(0, wave(elapsed, 0.62, index)) * 0.17, 0.62, 0.97),
       range,
       velocity: round1(1.1 + index * 0.34 + realWorldSimulationConfig.windMps * 0.04),
-      direction: friendFoe === 'Düşman' ? `Kırmızı ok · A→B · ${COMPETITION_COURSE.lanes[index].label}` : `Mavi ok · dost unsur · ${COMPETITION_COURSE.lanes[index].label}`,
+      direction: friendFoe === 'Düşman' ? `Kırmızı ok · poligon içi · ${COMPETITION_COURSE.lanes[index].label}` : `Mavi ok · dost unsur · ${COMPETITION_COURSE.lanes[index].label}`,
       rangeGate: gate,
       candidate: friendFoe === 'Düşman' && gate === 'Uygun',
     };

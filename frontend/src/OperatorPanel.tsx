@@ -1,6 +1,6 @@
 import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
-import { COMPETITION_COURSE } from './competitionCourse';
+import { COMPETITION_COURSE, displayXForRangeBand, toDisplayCourseMeters } from './competitionCourse';
 import {
   canSendFireIntent,
   makeCommandResult,
@@ -94,7 +94,7 @@ function stageHasHostilityDetection(stage: Stage) {
 }
 
 function operatorXForRange(range: number) {
-  return 88 - range * 5;
+  return displayXForRangeBand(range);
 }
 
 function clampPercent(value: number, min = 7, max = 93) {
@@ -152,15 +152,20 @@ function visualSizeForTarget(type: TargetType) {
 function visualTrackFor(track: OperatorTrackState, index: number, stage: Stage) {
   const radians = (track.bearingDeg * Math.PI) / 180;
   const size = hasReliableTrackType(track) ? visualSizeForTarget(track.targetType) : { w: 6.2, h: 6.2 };
-  const x = stage === 1
+  const mappedPoint = track.courseState?.insidePoligon && track.courseState.projectedCourseM
+    ? toDisplayCourseMeters(track.courseState.projectedCourseM)
+    : undefined;
+  const x = mappedPoint?.x ?? (stage === 1
     ? clampPercent(operatorXForRange(track.rangeM) + (index % 2 === 0 ? -2.4 : 2.4), 12, 82)
-    : clampPercent(operatorXForRange(track.rangeM) + Math.sin(radians) * 7, 13, 72);
-  const y = stage === 1
+    : clampPercent(operatorXForRange(track.rangeM) + Math.sin(radians) * 7, 13, 72));
+  const y = mappedPoint?.y ?? (stage === 1
     ? clampPercent(35 + index * 8, 24, 74)
-    : clampPercent(30 + index * 13.5 + Math.sin(radians) * 4, 26, 78);
+    : clampPercent(30 + index * 13.5 + Math.sin(radians) * 4, 26, 78));
   const rangeGate = targetRangeGateOk(track) ? 'Uygun' : track.rangeM > 15 ? 'Erken' : 'Geçersiz';
-  const candidate = track.friendFoe === 'Düşman' && (stage === 1 || stage === 2 || targetRangeGateOk(track));
-  const lane = ((index % 3) + 1) as 1 | 2 | 3;
+  const courseGate = track.courseState == null || track.courseState.predictionValid;
+  const candidate = courseGate && track.friendFoe === 'Düşman' && (stage === 1 || stage === 2 || targetRangeGateOk(track));
+  const lane = track.courseState?.routeNumber
+    ?? (((index % 3) + 1) as 1 | 2 | 3);
   return { ...track, x, y, w: size.w, h: size.h, rangeGate, candidate, lane };
 }
 
@@ -174,7 +179,7 @@ function visualRangeLabel(track?: ReturnType<typeof visualTrackFor>) {
 
 const DOME_SOURCE_NOSE_SCREEN_DEG = 135;
 const DOME_DEFAULT_ROTATION_DEG = 45;
-const OPERATOR_SYSTEM_POSITION = { x: 91, y: 50 };
+const OPERATOR_SYSTEM_POSITION = COMPETITION_COURSE.systemPosition;
 
 function domeRotationForVisualTrack(track?: ReturnType<typeof visualTrackFor>) {
   if (!track) return DOME_DEFAULT_ROTATION_DEG;
@@ -1140,13 +1145,12 @@ function OperatorTrackScene({
                 <text x={operatorXForRange(range) + 0.7} y="12">{range} m</text>
               </g>
             ))}
-            <text className="point-label" x="7" y="12">A</text>
-            <text className="point-label" x="78" y="12">B</text>
-            <text className="escape-label" x="70" y="91">B KAÇIŞ</text>
+            <text className="point-label" x="7" y="8">POLİGON GİRİŞİ</text>
+            <text className="escape-label" x="69" y="96">POLİGON ÇIKIŞI</text>
             {COMPETITION_COURSE.lanes.map((lane) => (
               <g key={lane.lane} className={`lane-path lane-${lane.lane}`}>
                 <polyline points={lane.points.map((point) => `${point.x},${point.y}`).join(' ')} markerEnd={`url(#operator-arrow-${stage})`} />
-                <text x="8" y={lane.points[0].y - 2}>KOL {lane.lane}</text>
+                <text x="8" y={lane.points[0].y - 2}>ROTA {lane.lane}</text>
               </g>
             ))}
           </g>

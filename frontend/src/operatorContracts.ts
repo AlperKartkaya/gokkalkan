@@ -66,6 +66,22 @@ export interface OperatorTrackState {
   confidence: number;
   source: 'perception' | 'radar-lidar' | 'fused' | 'dry-run';
   updatedAt: string;
+  courseState?: OperatorCourseTrackState | null;
+}
+
+export interface OperatorCourseTrackState {
+  trackId: string;
+  routeId: 'POLIGON_ROUTE_1' | 'POLIGON_ROUTE_2' | 'POLIGON_ROUTE_3' | null;
+  routeNumber: 1 | 2 | 3 | null;
+  passIndex: number;
+  lifecycle: 'ACTIVE_IN_POLIGON' | 'OUTSIDE_POLIGON';
+  sM: number;
+  speedMps: number;
+  projectedCourseM: { x: number; y: number } | null;
+  projectionResidualM: number | null;
+  tangentCourseDeg: number | null;
+  insidePoligon: boolean;
+  predictionValid: boolean;
 }
 
 export interface OperatorSensorFrame {

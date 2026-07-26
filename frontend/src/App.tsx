@@ -1,6 +1,6 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
-import { COMPETITION_COURSE } from './competitionCourse';
+import { COMPETITION_COURSE, displayXForRangeBand } from './competitionCourse';
 import {
   COMPETITION_STAGE_ROUNDS,
   competitionSimulationConfig,
@@ -80,7 +80,7 @@ const tutorialSteps: Array<{
     id: 'stage2-auto',
     stage: 2,
     title: 'Aşama 2 otonom akıştır',
-    message: 'Resmi akış 4 turdur; pratik modunda ek turlar eğitim içindir. Her turda üç kolda birer hedef A→B hareket eder ve sistem angajmanı otonom kurar.',
+    message: 'Resmi akış 4 turdur; pratik modunda ek turlar eğitim içindir. Her turda üç hedef ölçekli poligon eğrilerinde ilerler ve sistem angajmanı otonom kurar.',
     highlight: 'mode',
   },
   {
@@ -117,7 +117,7 @@ function stageModeExpectation(stage: Stage): Mode {
 }
 
 function xForRange(range: number) {
-  return 88 - range * 5;
+  return displayXForRangeBand(range);
 }
 
 const DOME_SOURCE_NOSE_SCREEN_DEG = 135;
@@ -300,13 +300,12 @@ function CourseMap({
                 <text x={xForRange(range) + 0.7} y="12">{range} m</text>
               </g>
             ))}
-            <text className="point-label" x="7" y="12">A</text>
-            <text className="point-label" x="78" y="12">B</text>
-            <text className="escape-label" x="70" y="91">B KAÇIŞ</text>
+            <text className="point-label" x="7" y="8">POLİGON GİRİŞİ</text>
+            <text className="escape-label" x="69" y="96">POLİGON ÇIKIŞI</text>
             {COMPETITION_COURSE.lanes.map((lane) => (
               <g key={lane.lane} className={`lane-path lane-${lane.lane}`}>
                 <polyline points={points(lane.points)} markerEnd={`url(#arrow-${stage})`} />
-                <text x="8" y={lane.points[0].y - 2}>KOL {lane.lane}</text>
+                <text x="8" y={lane.points[0].y - 2}>ROTA {lane.lane}</text>
                 {lane.points.slice(1, -1).map((point, index) => (
                   <text key={`${lane.lane}-${index}`} className={`lane-arrow arrow-${index}`} x={point.x} y={point.y - 2}>➜</text>
                 ))}
@@ -371,7 +370,7 @@ function CourseMap({
             <span className="motion-trail" />
             <span className="target-visual"><TargetSilhouette type={track.type} /></span>
             <span className="target-label-stack">
-              <span className="target-name">{stage === 2 ? `Kol ${track.lane}` : track.friendFoe}</span>
+              <span className="target-name">{stage === 2 ? `Rota ${track.lane}` : track.friendFoe}</span>
               <small>{targetShortCopy[track.type]}</small>
               <em className={`range-chip ${track.rangeGate.toLowerCase()}`} title={rangeLabel(track)}>{targetStatusLabel(track, stage)}</em>
             </span>
@@ -1076,7 +1075,7 @@ function Console() {
       setDestroyedIds((previous) => [...previous, candidate.id]);
       setRoundHits((value) => value + 1);
       recordStrike(candidate, 'hit', 'AUTO');
-      addEvent('fire', 'AUTO_ENGAGE', `${candidate.id} · Kol ${candidate.lane} · eğitim angajman penceresi`);
+      addEvent('fire', 'AUTO_ENGAGE', `${candidate.id} · Rota ${candidate.lane} · eğitim angajman penceresi`);
       if (destroyedIds.length + 1 >= 3) window.setTimeout(() => finishRound(false, { stage2Hits: destroyedIds.length + 1 }), 150);
       return;
     }

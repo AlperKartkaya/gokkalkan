@@ -7,7 +7,7 @@ describe('competition mechanics simulator', () => {
     expect(COMPETITION_STAGE_ROUNDS).toEqual({ 1: 1, 2: 4, 3: 8 });
     expect(competitionSimulationConfig.stage2.practiceRounds).toBeGreaterThan(COMPETITION_STAGE_ROUNDS[2]);
     expect(competitionSimulationConfig.stage2.targetSpeedMps).toBeGreaterThan(0);
-    expect(competitionSimulationConfig.assumptionNotice).toContain('şartnamede sayısal verilmediği');
+    expect(competitionSimulationConfig.assumptionNotice).toContain('PLG26-A-001-002-00-R1');
   });
 
   it('scores Stage 1 and Stage 2 using final-phase rules', () => {
@@ -20,12 +20,12 @@ describe('competition mechanics simulator', () => {
     expect(stage2RoundScore(3)).toBe(30);
   });
 
-  it('generates Stage 2 rounds as three A-to-B lane targets without classification requirement', () => {
+  it('generates Stage 2 rounds as three poligon-route targets without classification requirement', () => {
     const tracks = generateCompetitionTracks(2, 6, 2);
     expect(tracks).toHaveLength(3);
     expect(tracks.map((track) => track.lane)).toEqual([1, 2, 3]);
     expect(tracks.every((track) => track.friendFoe === 'Bilinmeyen')).toBe(true);
-    expect(tracks.every((track) => track.direction.includes('A→B'))).toBe(true);
+    expect(tracks.every((track) => track.direction.includes('Poligon giriş→çıkış'))).toBe(true);
   });
 
   it('continues Stage 2 practice scenarios past official round 4 with varied target types', () => {

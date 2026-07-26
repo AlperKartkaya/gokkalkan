@@ -51,6 +51,16 @@ export function TrackList({
                 <span className="mt-1 block text-[#91a6b7]">
                   {track.rangeM.toFixed(1)} m · {track.bearingDeg.toFixed(1)}° · güven {Math.round(track.confidence * 100)}%
                 </span>
+                {track.courseState && (
+                  <span
+                    className={`mt-1 block font-bold ${track.courseState.insidePoligon ? 'text-[#48a8ff]' : 'text-[#ffbdc4]'}`}
+                    data-testid={`operator-course-state-${track.trackId}`}
+                  >
+                    {track.courseState.insidePoligon && track.courseState.routeNumber
+                      ? `Rota ${track.courseState.routeNumber} · geçiş ${track.courseState.passIndex} · s=${track.courseState.sM.toFixed(2)} m · v=${track.courseState.speedMps.toFixed(2)} m/s`
+                      : 'Poligon dışında · rota öngörüsü kapalı'}
+                  </span>
+                )}
               </button>
             );
           })}

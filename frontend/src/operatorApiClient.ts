@@ -54,6 +54,20 @@ export interface OperatorApiSnapshot {
   events: OperatorTelemetryEvent[];
   physicalOutputEnabled: boolean;
   telemetry?: OperatorTelemetryMetadata;
+  courseGeometry?: {
+    datasetId: string;
+    sourceRevision: number;
+    sourceSha256: string;
+    scope: 'POLIGON_INTERIOR_ONLY';
+    outsideReturnIncluded: false;
+    routeCount: 3;
+    boundsCourseM: {
+      westX: number;
+      eastX: number;
+      southY: number;
+      northY: number;
+    };
+  };
   maintenanceBudgetSec?: number;
   maintenanceUsedSec?: number;
   maintenanceRemainingBudgetSec?: number;

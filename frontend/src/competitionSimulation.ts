@@ -43,7 +43,7 @@ export const STAGE2_TRAINING_SCENARIOS: Array<readonly [TargetType, TargetType, 
 
 export const competitionSimulationConfig = {
   assumptionNotice:
-    'Hız, hedef boyutu ve kesin rota koordinatları şartnamede sayısal verilmediği için bu değerler simülasyon varsayımıdır; gerçek saha ölçüsü gelince yalnızca konfigürasyon güncellenir.',
+    'Rota koordinatları PLG26-A-001-002-00-R1 çiziminden alınır; hız, hedef boyutu ve atış gecikmesi çizimde verilmediği için simülasyon varsayımıdır.',
   stage1: {
     timeLimitSeconds: 300,
     targetOrder: ['Balistik Füze', 'Helikopter', 'F16', 'Mini/Micro İHA'] as TargetType[],
@@ -57,7 +57,7 @@ export const competitionSimulationConfig = {
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE2_ROUND_SECONDS', 18, 6, 120),
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 2.4, 0.1, 20),
-    engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE2_ENGAGEMENT_PROGRESS_MIN', 0.42, 0.05, 0.9),
+    engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE2_ENGAGEMENT_PROGRESS_MIN', 0.2, 0.05, 0.9),
     pointsByDestroyedCount: { 0: -5, 1: 5, 2: 15, 3: 30 } as Record<0 | 1 | 2 | 3, number>,
     failIfNoHitRoundsAtLeast: 3,
   },
@@ -113,10 +113,6 @@ function scaledSize(type: TargetType): { w: number; h: number } {
   return { w: base[type].w * scale, h: base[type].h * scale };
 }
 
-function progressRange(progress: number): number {
-  return Number(Math.max(0, Math.min(16.2, 16.2 - progress * 13.3)).toFixed(1));
-}
-
 function movingTrack(params: {
   stage: 2 | 3;
   round: number;
@@ -131,8 +127,7 @@ function movingTrack(params: {
   const progress = Math.min(1, Math.max(0, elapsedInRound / duration));
   const lanePhase = lane === 1 ? 0 : lane === 2 ? 0.035 : 0.07;
   const point = pointAtProgress(lane, Math.min(1, progress + lanePhase));
-  const officialRange = progressRange(progress);
-  const trackRange = stage === 2 ? Number(Math.min(16.2, Math.max(3.2, courseRangeFromPoint(point))).toFixed(1)) : officialRange;
+  const trackRange = Number(courseRangeFromPoint(point).toFixed(1));
   const gate = rangeGateFor(type, trackRange);
   const size = scaledSize(type);
   const velocity = stage === 2 ? competitionSimulationConfig.stage2.targetSpeedMps : competitionSimulationConfig.stage3.targetSpeedMps;
@@ -157,8 +152,8 @@ function movingTrack(params: {
     range: trackRange,
     velocity,
     direction: stage === 2
-      ? `A→B · Kol ${lane} · ${velocity.toFixed(1)} m/s varsayım${uavTrainingNote}`
-      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Mavi/dost'} · Kol ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}${uavTrainingNote}`,
+      ? `Poligon giriş→çıkış · Rota ${lane} · ${velocity.toFixed(1)} m/s varsayım${uavTrainingNote}`
+      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Mavi/dost'} · Rota ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}${uavTrainingNote}`,
     rangeGate: gate,
     candidate,
   };

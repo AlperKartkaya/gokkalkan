@@ -48,6 +48,84 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(unknown_frame["rangeGate"], "Kimlik bekleniyor")
         self.assertLess(unknown_frame["classificationConfidence"], 0.6)
         self.assertIn("Kimlik kesinleşmeden", unknown_frame["recommendation"])
+        self.assertEqual(
+            snapshot["courseGeometry"]["datasetId"],
+            "PLG26-A-001-002-00-R1",
+        )
+        self.assertFalse(snapshot["courseGeometry"]["outsideReturnIncluded"])
+
+    def test_sensor_track_is_projected_to_canonical_poligon_route(self) -> None:
+        route = self.service.course_geometry.route("POLIGON_ROUTE_2")
+        waypoint = route.waypoints[20]
+
+        response = self.service.update_tracks(
+            [
+                {
+                    "trackId": "COURSE-TRACK",
+                    "targetType": "Mini/Micro İHA",
+                    "friendFoe": "Düşman",
+                    "rangeM": waypoint.range_m,
+                    "bearingDeg": waypoint.bearing_base_deg,
+                    "confidence": 0.9,
+                }
+            ],
+            source="perception",
+        )
+        track = self.service.snapshot()["tracks"][0]
+
+        self.assertEqual(response["courseMappedCount"], 1)
+        self.assertEqual(track["courseState"]["routeId"], route.route_id)
+        self.assertTrue(track["courseState"]["insidePoligon"])
+        self.assertAlmostEqual(
+            track["courseState"]["sM"],
+            waypoint.s_m,
+            places=2,
+        )
+        self.assertFalse(self.service.sensor_adapter_connected)
+
+    def test_mapped_track_outside_route_is_fail_closed_for_fire(self) -> None:
+        self.service.handle_stage_request(
+            {
+                "stage": 2,
+                "round": 1,
+                "operatorId": "test",
+                "timestamp": fixed_clock(),
+                "reason": "course-gate",
+                "dryRun": True,
+            }
+        )
+        self.service.update_tracks(
+            [
+                {
+                    "trackId": "OUTSIDE-ROUTE",
+                    "targetType": "Mini/Micro İHA",
+                    "friendFoe": "Düşman",
+                    "rangeM": 0.1,
+                    "bearingDeg": 0.0,
+                    "confidence": 0.9,
+                }
+            ],
+            source="fused",
+        )
+
+        response = self.service.handle_fire_intent(
+            {
+                "targetId": "OUTSIDE-ROUTE",
+                "stage": 2,
+                "round": 1,
+                "operatorConfirm": True,
+                "dryRun": True,
+            }
+        )
+
+        self.assertFalse(
+            response["state"]["tracks"][0]["courseState"]["insidePoligon"]
+        )
+        self.assertEqual(
+            response["result"]["safetyBlockReason"],
+            "BLOCKED_TARGET_GATE",
+        )
+        self.assertEqual(self.hardware.commands, [])
 
     def test_stage_request_updates_authoritative_mission_context_and_sensor_frames(self) -> None:
         response = self.service.handle_stage_request({"stage": 2, "round": 4, "operatorId": "test", "timestamp": fixed_clock(), "reason": "stage-test", "dryRun": True})

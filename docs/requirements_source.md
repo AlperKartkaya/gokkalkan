@@ -13,6 +13,27 @@ referansı ve otomatik kontrol içindir; tablo, şekil veya metin çıkarma hata
 PDF’e bakılır. KTR ve Ön Tasarım Raporu geçmiş tasarım kayıtlarıdır; yeni şartname
 ile çeliştiklerinde güncel karar ADR ile kaydedilir ve v1.3 uygulanır.
 
+## Kanonik geometrik ek
+
+- Teknik çizim:
+  [`docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf`](Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf)
+- Çizim numarası / revizyon: **PLG26-A-001-002-00 / Rev 1**
+- PDF SHA-256:
+  `466ef675555aace404e1e52902a12c01a92bae616418cc3f34f1330e43f2755e`
+- İnsan-okunur çıkarım:
+  [`docs/parkur_geometri_referansi.md`](parkur_geometri_referansi.md)
+- Makine-okunur çıkarım:
+  [`config/course/plg26_a_001_002_r1.json`](../config/course/plg26_a_001_002_r1.json)
+
+Teknik çizim; parkur ve poligon geometrisi, yazılı ölçüler ve antetteki
+toleranslar için kanonik kaynaktır. Şartname ise A→B görev akışı, üç kol,
+aşama ve güvenlik kurallarında son otoritedir. Yazılı ölçüler raster
+ölçeklemesinden üstündür. Organizasyon yeni bir revizyon yayımlamadıkça sensör
+gözlemi parkur geometrisini yeniden kalibre etmez. Çalışma zamanı kestirimi
+yalnız rotaların poligon içinde kalan eğri parçalarını kullanır; poligon dışı
+geri dönüşler konum/atış tahminine alınmaz ve her yeniden girişte yay
+koordinatı sıfırlanır.
+
 ## Metin çıktısını yeniden üretme
 
 Poppler kurulu bir ortamda:

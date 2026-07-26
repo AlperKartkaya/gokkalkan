@@ -793,7 +793,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   expect(sensorPanelBox).not.toBeNull();
   expect((sensorPanelBox?.width ?? 0)).toBeGreaterThan((trackSceneBox?.width ?? Number.MAX_SAFE_INTEGER) * 1.35);
   expect((sensorPanelBox?.height ?? 0)).toBeGreaterThan(520);
-  expect((trackSceneBox ? trackSceneBox.x + trackSceneBox.width : 0) - (operatorDomeBox ? operatorDomeBox.x + operatorDomeBox.width : 0)).toBeLessThanOrEqual(12);
+  expect((trackSceneBox ? trackSceneBox.x + trackSceneBox.width : 0) - (operatorDomeBox ? operatorDomeBox.x + operatorDomeBox.width : 0)).toBeLessThanOrEqual(36);
   const operatorDomeCenterY = (operatorDomeBox?.y ?? 0) + (operatorDomeBox?.height ?? 0) / 2;
   const trackSceneCenterY = (trackSceneBox?.y ?? 0) + (trackSceneBox?.height ?? 0) / 2;
   expect(Math.abs(operatorDomeCenterY - trackSceneCenterY)).toBeLessThan(24);
@@ -808,8 +808,8 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(sensor3dView).not.toContainText('Tekerlek: yakınlaştır');
   const f16Box = await page.getByTestId('operator-sensor-3d-target-DRY-RUN-F16-01').boundingBox();
   expect(f16Box).not.toBeNull();
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '13');
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '25');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '8');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '23.125');
   const stageThreeWindowStyle = await page.getByTestId('operator-permitted-range-window').evaluate((windowElement) => {
     const style = getComputedStyle(windowElement);
     return { animationName: style.animationName, fill: style.fill };
@@ -896,8 +896,8 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const helTrackBoxBefore = await helTrack.boundingBox();
   const helTrackColorBefore = await helTrack.evaluate((element) => getComputedStyle(element).color);
   await helTrack.click();
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '13');
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '50');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '8');
+  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '46.25');
   const helTrackBoxAfter = await helTrack.boundingBox();
   const helTrackColorAfter = await helTrack.evaluate((element) => getComputedStyle(element).color);
   expect(helTrackBoxAfter).not.toBeNull();

@@ -11,8 +11,14 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
 - `docs/sartname_v1_3.txt:589-595,617-620` — Aşama 2 otonom tespit/takip ve parkurdan çıkmadan imha yükümlülüğü.
 - `docs/sartname_v1_3.txt:599-605,621-623` — Aşama 3 doğru hedefi doğru menzilde imha yükümlülüğü.
 - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi ayrıntıları.
+- `docs/parkur_geometri_referansi.md` ve `config/course/plg26_a_001_002_r1.json` — teknik çizimden doğrulanan ölçü sınıfları, toleranslar, datumlar ve yalnız poligon içindeki eğri waypoint’leri.
 
-> Not: Şartname kesin parkur koordinatı, hedef hız profili veya radar/LiDAR donanım modeli vermediği için rota, hız ve sensör değerleri yapılandırılabilir simülasyon varsayımıdır. Bu değerler resmi veri gibi raporlanmamalıdır.
+> Not: Parkur koordinatları için Rev 1 teknik çizim ve ondan türetilen kanonik
+> veri seti kullanılır. Poligon dışı geri dönüşte rota-tabanlı hedef konumu
+> üretilmez; batı sınırından her yeniden girişte `s=0` ile yeni geçiş başlar.
+> Hedef hız profili, uçuş süresi ve radar/LiDAR donanım
+> modeli kaynaklarda sayısal verilmediği için bunlar yapılandırılabilir
+> simülasyon/kalibrasyon girdisidir; resmi geometri gibi raporlanmamalıdır.
 
 ## Güncel canlı simülasyon kaynakları
 
@@ -21,7 +27,7 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
   - Aşama 2 için resmi 4 tur + eğitim amaçlı genişletilebilir pratik tur sayısı.
   - Aşama 3 için 8 tur, düşman/dost dağılımı ve hedef tipine göre skor.
 - `frontend/src/competitionCourse.ts`
-  - Üç kol, A→B rota noktaları, sistem konumu, 5/10/15 m bantları ve bearing hesabı.
+  - Üç poligon içi eğri, giriş/çıkış sınırları, sistem konumu, 5/10/15 m bantları ve bearing hesabı.
 - `frontend/src/safetyGate.ts`
   - F16 10–15 m, Helikopter/Balistik Füze 5–15 m, Mini/Micro İHA 0–15 m menzil kapısı.
 - `frontend/src/scenarios/`

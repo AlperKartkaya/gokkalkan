@@ -8,7 +8,7 @@ describe('real-world competition simulation feed', () => {
     expect(tracks.map((track) => track.range)).toEqual([5, 10, 15, 15]);
   });
 
-  it('moves Aşama 2 targets across the three A→B parkur lanes', () => {
+  it('moves Aşama 2 targets across the three canonical poligon routes', () => {
     const start = generateRealWorldTracks(2, 0);
     const later = generateRealWorldTracks(2, 10);
 
@@ -20,19 +20,24 @@ describe('real-world competition simulation feed', () => {
       expect(later[index].range).not.toBeCloseTo(track.range, 1);
       expect(later[index].x).toBeGreaterThanOrEqual(6);
       expect(later[index].x).toBeLessThanOrEqual(92);
-      expect(later[index].direction).toContain('A→B');
+      expect(later[index].direction).toContain('Poligon giriş→çıkış');
     });
   });
 
-  it('keeps exactly one Aşama 3 enemy candidate in a valid fire gate while friends stay locked', () => {
-    [0, 10, 20].forEach((elapsed) => {
+  it('only marks an Aşama 3 enemy when its geometry-derived range is in the fire gate', () => {
+    let validCandidateCount = 0;
+    [0, 5, 10, 15, 20].forEach((elapsed) => {
       const tracks = generateRealWorldTracks(3, elapsed);
       const candidates = tracks.filter((track) => track.candidate);
-      expect(candidates).toHaveLength(1);
-      expect(candidates[0].friendFoe).toBe('Düşman');
-      expect(candidates[0].rangeGate).toBe('Uygun');
+      expect(candidates.length).toBeLessThanOrEqual(1);
+      candidates.forEach((candidate) => {
+        expect(candidate.friendFoe).toBe('Düşman');
+        expect(candidate.rangeGate).toBe('Uygun');
+        validCandidateCount += 1;
+      });
       expect(tracks.filter((track) => track.friendFoe === 'Dost').every((track) => !track.candidate)).toBe(true);
     });
+    expect(validCandidateCount).toBeGreaterThan(0);
   });
 
   it('reports camera, LiDAR mock, radar mock, and fusion channels', () => {
@@ -43,7 +48,7 @@ describe('real-world competition simulation feed', () => {
     expect(frame.lidarReturns).toHaveLength(3);
     expect(frame.radarReturns).toHaveLength(3);
     expect(frame.fusedTargetId).toBeTruthy();
-    expect(frame.assumptionNotice).toContain('kesin koordinat');
+    expect(frame.assumptionNotice).toContain('PLG26-A-001-002-00-R1');
     expect(frame.sourceLineRefs.join(' ')).toContain('docs/sartname_v1_3.txt');
   });
 
