@@ -24,7 +24,6 @@ import {
   type HardwareResult,
   type OperatorReplayBundle,
   type OperatorReadinessItem,
-  type OperatorReadinessReport,
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
@@ -971,7 +970,7 @@ function SensorFusion3DView({
       const result = renderSensorWebGlScene(gl, resources, displayFrames, selectedTrackId, view);
       setOverlayPoints((current) => (overlayPointsEqual(current, result.overlayPoints) ? current : result.overlayPoints));
     } catch (error) {
-      console.warn('Radar/LiDAR WebGL çizimi devre dışı kaldı:', error);
+      console.warn('Sensör füzyon WebGL çizimi devre dışı kaldı:', error);
       setWebglAvailable(false);
     }
   }, [displayFrames, selectedTrackId, view, renderTick]);
@@ -1056,7 +1055,7 @@ function SensorFusion3DView({
       data-pan-x={view.panX.toFixed(1)}
       data-pan-z={view.panZ.toFixed(1)}
       ref={viewRef}
-      aria-label="Etkileşimli üç boyutlu Radar LiDAR iz görüntüsü"
+      aria-label="Etkileşimli sensör füzyon hedef izi görünümü"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerDrag}
@@ -1065,8 +1064,8 @@ function SensorFusion3DView({
     >
       <canvas ref={canvasRef} className="sensor-3d-canvas" data-testid="operator-sensor-3d-canvas" aria-hidden="true" />
       <div className="sensor-3d-hud">
-        <span>Radar / LiDAR</span>
-        <b>3D Panel</b>
+        <span>Hedef İzleri</span>
+        <b>Füzyon Görünümü</b>
       </div>
       <button
         className="sensor-3d-reset"
@@ -1322,81 +1321,9 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const replayEventCount = replayBundle?.events.length ?? 0;
   const unsafeReplayEvidence = Boolean(telemetryExport?.unsafeReplayEvidence || replayBundle?.unsafeReplayEvidence);
   const replayEvidenceWarning = telemetryExport?.evidenceWarning || replayBundle?.evidenceWarning;
-  const fallbackReadiness: OperatorReadinessReport = {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    summary: apiBaseUrl
-      ? 'Backend readiness raporu alınamadı; panel temel state üzerinden çalışıyor.'
-      : 'Backend API bağlanmadan operatör UI kabuğu fail-closed açılır; hedef veya güvenlik state’i üretilmez.',
-    scoreBasis: 'Bu yüzde resmi yarışma uygunluk skoru değildir; repo içi entegrasyon kontrol listesidir.',
-    readinessPercent: apiBaseUrl && !apiError ? 28 : 12,
-    physicalOutputEnabled: false,
-    mode,
-    dryRun: config.dryRun,
-    items: [
-      {
-        id: 'operator_panel_ui',
-        label: 'Operatör Paneli UI',
-        status: 'ready',
-        owner: 'Frontend',
-        evidence: 'Panel backend MissionFlow, SSE/REST snapshot, gerçek track kimliği, deadman, FireIntent, görev stop/resume, bakım ve kanıt/replay yüzeylerini gösterir.',
-        nextStep: 'Canlı kamera/perception ve saha kiosk düzeni gerçek donanımla ayrıca denenmeli.',
-        ktrInterface: 'Kullanıcı Arayüzü, StageRequest, ManualAimCommand, TrackState, SafetyState, SensorFrame',
-      },
-      {
-        id: 'backend_api',
-        label: 'Backend Operatör API',
-        status: apiBaseUrl && !apiError ? 'partial' : 'tbd',
-        owner: 'Backend',
-        evidence: apiBaseUrl ? 'API base URL verilmiş; state/readiness yanıtı temel panelde kullanılabilir.' : 'API base URL yok.',
-        nextStep: 'Dry-run API sunucusunu başlat ve operatorApi/VITE_GOKKALKAN_OPERATOR_API_BASE ile bağla.',
-        ktrInterface: 'StageRequest, MissionStop, MissionResume, FireIntent',
-      },
-      {
-        id: 'perception_adapter',
-        label: 'Perception Adapter',
-        status: 'tbd',
-        owner: 'Perception',
-        evidence: 'Canlı sınıflandırma akışı bağlanmadı; UI TrackState sözleşmesini bekliyor.',
-        nextStep: 'Kamera/model çıktısını TrackState olarak backend/UI akışına bağla.',
-        ktrInterface: 'TrackState',
-      },
-      {
-        id: 'radar_lidar_adapter',
-        label: 'Radar/LiDAR Adapter',
-        status: 'tbd',
-        owner: 'Sensör',
-        evidence: 'SensorFrame replay fixture panelde görünür; gerçek menzil/açı/kalite akışı henüz bağlı değil.',
-        nextStep: 'Seçilen sensörün güç, veri, timestamp ve sağlık mesajı sözleşmesini doldur.',
-        ktrInterface: 'SensorFrame',
-      },
-      {
-        id: 'hardware_adapter',
-        label: 'Hardware Adapter',
-        status: 'partial',
-        owner: 'Backend + Elektronik',
-        evidence: 'Dry-run hardware sonucu fiziksel çıkışsız gösterilir; CAN v1 sözleşmesi host testleriyle doğrulandı.',
-        nextStep: 'Pico/CAN hattını ve gerçek pan/tilt limitlerini HIL’de doğrula.',
-        ktrInterface: 'HardwareResult',
-      },
-      {
-        id: 'live_arming',
-        label: 'Canlı Arming / Fiziksel Çıkış',
-        status: 'blocked',
-        owner: 'Safety + Elektronik',
-        evidence: 'Geliştirme paneli fiziksel çıkış üretmez.',
-        nextStep: 'İki aşamalı arming ve fiziksel interlock doğrulaması tamamlanmadan canlı çıkış açma.',
-        ktrInterface: 'ArmingState, InterlockState',
-      },
-    ],
-    nextCriticalActions: [
-      'Dry-run backend API ile readiness raporunu canlı doğrula.',
-      'Radar/LiDAR ve perception adapter sözleşmelerini gerçek donanıma bağla.',
-      'MCU haberleşme protokolü ve imha hattı interlock mesajlarını netleştir.',
-    ],
-  };
-  const displayReadiness = readinessReport ?? fallbackReadiness;
-  const readinessById = Object.fromEntries(displayReadiness.items.map((item) => [item.id, item])) as Record<string, OperatorReadinessItem | undefined>;
+  const readinessById = Object.fromEntries(
+    (readinessReport?.items ?? []).map((item) => [item.id, item]),
+  ) as Record<string, OperatorReadinessItem | undefined>;
 
   const pushResult = (result: CommandResult) => {
     setCommandResults((previous) => [
@@ -1670,7 +1597,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       )}
 
       <section className="operator-primary-grid">
-        <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Radar LiDAR ve yazılım füzyon katmanı">
+        <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Kamera ve 1D LiDAR yazılım füzyon katmanı">
           {displayStage === 1 ? (
             <Stage1CameraSupport
               streamUrl={cameraStreamUrl}

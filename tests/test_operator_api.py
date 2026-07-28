@@ -288,7 +288,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(items["perception_adapter"]["status"], "tbd")
         self.assertEqual(items["radar_lidar_adapter"]["status"], "tbd")
         self.assertEqual(items["live_arming"]["status"], "blocked")
-        self.assertTrue(any("radar/LiDAR" in action for action in report["nextCriticalActions"]))
+        self.assertTrue(any("TFA50-L" in action for action in report["nextCriticalActions"]))
 
     def test_friendly_target_fire_is_blocked(self) -> None:
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})

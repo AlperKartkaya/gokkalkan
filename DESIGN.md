@@ -92,8 +92,9 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 
 - Simulator components to preserve/evolve:
   - `CompetitionHeader`, `CourseMap`, `GuidancePanel`, `StageChecklist`, `BottomActionBar`, `DebugDrawer`, `TutorialOverlay`.
-- Real panel components to add later:
-  - `OperatorPanelPage`, `LiveVideoPanel`, `SensorFusionPanel`, `SafetyAuthorityPanel`, `CommandConsole`, `HardwareStatusPanel`, `EventStream`.
+- Implemented real-panel surfaces:
+  - `OperatorPanel`, `Stage1CameraSupport`, `SafetyAuthorityPanel`, `CommandConsole`, `HardwareHealthBadge`, `ReadinessDashboard`, `EventStream`.
+  - Aşama 1 görüntüsü gerçek MJPEG kamera, merkez nişangâh ve sayısal TFA50-L 1D menzilini birlikte gösterir; ayrı ham LiDAR/point-cloud sayfası yoktur.
 - Critical states:
   - Safe/Manuel/Otonom/Bakım/Kilitli modları.
   - Aşama 1 hedef yok / doğru hedef / yanlış hedef ceza riski.
@@ -118,7 +119,7 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 
 ## Open questions
 
-- [ ] Radar/LiDAR donanımı ve haberleşme protokolü seçilecek / owner: elektronik + backend / impact: sensor adapter.
+- [ ] TFA50-L güç/UART/hizalama ve 5/10/15 m fiziksel kabulü tamamlanacak / owner: elektronik + backend / impact: sensor adapter.
 - [ ] MCU arayüzü UART, RS422, CAN veya Ethernet seçeneklerinden hangisi olacak netleşecek / owner: elektronik + backend / impact: Hardware Adapter.
 - [ ] Gerçek operatör paneli React/Vite içinde yeni route olarak mı kalacak, yoksa native kiosk/PySide6 alternatifi mi istenecek / owner: yazılım / impact: UI runtime.
 - [ ] Şartname veya hakem açıklaması kesin parkur ölçüsü/hız verirse simülasyon config’i güncellenecek / owner: UI + backend / impact: eğitim doğruluğu.

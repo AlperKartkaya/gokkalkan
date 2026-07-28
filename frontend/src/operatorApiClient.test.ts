@@ -51,8 +51,8 @@ describe('operator API client', () => {
       readinessPercent: 42,
       physicalOutputEnabled: false,
       scoreBasis: 'repo içi entegrasyon kontrol listesi',
-      items: [{ id: 'radar_lidar_adapter', status: 'tbd', label: 'Radar/LiDAR Adapter' }],
-      nextCriticalActions: ['Radar/LiDAR adapter bağla.'],
+      items: [{ id: 'radar_lidar_adapter', status: 'tbd', label: 'TFA50-L 1D LiDAR' }],
+      nextCriticalActions: ['TFA50-L fiziksel kabulünü tamamla.'],
     });
 
     const readiness = await fetchOperatorReadiness('http://127.0.0.1:8088/');

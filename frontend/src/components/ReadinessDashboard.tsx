@@ -52,14 +52,14 @@ export function ReadinessDashboard({
           fallback="Kamera/model çıktısı TrackState sözleşmesine bağlanacak; canlı sınıflandırma adapterı TBD."
         />
         <AdapterRow
-          label="Radar/LiDAR Adapter"
+          label="TFA50-L 1D LiDAR"
           item={readinessById.radar_lidar_adapter}
-          fallback="Menzil/açı/kalite protokolü seçilen sensöre göre TBD."
+          fallback="TFA50-L seri akışı ve 5/10/15 m fiziksel kalibrasyon kanıtı bekleniyor."
         />
         <AdapterRow
           label="MCU / Hardware Protocol"
           item={readinessById.hardware_adapter}
-          fallback="UART/RS422/CAN/Ethernet ve mesaj çerçevesi elektronik ekibiyle netleşecek."
+          fallback="Klasik CAN v1 / Pico ACK, encoder ve E-Stop hattı fiziksel HIL'de doğrulanacak."
         />
         <AdapterRow
           label="Canlı Arming / Interlock"
@@ -73,9 +73,9 @@ export function ReadinessDashboard({
         <EvidenceRow label="Kanıt endpointleri" value="GET /sensor-frames · GET /readiness · GET /telemetry/export · GET /replay" />
       </div>
       <div className="mt-3 grid gap-2 text-sm" data-testid="operator-lidar-diagnostics">
-        <EvidenceRow label="LiDAR viewer" value="Dış diagnostic / görev UI değil" />
-        <EvidenceRow label="RPLIDAR / Livox" value="Kalibrasyon · firmware · ham point cloud" />
-        <EvidenceRow label="Operasyon verisi" value="SDK/driver → SensorFrame → Backend" />
+        <EvidenceRow label="Kamera akışı" value="Canlı MJPEG · nişangâh · hedef bindirmesi" />
+        <EvidenceRow label="TFA50-L 1D menzil" value="Seri ölçüm · boresight hizası · kalibrasyon" />
+        <EvidenceRow label="Taret kalibrasyonu" value="Komut/ölçüm çifti · bias · ACTIVE durumu" />
       </div>
     </details>
   );

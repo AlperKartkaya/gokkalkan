@@ -1,17 +1,20 @@
 # Gerçek Operatör Paneli ve Arayüz Yol Haritası
 
-Bu doküman, simülatörden ayrı olarak final fazında kullanılacak gerçek operatör paneli için önerilen mimariyi ve KTR’de anlatılacak arayüzleri toplar. Şartname nihai otoritedir; burada seçilmemiş donanım/protokol değerleri `TBD` olarak bırakılır.
+Bu doküman, simülatörden ayrı gerçek operatör panelinin arayüz kararlarını ve KTR’de anlatılacak sınırları toplar. Yol haritasının ana yazılım yüzeyi uygulanmıştır; fiziksel kamera, TFA50-L, Pico/CAN, motor, E-Stop ve imha hattı kabulü açık kalır. Güncel saha kullanımı için `taret_ve_asama1_operator_destegi.md`, mimari durum için `tech_stack.md` esas alınmalıdır.
 
 ## 1. Neden ayrı bir operatör paneli?
 
-Mevcut `frontend/` ekranı yarışma eğitim simülatörüdür. Gerçek operatör paneli ise canlı backend, perception, sensör ve donanım adapter’larına bağlanan kontrol istasyonu olmalıdır. Landing ekranında `Simülasyona Başla` butonunun altında ikinci bir buton önerilir:
+`frontend/` yarışma eğitim simülatörü ile canlı backend, perception, sensör ve
+donanım adapter’larına bağlanan operatör panelini ayrı çalışma yüzeyleri olarak
+içerir. Landing ekranı iki yüzeyi birbirinden açıkça ayırır:
 
 ```text
 Operatör Paneli
 Gerçek sistem bağlantısı / dry-run destekli
 ```
 
-İlk sürümde bu buton backend bağlantısı yoksa `Dry-run` veya `Bağlantı bekleniyor` etiketiyle açılabilir. Asla simülatör puan mantığını gerçek ateşleme durumu gibi göstermemelidir.
+Backend bağlantısı yoksa panel `Bağlantı bekleniyor` durumunda fail-closed
+kalır. Simülatör puan mantığını gerçek ateşleme durumu gibi göstermez.
 
 ## 2. Temel güvenlik kararı
 
@@ -31,7 +34,7 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
 6. donanım bağlantı sağlığı,
 7. operatör/hakem/dry-run/live kilidi.
 
-## 3. Önerilen sayfa yapısı
+## 3. Uygulanan sayfa yapısı
 
 ### 3.1. Landing entegrasyonu
 
@@ -54,7 +57,7 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
 2. **Canlı görüntü ve sensör füzyonu**
    - kamera görüntüsü,
    - hedef izi,
-   - radar/LiDAR ölçümü,
+   - TFA50-L 1D menzil ölçümü,
    - hedef tipi/dost-düşman/menzil.
 3. **Komut paneli**
    - Manuel/Otonom/Safe/Bakım mod geçişi,
@@ -70,10 +73,9 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
    - ham mesajlar.
 6. **Sistem Durumu göstergesi**
    - `/readiness` raporu,
-   - repo içi entegrasyon yüzdesi,
    - hazır/kısmi/TBD/kilitli arayüz kartları,
-   - sıradaki kritik radar/LiDAR, perception, MCU ve arming adımları.
-   - Bu gösterge resmi yarışma uygunluk skoru değildir; yalnız uygulanmış yazılım arayüzlerinin durumunu dürüstçe gösterir.
+   - sıradaki kritik TFA50-L, perception, MCU ve arming adımları.
+   - Backend readiness raporu yoksa panel yüzde veya hazır bileşen uydurmaz; adapter’ları açıkça `TBD` gösterir.
 7. **Kayıt / Replay çekmecesi**
    - SQLite WAL session, segmentli JSONL export yolu ve kayıt sayısı,
    - `/telemetry/export` görünümü ile `gokkalkan evidence` hash’li kanıt paketi,
@@ -100,7 +102,7 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
 | `FireIntent` | UI → Backend | `targetId`, `stage`, `round`, `operatorConfirm`, `dryRun` | JSON/HTTP veya WebSocket command | iki aşamalı arming protokolü |
 | `SafetyState` | Backend → UI | `estop`, `motionZoneOk`, `fireZoneOk`, `modeOk`, `targetGate`, `blockReason` | WebSocket state stream | kod + Türkçe açıklama sözlüğü |
 | `TrackState` | Perception/Sensor → Backend/UI | `trackId`, `x`, `y`, `rangeM`, `bearingDeg`, `type`, `friendFoe`, `confidence` | JSON stream | binary/protobuf yalnız ihtiyaç olursa |
-| `SensorFrame` | Sensor Adapter → Backend/UI | `sensor`, `rangeM`, `bearingDeg`, `radialVelocity`, `rcs/snr`, `pointCount`, `quality`, `timestamp`, `trackId` | JSON replay/stream | gerçek radar/LiDAR seçilince adapter doldurur; fixture canlı veri iddiası taşımaz |
+| `SensorFrame` | Sensor Adapter → Backend/UI | `sensor`, `rangeM`, `bearingDeg`, `quality`, `timestamp`, `trackId` | JSON replay/stream | Kamera + TFA50-L fixture’ı canlı veri iddiası taşımaz; 1D LiDAR point-cloud üretmez |
 | `HardwareCommand` | Backend → Adapter | `commandId`, `kind`, `panTilt`, `fireEnable`, `timeoutMs` | Python adapter interface | MCU protokolüne çeviri |
 | `CommandResult` | Adapter → Backend/UI | `commandId`, `accepted`, `completed`, `faultCode`, `latencyMs` | JSON event | gerçek zaman ölçümü |
 | `TelemetryEvent` | Tüm katmanlar → Log | `timestamp`, `stage`, `mode`, `eventType`, `payload` | JSONL | replay/rapor export |
@@ -109,8 +111,8 @@ Backend şu kontrollerden sonra düşük seviye komut üretir:
 
 | Bileşen | Veri | Arayüz durumu | Not |
 | --- | --- | --- | --- |
-| Kamera | görüntü karesi, frame timestamp, exposure/health | kamera seçimine bağlı TBD | İlk algı hattı OpenCV ile açıklanabilir olmalı |
-| Radar / LiDAR | menzil, açı, kalite, timestamp | donanım seçimine bağlı TBD | Şimdilik `SensorFrame` adapter sözleşmesiyle soyutlanmalı |
+| Kamera | görüntü karesi, frame timestamp, exposure/health | Picamera2/OpenCV + MJPEG uygulanmış | Fiziksel kamera kabulü ve gecikme ölçümü açık |
+| TFA50-L 1D LiDAR | boresight menzili, kalite, receive timestamp | UART decoder + serial adapter uygulanmış | Gerçek 5/10/15 m kalibrasyon kanıtı açık |
 | Perception | hedef adayı, takip izi, sınıf/dost-düşman | backend’e stream | Aşama 2’de sınıflandırma zorunlu değil; Aşama 3’te gerekli |
 | Backend | görev durumu, SafetyState, CommandResult | UI’ya stream | UI, backend state olmadan live komut açmamalı |
 
@@ -120,15 +122,15 @@ Kesin elektronik değerler tasarım netleşince doldurulmalıdır. KTR’de yanl
 
 | Arayüz | KTR’de anlatılacak içerik | Durum |
 | --- | --- | --- |
-| Ana güç dağıtımı | batarya/güç kaynağı, sigorta, ana kesme, regülasyon | TBD |
-| Logic güç | MCU, sensör ve haberleşme seviyeleri | TBD |
+| Ana güç dağıtımı | Mean Well RSP-500-24, sigorta, ana kesme ve regülasyon | Tasarım onaylı; fiziksel kabul açık |
+| Logic güç | 24V→5V ve 24V→12V regülasyon hatları | Tasarım onaylı; fiziksel kabul açık |
 | Acil Durdur | fiziksel buton, UI’dan bağımsız kesme/disable, backend bildirimi | Zorunlu |
-| MCU haberleşmesi | pan/tilt ve imha hattı komutlarının taşındığı protokol | UART/RS422/CAN/Ethernet seçilecek |
-| Kamera bağlantısı | USB/CSI/Ethernet seçimi, frame aktarımı ve gecikme ölçümü | TBD |
-| Radar/LiDAR bağlantısı | güç, veri, timestamp, sağlık mesajı | TBD |
+| MCU haberleşmesi | pan/tilt ve imha hattı komutlarının taşındığı protokol | Klasik CAN 2.0B / 500 kbit/s; fiziksel HIL açık |
+| Kamera bağlantısı | CSI/Picamera2; USB/OpenCV geliştirme fallback’i | Yazılım uygulanmış; fiziksel gecikme ölçümü açık |
+| TFA50-L bağlantısı | UART, receive timestamp ve health | Yazılım uygulanmış; fiziksel kalibrasyon açık |
 | İmha hattı | patlayıcı olmayan mekanizma, interlock, Safety Gate sonrası enable | Güvenlik-kritik |
 
-## 5. Önerilen uygulama sırası
+## 5. Uygulama ve doğrulama sırası
 
 1. **Paylaşılan mesaj sözleşmeleri**
    - TypeScript ve Python tarafında aynı `SafetyState`, `TrackState`, `FireIntent`, `CommandResult` alanları belgelenir.
@@ -141,7 +143,7 @@ Kesin elektronik değerler tasarım netleşince doldurulmalıdır. KTR’de yanl
    - Backend bağlantı yoksa komut butonları kapalı ve gerekçe görünür.
    - Simülatör bileşenlerinden yalnız görsel/UX pattern’leri alınır; simülasyon puanı alınmaz.
 4. **Perception/sensör adapter’ları**
-   - Kamera ve radar/LiDAR ayrı adapter’lar olarak bağlanır.
+   - Kamera ve TFA50-L 1D LiDAR ayrı adapter’lar olarak bağlanır.
    - Her adapter `health`, `timestamp`, `latency`, `confidence` üretir.
 5. **Safety Gate entegrasyonu**
    - Her hareket/ateş isteği backend Safety Gate’ten geçer.
@@ -169,7 +171,7 @@ Uygulanan endpoint’ler:
 | --- | --- | --- | --- |
 | `GET /health` | UI → Backend | API sağlığı, dry-run ve fiziksel çıkış durumunu okur | `physicalOutputEnabled=false` döner |
 | `GET /state` | UI → Backend | mod, aşama, izler, `SafetyState`, `CommandResult` ve olay akışını alır | varsayılan izler dry-run kaynaktır |
-| `GET /sensor-frames` | UI → Backend | radar/LiDAR biçimli `SensorFrame` replay paketini ve sağlık özetini alır | `replayOnly=true`; gerçek sensör bağlı iddiası taşımaz |
+| `GET /sensor-frames` | UI → Backend | kamera + TFA50-L `SensorFrame` replay paketini ve sağlık özetini alır | `replayOnly=true`; gerçek sensör bağlı iddiası taşımaz |
 | `GET /readiness` | UI/KTR → Backend | final fazı entegrasyon hazırlığı, arayüz durumu ve kritik sonraki adımları alır | resmi yarışma uygunluk skoru değildir; TBD değerleri açık bırakır |
 | `GET /events` | UI → Backend | telemetri/komut olay listesini alır | rapor ve KTR kanıtı için JSON olaylar |
 | `GET /telemetry/export` | UI/Debug → Backend | JSONL log, state, command result ve event kayıtlarını tek kanıt paketinde dışa aktarır | replay/export fiziksel çıkış üretmez |
@@ -186,36 +188,44 @@ Uygulanan endpoint’ler:
 
 Bu geçişten sonra yazılım ekibinin mekanik/elektronik rehberi gerektirmeyen operatör paneli yüzeyi tamamlanmıştır:
 
-- üst durum şeridi: aşama/tur, backend, perception placeholder, Radar/LiDAR replay/TBD/canlı, Safety Gate ve API kaynağı,
+- üst durum şeridi: aşama/tur, backend, perception, TFA50-L 1D menzil, Safety Gate ve API kaynağı,
 - `Sistem Durumu`: hazır/kısmi/TBD/kilitli arayüz kartları; resmi uygunluk skoru değildir,
 - `Aşama / Tur kontrolü`: Aşama 1 manuel, Aşama 2 otonom 4 resmi tur ve sınıflandırmasız takip, Aşama 3 otonom 8 tur + dost/düşman + menzil kapısı bağlamını gösterir,
-- `Radar / LiDAR`: ham menzil/açı/hız/SNR/nokta/kalite verisini yazılımsal hedef tipi, dost/düşman, güven ve range gate ile birlikte gösterir,
+- Aşama 1 kamera görünümü: gerçek MJPEG akışı, merkez nişangâh, canlı boresight menzili ve kalibre edilmiş balistik holdover,
 - hedef iz ekranı: dry-run `TrackState`, seçili hedef ayrıntısı, dost/düşman, menzil, açı, güven, kaynak ve timestamp,
 - komut paneli: Safe/Manuel/Otonom/Bakım modları, deadman’li `ManualAimCommand`, hız limiti, `FireIntent`, blok gerekçesi,
 - `Interlock`: Acil Durdur, hareket alanı, atış alanı, hedef kapısı, mod kapısı ve backend bağlantısı,
 - hardware sonucu: backend kabulünden dönen `HardwareResult` ve açık `physicalOutput=false` gösterimi,
-- `Entegrasyon`: perception adapter, Radar/LiDAR adapter, MCU/hardware protokolü ve canlı arming/interlock durumlarını mekanik/elektronik kararlarına kadar TBD/kilitli tutar,
+- `Entegrasyon`: perception adapter, TFA50-L adapter, MCU/hardware protokolü ve canlı arming/interlock durumlarını gerçek fiziksel kanıt gelene kadar kısmi/kilitli tutar,
 - `Kayıt / Replay / Log`: JSONL export, replay-only özet, command/hardware kayıtları ve fiziksel çıkışsız kanıt.
 
 Backend tarafında `ManualAimCommand` artık manuel mod + deadman yanında sayı/bounds doğrulamasından geçer. Bu bounds yazılım guardrail’idir; gerçek servo limitleri ve hızları mekanik/elektronik ekip kararından sonra güncellenecektir.
 
-`SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Public radar/LiDAR veri kaynakları offline arayüz testi için değerlendirilebilir; ancak seçilen TFA50-L tek nokta menzil sensörünün kabulü kendi 5/10/15 m kayıtlarıyla yapılır. Bu repo büyük dış dataset veya model dosyası commit etmez; gerçek UART adapter’ı tamamlanana kadar fixture yalnız arayüz ve KTR kanıtı üretir.
+`SensorFrame` replay fixture’ı gerçek veri iddiası taşımaz. Seçilen TFA50-L tek
+nokta menzil sensörünün kabulü kendi 5/10/15 m kayıtlarıyla yapılır. Bu repo
+büyük dış dataset veya model dosyası commit etmez; fiziksel UART ve kalibrasyon
+kanıtı tamamlanana kadar fixture yalnız arayüz ve KTR kanıtı üretir.
 
-## 5.3. Vendor LiDAR yazılımı stratejisi
+## 5.3. TFA50-L 1D teşhis stratejisi
 
-RPLIDAR Viewer, Livox Viewer veya benzeri üretici yazılımları yarışma günü operatör arayüzü olmamalıdır. Bu araçlar laboratuvarda cihazın görüldüğünü, seri/Ethernet ayarlarını, firmware/kalibrasyon durumunu ve ham point cloud kalitesini doğrulamak için değerlidir; fakat `Aşama`, `Tur`, `Safety Gate`, dost/düşman, menzil kapısı, `FireIntent`, MCU interlock ve KTR/replay kanıtı bağlamını bilmezler.
+TFA50-L bir tarama/point-cloud sensörü değildir; bu nedenle ayrı bir ham LiDAR
+sayfası veya vendor viewer görev arayüzüne eklenmez. Seri port, firmware, health,
+boresight hizası ve 5/10/15 m kalibrasyon kanıtı bakım/telemetri yüzeyinde
+izlenir.
 
 Final saha hedefi tek Gökkalkan Operator Panel programıdır:
 
 ```text
-Radar/LiDAR SDK veya driver
+TFA50-L UART adapterı
   -> Sensor Adapter servisi
   -> ortak SensorFrame akışı
   -> Backend füzyon / görev / safety gate
   -> Gökkalkan Operator Panel
 ```
 
-Bu nedenle vendor viewer sadece bakım/diagnostic modunda, operatör panelinden ayrı açılabilecek yardımcı araç olarak tutulmalıdır. Ana panel, üretici viewer penceresini embed etmeye veya ekran kazımaya çalışmamalıdır; canlı görevde sensör verisini SDK/driver üzerinden `SensorFrame` sözleşmesine çevirip kendi sade polar görünümünü ve hedef kartlarını göstermelidir. `Matplotlib` canlı panel için değil, offline log analizi ve rapor grafikleri için uygundur.
+Ana panel canlı görevde 1D menzili kamera/taret ekseniyle birlikte sayısal olarak
+gösterir. Ayrıntılı seri mesajlar ve kalibrasyon raporları operatör akışını
+kalabalıklaştırmadan bakım/telemetri tarafında kalır.
 
 Paketleme hedefi:
 
@@ -224,17 +234,18 @@ Paketleme hedefi:
 - Windows demo gerekiyorsa: aynı launcher mantığının `.exe` çıktısı,
 - her iki durumda da canlı fiziksel çıkış, `dry-run` yerine iki aşamalı arming + fiziksel interlock + hakem/operatör prosedürü tamamlanmadan açılamaz.
 
-## 6. Karar önerisi
+## 6. Karar ve kalan fiziksel doğrulama
 
-Kısa vadede gerçek operatör panelini mevcut React/Vite frontend içinde ayrı sayfa olarak başlatmak ve Python backend/API servisleriyle paketlemek en pratik yoldur. Bunun nedeni:
+Gerçek operatör paneli mevcut React/Vite frontend içinde ayrı sayfa ve Python
+backend/API servisleriyle uygulanmıştır. Bu seçim korunmalıdır; çünkü:
 
 - Mevcut simülatörde yarışma dili, stage UI, hedef silüetleri ve safety summary zaten oluştu.
 - Backend API ile ayrım korunursa UI teknolojisi safety-kritik karar katmanı olmaz.
 - KTR için hem simülatör hem gerçek panel ekranları aynı tasarım sistemiyle tutarlı görünür.
 
-Ancak canlı saha testi başlamadan önce şu kararlar hâlâ kapatılmalıdır:
+Canlı saha testi başlamadan önce şu fiziksel kabuller hâlâ kapatılmalıdır:
 
-- radar/LiDAR donanımı ve mesaj formatı,
+- TFA50-L güç/UART/hizalama ve 5/10/15 m kabulü,
 - CAN v1 protokolünün gerçek Pico/controller/transceiver HIL kabulü,
 - gerçek panelin dry-run/live geçiş prosedürü,
 - Acil Durdur’un fiziksel kesme hattı ve backend state bildirimi,

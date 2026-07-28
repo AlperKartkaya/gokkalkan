@@ -55,7 +55,7 @@ export const stage2Scenario: StageScenario = {
   events: [
     { second: 0, kind: 'setup', actor: 'hakem', mode: 'autonomous', autoRunning: true, round: 1, title: 'Aşama 2 başlar', detail: 'Otonom Mod otomatik seçilir; üç kolda birer hedef A noktasından çıkar.' },
     { second: 1, kind: 'target_launch', actor: 'hedef', round: 1, title: 'Tur 1 hedefleri kalkar', detail: 'Kol 1/2/3 hedefleri aynı anda A→B rotasına girer.' },
-    { second: 5, kind: 'autonomous_move', actor: 'Gökkalkan', targetId: 'S2-R1-L2', panAngle: -3, tiltAngle: 2, round: 1, title: 'Otonom takip kilidi', detail: 'Radar/LiDAR/Kamera füzyonu kol 2 hedefini önceliklendirir.' },
+    { second: 5, kind: 'autonomous_move', actor: 'Gökkalkan', targetId: 'S2-R1-L2', panAngle: -3, tiltAngle: 2, round: 1, title: 'Otonom takip kilidi', detail: 'Kamera/TFA50-L füzyonu kol 2 hedefini önceliklendirir.' },
     { second: 8, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L1', result: 'hit', points: 0, round: 1, title: 'Tur 1 Kol 1 isabet', detail: 'Kol 1 hedefi parkur dışına çıkmadan vurulur.' },
     { second: 11, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L2', result: 'hit', points: 0, round: 1, title: 'Tur 1 Kol 2 isabet', detail: 'Balistik Füze maketi vurulur.' },
     { second: 14, kind: 'hit', actor: 'Gökkalkan', targetId: 'S2-R1-L3', result: 'hit', points: 30, round: 1, title: 'Tur 1 tamam · 3 isabet', detail: 'Tur puanı 30.' },

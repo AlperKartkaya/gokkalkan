@@ -868,11 +868,11 @@ class OperatorService:
             ),
             self._readiness_item(
                 "radar_lidar_adapter",
-                "Radar/LiDAR Adapter",
+                "TFA50-L 1D LiDAR",
                 "ready" if self.sensor_adapter_connected else "tbd",
                 "Sensör",
                 "TFA50-L seçimi, UART decoder ve SensorFrame replay sözleşmesi hazır; gerçek sensör bağlı değil.",
-                "radar/LiDAR hattında TFA50-L serial adapterını bağla; güç, timestamp, hizalama ve 5/10/15 m kabulünü doğrula.",
+                "TFA50-L serial adapterını bağla; güç, timestamp, hizalama ve 5/10/15 m kabulünü doğrula.",
                 "SensorFrame",
             ),
             self._readiness_item(

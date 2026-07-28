@@ -6,8 +6,8 @@
 
 ## 📸 1. Gerçek Operatör Paneli ve Taret Görselleri
 
-### A) Gerçek Operatör Paneli Konsolu (Aşama 3 - Dost/Düşman + Radar Görünümü)
-Aşağıdaki görsel, [`frontend/`](../frontend) içerisinde yer alan canlı **Operatör Paneli Konsolu** ekran görüntüsüdür. Radarda tespit edilen hedefler (Kırmızı Düşman / Mavi Dost), menzil kapıları, aşama bilgileri ve donanım sağlık rozetleri yer almaktadır:
+### A) Gerçek Operatör Paneli Konsolu (Aşama 3 - Dost/Düşman Görünümü)
+Aşağıdaki görsel, [`frontend/`](../frontend) içerisinde yer alan canlı **Operatör Paneli Konsolu** ekran görüntüsüdür. Algı katmanında izlenen hedefler (Kırmızı Düşman / Mavi Dost), menzil kapıları, aşama bilgileri ve donanım sağlık rozetleri yer almaktadır:
 
 ![Gerçek Operatör Paneli Konsolu](./screenshots/ktr_operator_asama3.png)
 
@@ -27,12 +27,15 @@ Fiziksel veya yazılımsal Acil Durdur tetiklendiğinde arayüzün kilitlenme ve
 
 ---
 
-### D) Kamera ve LiDAR Ham Sensör Verisi Görünümü
-Perception katmanının işlediği ham kamera karesi ve LiDAR mesafe taraması:
+### D) Kamera ve 1D LiDAR Operatör Görünümü
+Perception katmanının gerçek MJPEG kamera akışı Aşama 1 nişan yüzeyinde gösterilir:
 
-| Ham Kamera Filtreleme Görünümü | LiDAR Tarama Görünümü |
-| :---: | :---: |
-| ![Kamera Görünümü](./screenshots/ktr_ham_kamera.png) | ![LiDAR Görünümü](./screenshots/ktr_ham_lidar.png) |
+![Kamera Görünümü](./screenshots/ktr_ham_kamera.png)
+
+TFA50-L bir 2D tarama sensörü olmadığı için ayrı bir ham LiDAR haritası veya
+point-cloud sayfası yoktur. Boresight menzili, kamera/taret ekseniyle birlikte
+Aşama 1 panelinde canlı sayısal değer olarak gösterilir. Eski
+`ktr_ham_lidar.png` görseli güncel operatör yüzeyini temsil etmez.
 
 ---
 
@@ -153,9 +156,12 @@ Kamera (Picamera2 / USB) ──> frame_processor.py (HSV Renk Filtresi)
 
 ---
 
-### B) Görsel Algı ve Canlı Radar Akış Şeması
+### B) Görsel Algı ve Sensör Akış Şeması
 
-![Görsel algı ve canlı radar veri akışı sequence diyagramı](assets/codebase_tutorial/perception_radar_sequence.svg)
+![Görsel algı ve sensör veri akışı sequence diyagramı](assets/codebase_tutorial/perception_radar_sequence.svg)
+
+> Varlık adı tarihsel olarak `perception_radar_sequence.svg` biçiminde kalmıştır;
+> güncel çalışma sensörü kamera + TFA50-L 1D LiDAR’dır.
 
 ---
 

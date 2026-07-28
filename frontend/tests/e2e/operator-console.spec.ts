@@ -371,7 +371,7 @@ test('operator panel uses physical camera stream and removes 2D LiDAR page', asy
   await expect(page.getByTestId('operator-panel')).toBeVisible();
 });
 
-test('operator panel final-phase layout renders dominant 3D fusion and compact mission side rail', async ({ page }) => {
+test('operator panel final-phase layout renders the fusion view and compact mission side rail', async ({ page }) => {
   const apiBase = 'http://127.0.0.1:5173/final-phase-api';
   const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
   const safety = {
@@ -557,7 +557,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
       dryRun: true,
       items: [
         { id: 'operator_panel_ui', label: 'Operatör Paneli UI', status: 'ready', owner: 'Frontend', evidence: 'Aşama/tur ve sensor replay yüzeyleri hazır.', nextStep: 'Canlı kiosk doğrula.', ktrInterface: 'StageRequest, SensorFrame' },
-        { id: 'radar_lidar_adapter', label: 'Radar/LiDAR Adapter', status: 'tbd', owner: 'Sensör', evidence: 'SensorFrame replay var; gerçek protokol seçilmedi.', nextStep: 'Seçilen sensörün güç/veri arayüzünü doldur.', ktrInterface: 'SensorFrame' },
+        { id: 'radar_lidar_adapter', label: 'TFA50-L 1D LiDAR', status: 'tbd', owner: 'Sensör', evidence: 'SensorFrame replay var; fiziksel sensör kabulü açık.', nextStep: 'TFA50-L güç/UART/hizalama kabulünü tamamla.', ktrInterface: 'SensorFrame' },
         { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'Interlock doğrula.', ktrInterface: 'ArmingState' },
       ],
       nextCriticalActions: ['Seçilen sensörün güç/veri arayüzünü doldur.'],
@@ -648,8 +648,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
   await expect(page.getByTestId('operator-accuracy-DRY-RUN-LOW-04-type')).toContainText('39%');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-LOW-04')).toHaveAttribute('data-identification', 'unknown');
-  await expect(page.getByText('İzler')).toHaveCount(0);
-  await expect(page.getByText('İZ')).toHaveCount(0);
+  await expect(sensorPanel).toContainText('Hedef İzleri');
   await expect(page.getByText('DURAĞAN')).toHaveCount(0);
   await expect(page.getByText('DRY-RUN · fiziksel çıkış yok')).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .target-label-stack')).toHaveCount(0);
@@ -673,7 +672,7 @@ test('operator panel final-phase layout renders dominant 3D fusion and compact m
   const sensor3dView = page.getByTestId('operator-sensor-3d-view');
   await expect(sensor3dView).toBeVisible();
   await expect(sensor3dView).toHaveAttribute('data-renderer', 'webgl');
-  await expect(sensor3dView).toContainText('3D Panel');
+  await expect(sensor3dView).toContainText('Füzyon Görünümü');
   await expect(sensor3dView).not.toContainText('3D SensorFrame');
   await expect(sensor3dView).not.toContainText('Sürükle: döndür');
   await expect(sensor3dView).not.toContainText('Tekerlek: yakınlaştır');
@@ -842,10 +841,10 @@ test('operator panel uses backend fire, stop, bakım and manual deadman controls
   await expect(page.getByTestId('operator-action-strip')).toContainText('9:30 bütçe');
   await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   await expect(page.getByTestId('operator-maintenance-drawer')).toBeVisible();
-  await expect(page.getByTestId('operator-lidar-diagnostics')).toContainText('SDK/driver → SensorFrame → Backend');
+  await expect(page.getByTestId('operator-lidar-diagnostics')).toContainText('TFA50-L 1D menzil');
 });
 
-test('operator panel uses the 40 percent type-confidence threshold for radar symbols', async ({ page }) => {
+test('operator panel uses the 40 percent type-confidence threshold for target symbols', async ({ page }) => {
   await setBackendStage(page, 3);
   await page.goto('/?operator=1');
   await page.getByRole('button', { name: 'Aşama 3' }).click();
@@ -876,22 +875,22 @@ test('operator panel can be opened directly with query parameter without simulat
   await expect(page.getByRole('button', { name: 'Landing’e dön' })).toHaveCount(0);
 });
 
-test('desktop operator shell keeps LiDAR vendor tools diagnostic-only', async ({ page }) => {
+test('desktop operator shell shows selected 1D LiDAR diagnostics without a raw viewer', async ({ page }) => {
   await page.goto('/?operator=1&desktop=1');
 
   await expect(page.getByTestId('operator-panel')).toBeVisible();
   await expect(page.getByTestId('operator-panel')).toHaveAttribute('data-desktop-shell', 'true');
   await expect(page.getByText('Kabuk: Desktop')).toHaveCount(0);
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Radar / LiDAR');
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('3D Panel');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Hedef İzleri');
+  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Füzyon Görünümü');
   await expect(page.getByTestId('operator-sensor-fusion-panel')).not.toContainText('3D SensorFrame');
 
   await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   const lidarDiagnostics = page.getByTestId('operator-lidar-diagnostics');
-  await expect(lidarDiagnostics).toContainText('LiDAR viewer');
-  await expect(lidarDiagnostics).toContainText('Dış diagnostic / görev UI değil');
-  await expect(lidarDiagnostics).toContainText('RPLIDAR / Livox');
-  await expect(lidarDiagnostics).toContainText('SDK/driver → SensorFrame → Backend');
+  await expect(lidarDiagnostics).toContainText('Kamera akışı');
+  await expect(lidarDiagnostics).toContainText('TFA50-L 1D menzil');
+  await expect(lidarDiagnostics).toContainText('Taret kalibrasyonu');
+  await expect(lidarDiagnostics).not.toContainText('point cloud');
   await expect(page.getByText('RPLIDAR Viewer').or(page.getByText('Livox Viewer'))).toHaveCount(0);
 });
 
@@ -941,7 +940,7 @@ test('operator panel keeps backend readiness diagnostic-only outside the operato
       dryRun: true,
       items: [
         { id: 'backend_api', label: 'Backend Operatör API', status: 'ready', owner: 'Backend', evidence: 'State ve command endpointleri çalışıyor.', nextStep: 'Oturum/imza katmanı ekle.', ktrInterface: 'ModeRequest' },
-        { id: 'radar_lidar_adapter', label: 'Radar/LiDAR Adapter', status: 'tbd', owner: 'Sensör', evidence: 'Gerçek sensör protokolü seçilmedi.', nextStep: 'Seçilen sensörün güç/veri arayüzünü doldur.', ktrInterface: 'SensorFrame' },
+        { id: 'radar_lidar_adapter', label: 'TFA50-L 1D LiDAR', status: 'tbd', owner: 'Sensör', evidence: 'Fiziksel sensör kabulü açık.', nextStep: 'TFA50-L güç/UART/hizalama kabulünü tamamla.', ktrInterface: 'SensorFrame' },
         { id: 'hardware_adapter', label: 'Hardware Adapter', status: 'partial', owner: 'Backend + Elektronik', evidence: 'Dry-run adapter physicalOutput=false döndürüyor.', nextStep: 'MCU haberleşme protokolünü bağla.', ktrInterface: 'HardwareCommand' },
         { id: 'live_arming', label: 'Canlı Arming / Fiziksel Çıkış', status: 'blocked', owner: 'Safety + Elektronik', evidence: 'Canlı arming kapalı.', nextStep: 'İki aşamalı arming ve interlock doğrulaması gerekir.', ktrInterface: 'ArmingState' },
       ],

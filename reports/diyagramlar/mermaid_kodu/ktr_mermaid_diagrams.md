@@ -8,7 +8,7 @@ Bu dosyadaki Mermaid blokları KTR yazılım mimarisi, arayüz ve görev akış�
 flowchart LR
     OperatorUI["Operatör Paneli\nSimülatör / Gerçek Panel"] --> Api["Backend API\nREST + WebSocket"]
     Camera["Kamera"] --> Perception["Algılama\nhedef adayı / takip / sınıf"]
-    RadarLidar["Radar / LiDAR Adapter\nTBD sensör arayüzü"] --> SensorFusion["Sensör Füzyonu\nmenzil + iz + sağlık"]
+    RadarLidar["TFA50-L 1D LiDAR Adapter\nUART + boresight menzili"] --> SensorFusion["Sensör Füzyonu\nmenzil + iz + sağlık"]
     Perception --> SensorFusion
     SensorFusion --> Backend["Backend Görev Çekirdeği\nmod + aşama + angajman"]
     Api --> Backend
@@ -32,7 +32,7 @@ flowchart TD
     Frame["Kameradan kare yakala"] --> Pre["Ön işleme\nROI, renk uzayı, filtreleme"]
     Pre --> Candidate["Hedef adayı çıkar\nkontur/şekil/alan"]
     Candidate --> Track["İz güncelle\nmerkez, hız, son görülme"]
-    Sensor["Radar/LiDAR SensorFrame\nmenzil + açı + kalite"] --> Fuse["İz + menzil füzyonu"]
+    Sensor["TFA50-L SensorFrame\n1D menzil + kalite"] --> Fuse["İz + menzil füzyonu"]
     Track --> Fuse
     Fuse --> Stage{"Aktif aşama"}
     Stage -->|Aşama 2| NoClass["Tip sınıflandırma zorunlu değil\ntakip + tur önceliği"]
@@ -201,7 +201,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant C as Kamera
-    participant R as Radar/LiDAR Adapter
+    participant R as TFA50-L 1D LiDAR Adapter
     participant P as Perception
     participant B as Backend
     participant E as Engagement Manager

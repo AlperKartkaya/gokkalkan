@@ -71,7 +71,7 @@ Mevcut simülatör özellikleri:
 
 ### 3.2. Gerçek Operatör Paneli
 
-Planlanan gerçek operatör paneli, final fazında backend/perception/sensör/donanım katmanlarına bağlanacak canlı kontrol istasyonudur. Simülatörle aynı tasarım dilinden yararlanabilir; ancak simülasyon puanı veya varsayımsal sensör verisi gerçek görev durumuyla karıştırılmamalıdır.
+Gerçek operatör panelinin yazılım yüzeyi, backend/perception/sensör/donanım katmanlarına bağlanan canlı kontrol istasyonu olarak uygulanmıştır. Simülatörle aynı tasarım dilinden yararlanır; ancak simülasyon puanı veya varsayımsal sensör verisi gerçek görev durumuyla karıştırılmaz. Backend bağlantısı yoksa hedef, güvenlik durumu veya hazırlık yüzdesi uydurmaz ve fail-closed kalır.
 
 Temel ilke: UI doğrudan motor veya imha hattı sürmez. UI yüksek seviye niyet gönderir; backend Safety Gate onaylarsa Hardware Adapter düşük seviye komuta çevirir.
 
@@ -130,17 +130,17 @@ oluşturup canlı arm iznini kapatır.
 2. Renk/şekil tabanlı hedef aday çıkarımı. ✅ Uygulandı.
 3. Basit takip: merkez noktası, hız tahmini, hedef geçmişi. ✅ CentroidTracker uygulandı.
 4. Aşama 2 için sınıflandırmasız takip ve önceliklendirme. ✅ Uygulandı.
-5. Aşama 3 için dost-düşman ayrımı, hedef tipi ve menzil kapısı. ✅ Renk sınıflaması uygulandı; LiDAR menzili TBD.
+5. Aşama 3 için dost-düşman ayrımı, hedef tipi ve menzil kapısı. ✅ Renk sınıflaması, TFA50-L UART adapterı ve kamera-yaw-menzil ilişkilendirme hattı uygulandı; gerçek 5/10/15 m kalibrasyon kanıtı imalat sonrası açık.
 6. Gerekiyorsa YOLO/DeepSORT/Hailo gibi model tabanlı yaklaşım.
 
 ### 4.4. `frontend/` — Simülatör ve Operatör Arayüzleri
 
-`frontend/` bugün React/Vite/TypeScript simülatörünü içerir. Aynı frontend içinde yeni bir gerçek operatör paneli sayfası eklemek önerilir; çünkü mevcut parkur, hedef, safety summary, onboarding ve Türkçe yarışma dili bileşenleri tekrar kullanılabilir. Eğer saha koşulları native/kiosk UI gerektirirse PySide6 alternatifi ayrıca değerlendirilebilir; şu an tek zorunlu seçenek olarak yazılmamalıdır.
+`frontend/` React/Vite/TypeScript eğitim simülatörü ile gerçek operatör panelini birlikte içerir. İki yüzey görsel/UX kalıplarını paylaşır; görev state’i ve güvenlik yetkisi paylaşmaz. Eğer saha koşulları native/kiosk UI gerektirirse mevcut web paneli masaüstü/kiosk kabuğunda paketlenebilir; ikinci bir UI teknoloji yığını zorunlu değildir.
 
 Arayüz hedefleri:
 
 - Simülatörde: görev eğitimi, puan/menzil/tur görselleştirme, kullanıcı onboarding’i.
-- Gerçek panelde: aşama/tur görev bağlamı, canlı kamera/sensör alanı, radar/LiDAR biçimli `SensorFrame` replay/akış görünümü, backend `MissionFlow`, deadman’li manuel pan/tilt niyeti, FireIntent, görev duraklatma/devam, bakım, seçili hedef detayı, hedef tipi + dost/düşman + menzil kapısı yorumu, Safety Gate gerekçesi, hardware health, `Finale Hazırlık` arayüz/gap göstergesi ve kapalı gelen JSONL kanıt/replay çekmecesi. Hedef, Safety ve görev state'i backend SSE/REST snapshot'ından gelir; UI sentetik hedef kimliği veya optimistik güvenlik state'i üretmez.
+- Gerçek panelde: aşama/tur görev bağlamı, gerçek MJPEG kamera görüntüsü, merkez nişangâh, canlı TFA50-L 1D menzil değeri, seçilebilir manuel pan/tilt adımı, aktif taret kalibrasyon kimliği, kalibre edilmiş balistik holdover, backend `MissionFlow`, FireIntent, görev duraklatma/devam, bakım, Safety Gate gerekçesi, hardware health ve JSONL kanıt/replay çekmecesi bulunur. Hedef, Safety ve görev state'i backend SSE/REST snapshot'ından gelir; UI sentetik hedef kimliği, kamera görüntüsü veya optimistik güvenlik state'i üretmez.
 - Her iki yüzeyde: Türkçe yarışma terimleri, açık blok nedeni, Acil Durdur farkındalığı ve telemetri olayı.
 
 ### 4.5. `tests/` — Senaryo ve Regresyon Testleri
@@ -190,7 +190,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
 | MCU haberleşmesi | **Onaylandı** | Klasik CAN 2.0B, 500 kbit/s; SN65HVD230 (×3); ISO 11898-2; 0x100 pan/tilt, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop. Ayrıntı: ADR-002 |
 | Kamera | **Onaylandı** | Raspberry Pi Camera Module 3 (12MP, OT AF, HDR), CSI bağlantı, Picamera2 API |
-| LiDAR | **Aday seçildi** | Benewake TFA50-L tek nokta UART LiDAR; yaw ile dönen/pitch-sabit merkezî köprü. Gerçek 5/10/15 m kabul testi bekliyor |
+| LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
 | İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
@@ -198,8 +198,8 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 Şartname belirli bir programlama dili veya yapay zekâ modeli zorunlu kılmaz. Bu repo için teknik yön şu şekilde güncellenmiştir:
 
 - **Simülatör UI:** React + Vite + TypeScript (`frontend/`).
-- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + Backend API. Yazılım yüzeyi backend-otoriter `MissionFlow`, aşama/tur seçimi, SSE/REST state eşitlemesi, gerçek track kimliği, radar/LiDAR biçimli `SensorFrame` görünümü, hedef tipi + dost/düşman + menzil yorumu, deadman'li manuel pan/tilt niyeti, FireIntent, duraklatma/devam, bakım, Safety/health ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
-- **Vendor LiDAR viewer stratejisi:** RPLIDAR Viewer, Livox Viewer ve benzeri üretici araçları görev arayüzü değildir. Bunlar bakım, kalibrasyon, firmware/IP/serial doğrulama ve ham point cloud kontrolünde dış diagnostic araç olarak kalır. Görev panelindeki veri yolu `SDK/driver → SensorFrame → Backend → Operatör Paneli` olmalıdır; vendor pencere embed/screen-scrape edilmemelidir.
+- **Gerçek operatör paneli:** React/Vite içinde ayrı sayfa + Backend API. Yazılım yüzeyi backend-otoriter `MissionFlow`, aşama/tur seçimi, SSE/REST state eşitlemesi, gerçek track kimliği, MJPEG kamera, TFA50-L 1D menzil, taret kalibrasyonu, balistik holdover, deadman'li manuel pan/tilt niyeti, FireIntent, bakım, Safety/health ve kanıt/replay için tamamlanmıştır. `npm run desktop` launcher’ı backend API + UI + desktop app-window akışını Linux/macOS/Windows geliştirme makinelerinde tek komutla başlatır; gerçek paketleme hedefi saha bilgisayarına göre AppImage/kiosk veya `.exe` olarak ayrıca kilitlenmelidir.
+- **1D LiDAR teşhis stratejisi:** TFA50-L bir tarama/point-cloud sensörü değildir. Görev paneli boresight menzilini canlı sayısal değer olarak gösterir; seri port, firmware, health, hizalama ve 5/10/15 m kalibrasyon ayrıntıları bakım/telemetri yüzeyinde kalır.
 - **Hedef runtime:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS + `systemd`; hedefte VM yok. Ayrıntı: ADR-001.
 - **Kurulum/paketleme:** Backend `pyproject.toml` ile kurulur; exact Python
   kilitleri `requirements/`, doğrulanan çalışma profilleri `config/runtime/`,

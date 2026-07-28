@@ -4,11 +4,11 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 
 ## Güncel Durum
 
-- `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü**. Aşama 1/2/3 senaryolarını görselleştirir.
+- `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü ve operatör paneli**. Aşama 1/2/3 senaryolarını görselleştirir; gerçek panel canlı kamera, 1D LiDAR menzili, manuel nişan ve Safety Gate durumunu backend’den alır.
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
 - `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi ve CAN v1 codec çekirdeği.
-- `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi.
+- `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.
@@ -139,7 +139,7 @@ Kanıt paketi üretimi ve bütünlük sınırları:
 | `/telemetry/export` | GET | JSONL telemetri dışa aktarma |
 | `/replay` | GET | Komut/olay tekrar oynatma |
 | `/readiness` | GET | Final fazı hazırlık raporu |
-| `/sensor-frames` | GET | Radar/LiDAR biçimli replay verisi |
+| `/sensor-frames` | GET | Kamera + TFA50-L 1D menzil replay/teşhis verisi |
 
 LIVE profilinde bütün `POST` istekleri `Authorization: Bearer …` ve
 `X-Operator-Id` başlıklarını taşır; kimlik komut envelope/telemetri kaydına
@@ -184,6 +184,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.
 - `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, CAN protokolü ve safety gate.
 - `docs/imalat_oncesi_yazilim_todo.md` — imalat öncesi yazılım yol haritası.
+- `docs/taret_ve_asama1_operator_destegi.md` — saha taret kalibrasyonu, Aşama 1 canlı nişan, 1D LiDAR ve balistik holdover sınırları.
 - `docs/operator_panel_interfaces_roadmap.md` — gerçek operatör paneli arayüz tabloları (KTR).
 - `reports/diyagramlar/mermaid_kodu/ktr_mermaid_diagrams.md` — KTR Mermaid diyagramları.
 
