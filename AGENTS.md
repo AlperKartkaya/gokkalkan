@@ -6,12 +6,12 @@ This file is the first-stop guide for AI coding agents working in the Gökkalkan
 
 Gökkalkan is the software-development and report-preparation workspace for the TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması. The repository now contains a working dry-run/HIL operator API, frontend, camera/perception scaffolding, hardware simulator, tests, and documentation; physical firmware and end-to-end hardware validation are still incomplete.
 
-The competition specification is the final authority. If any repository note, initializer report, or older README statement conflicts with the competition specification, i.e., `docs/sartname_v1_3.pdf` and its text file `docs/sartname_v1_3.txt`, follow the competition specification and update the repo note instead of preserving the conflict.
+The competition specification is the final authority. If any repository note, initializer report, or older README statement conflicts with the competition specification, i.e., `docs/sartname_v4.pdf` and its text file `docs/sartname_v4.txt`, follow the competition specification and update the repo note instead of preserving the conflict.
 
 Primary references:
 - `README.md` — short project/team/delivery overview.
-- `docs/sartname_v1_3.pdf` — authoritative competition specification.
-- `docs/sartname_v1_3.txt` — searchable text extraction of the same specification; use it for grep/search, then refer back to the PDF when exact formatting or figures matter.
+- `docs/sartname_v4.pdf` — authoritative competition specification.
+- `docs/sartname_v4.txt` — searchable text extraction of the same specification; use it for grep/search, then refer back to the PDF when exact formatting or figures matter.
 - `docs/tech_stack.md` — competition specification-aligned software architecture, technology direction, mission stages, safety constraints, and verification priorities.
 - `TARIHLER.md` — fixed delivery/result dates.
 - `reports/` — report artifacts and templates.
@@ -35,9 +35,9 @@ Do not assume production code exists just because a directory exists. Check whet
 
 ## Domain glossary
 
-- **TEKNOFEST Çelikkubbe** — the competition context. Requirements and deliverables should be interpreted through the competition specification in `docs/sartname_v1_3.pdf`.
+- **TEKNOFEST Çelikkubbe** — the competition context. Requirements and deliverables should be interpreted through the competition specification in `docs/sartname_v4.pdf`.
 - **Gökkalkan** — this team/project’s air-defense-system workspace.
-- **Şartname** — `docs/sartname_v1_3.pdf`; the binding TEKNOFEST technical specification for this repo.
+- **Şartname** — `docs/sartname_v4.pdf`; the binding TEKNOFEST technical specification for this repo.
 - **OTR** — `Ön Tasarım Raporu` (Preliminary Design Report). The şartname says it is at most 10 pages including cover, contents, visuals, and references.
 - **KTR** — `Kritik Tasarım Raporu` (Critical Design Report). The şartname says it is at most 30 pages including cover, contents, technical visuals, and references.
 - **Görev Kabiliyeti Gösterimi Videosu** — post-KTR video gate. The şartname requires a single YouTube link, at least 720p, 2–5 minutes, and the required capabilities in order.
@@ -70,7 +70,7 @@ Documented stack direction:
 ## Language and naming conventions
 
 - Existing project documentation is mostly Turkish. Keep report-facing and competition-facing prose in Turkish by default.
-- Use correct Turkish letters in Turkish text: `Ç/ç`, `Ğ/ğ`, `İ`, `I/ı`, `Ö/ö`, `Ş/ş`, `Ü/ü`. Do not write ASCII approximations such as `sartname`, `gorev`, `guvenlik`, or `tasarim` in prose when the Turkish spelling is `şartname`, `görev`, `güvenlik`, or `tasarım`. File names may remain ASCII when already established, for example `docs/sartname_v1_3.pdf`.
+- Use correct Turkish letters in Turkish text: `Ç/ç`, `Ğ/ğ`, `İ`, `I/ı`, `Ö/ö`, `Ş/ş`, `Ü/ü`. Do not write ASCII approximations such as `sartname`, `gorev`, `guvenlik`, or `tasarim` in prose when the Turkish spelling is `şartname`, `görev`, `güvenlik`, or `tasarım`. File names may remain ASCII when already established, for example `docs/sartname_v4.pdf`.
 - Use exact Turkish competition terms for deliverables and work packages: `OTR`, `KTR`, `Manuel Mod`, `Otonom Tespit ve Takip`, `Güvenlik Katmanı`, `Log/Telemetri`.
 - For source code that will be added later, prefer clear English identifiers unless an existing file or external interface establishes a Turkish name.
 - When documenting mixed-language concepts, Turkish first and English clarification second is usually best, for example: `Algı (Perception)`.
@@ -78,7 +78,7 @@ Documented stack direction:
 ## Workflow expectations for agents
 
 Before changing code or docs:
-1. Read `docs/sartname_v1_3.txt` or `docs/sartname_v1_3.pdf` for requirement-sensitive tasks; treat the şartname as final authority.
+1. Read `docs/sartname_v4.txt` or `docs/sartname_v4.pdf` for requirement-sensitive tasks; treat the şartname as final authority.
 2. Read `docs/tech_stack.md` for architecture-sensitive tasks after checking the şartname.
 3. Read `TARIHLER.md` for delivery-sensitive report tasks.
 4. Read the relevant `.github/ISSUE_TEMPLATE/` file when the task resembles a handover, feature, or bug.

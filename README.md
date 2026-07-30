@@ -1,6 +1,6 @@
 # Gökkalkan
 
-Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması için geliştirilen yazılım, simülasyon ve KTR/rapor hazırlık çalışma alanıdır. Nihai gereksinim kaynağı `docs/sartname_v1_3.pdf` ve aranabilir metin karşılığı `docs/sartname_v1_3.txt` dosyalarıdır.
+Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması için geliştirilen yazılım, simülasyon ve KTR/rapor hazırlık çalışma alanıdır. Nihai gereksinim kaynağı `docs/sartname_v4.pdf` ve aranabilir metin karşılığı `docs/sartname_v4.txt` dosyalarıdır.
 
 ## Güncel Durum
 
@@ -170,7 +170,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 ## Önemli Dokümanlar
 
 - `docs/CODEBASE_TUTORIAL.md` — kod tabanı ve mimari eğitim kılavuzu (Developer & Team Tutorial).
-- `docs/sartname_v1_3.txt` — şartname metni; gereksinimlerde final otorite.
+- `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
 - `docs/delivery_video_plan.md` — güncel takvim ve sıralı video kanıt planı.

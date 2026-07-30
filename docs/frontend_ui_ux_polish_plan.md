@@ -1,6 +1,6 @@
 # Gökkalkan Frontend UI/UX Durumu ve Sonraki Plan
 
-Bu doküman, eski “debug operatör konsolu” iyileştirme planının güncel durumunu ve bundan sonraki UI yönünü özetler. Şartname (`docs/sartname_v1_3.txt`) nihai otoritedir.
+Bu doküman, eski “debug operatör konsolu” iyileştirme planının güncel durumunu ve bundan sonraki UI yönünü özetler. Şartname (`docs/sartname_v4.txt`) nihai otoritedir.
 
 ## 1. Durum
 

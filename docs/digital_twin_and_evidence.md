@@ -1,7 +1,7 @@
 # Faz 6–7: Dijital İkiz, Session, Replay ve Kanıt
 
 Bu belge imalat öncesi yazılım doğrulama yolunu açıklar. Buradaki sonuçlar
-**yazılım/mock kanıtıdır**. Şartname v1.3 §2.4.4’teki entegre sistem, 15 m balon,
+**yazılım/mock kanıtıdır**. Şartname v1.4 §2.4.4’teki entegre sistem, 15 m balon,
 hareket/atış sırasında Acil Durdur, gerçek hedef takibi ve sınıflandırma
 gösterimlerinin yerine geçmez.
 

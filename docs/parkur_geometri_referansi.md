@@ -39,7 +39,7 @@ yayımlandığında açılır.
 | 1 | Parkur teknik çizimindeki yazılı ölçüler | Dış yerleşim, poligon, kapalı döngü, ofset ve varsayılan toleranslar |
 | 2 | Yazılı ölçülerden cebirsel türetilen datumlar | Kanonik koordinat sistemindeki nominal konumlar |
 | 3 | Teknik çizimin üst görünüşündeki rota izi | Analitik denklemi verilmeyen poligon içi eğri biçimi ve sistem referansı |
-| 4 | [`sartname_v1_3.pdf`](sartname_v1_3.pdf) | A→B görev yönü, üç hedef/rota, aşamalar ve güvenlik kuralları |
+| 4 | [`sartname_v4.pdf`](sartname_v4.pdf) | A→B görev yönü, üç hedef/rota, aşamalar ve güvenlik kuralları |
 | 5 | Simülasyon/kalibrasyon girdisi | Kaynaklarda bulunmayan hız, gecikme ve balistik değerler |
 
 Çelişkide yazılı ölçü rasterdan türetilen değeri geçersiz kılar. Şartname görev

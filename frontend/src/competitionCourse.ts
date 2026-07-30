@@ -145,9 +145,9 @@ export const COMPETITION_COURSE = {
   sourceRevision: dataset.source.revision,
   sourceSha256: dataset.source.sha256,
   source: {
-    stage1: 'docs/sartname_v1_3.txt:475-480,578-585',
+    stage1: 'docs/sartname_v4.txt:759-820',
     movingCourse: `${dataset.source.path}; config/course/plg26_a_001_002_r1.json`,
-    targetVisuals: 'docs/sartname_v1_3.txt:396-399; docs/sartname_v1_3.pdf:§6.2-6.3',
+    targetVisuals: 'docs/sartname_v4.txt:701-718; docs/sartname_v4.pdf:§5.4',
   },
   assumptionNotice:
     'PLG26-A-001-002-00-R1 ölçekli çiziminden türetilen yalnız poligon içi eğriler kullanılır; poligon dışı dönüşte rota tahmini kapalıdır. Sistem yaw referansı raster izidir ve yazılı ölçü toleransı iddiası taşımaz.',

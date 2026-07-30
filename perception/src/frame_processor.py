@@ -1,9 +1,8 @@
 """Gökkalkan Kare İşleyici — HSV Renk Filtresi + Centroid Tracker.
 
-Şartname hedef renk kodlaması (KTR diyagramları):
-  Kırmızı → Düşman hedef (Stage 3 kırmızı oklar)
-  Mavi    → Dost hedef   (Stage 3 mavi oklar)
-  Stage 2 → Sınıflandırma zorunlu değil; tüm tespitler "Bilinmeyen" olarak iletilir
+Şartname V1.4 hedef renk kodlaması:
+  Aşama 1/2 → Kırmızı hedef; dost/düşman sınıflandırması yapılmaz
+  Aşama 3   → Kırmızı düşman, mavi dost
 
 Algı çıktısı: TrackCandidate listesi → perception_bridge → /tracks/update API
 
@@ -285,8 +284,8 @@ class FrameProcessor:
 
         Args:
             frame: RGB numpy array (H, W, 3) — None ise boş liste döner
-            stage: Yarışma aşaması (1/2/3). Aşama 2'de renk sınıflandırması
-                   yapılmaz; tüm tespitler "Bilinmeyen" olarak etiketlenir.
+            stage: Yarışma aşaması (1/2/3). Aşama 1/2'de yalnız kırmızı hedef
+                   aranır ve tespitler "Bilinmeyen" olarak etiketlenir.
 
         Returns:
             TrackCandidate listesi (boş olabilir)
@@ -303,16 +302,22 @@ class FrameProcessor:
         hsv     = cv2.cvtColor(blurred, cv2.COLOR_RGB2HSV)
 
         # Renk maskeleri
-        if stage == 2 or not self.classify_colors:
-            # Aşama 2: renk fark etmez, tüm parlak alanları tespit et
+        if not self.classify_colors:
+            # Renk filtresi kapatıldığında doygun/parlak bölgeleri aday kabul et.
             _, s, v = cv2.split(hsv)
             mask    = cv2.bitwise_and(
                 cv2.inRange(s, 80, 255),
                 cv2.inRange(v, 60, 255),
             )
             color_label = "unknown"
+        elif stage in (1, 2):
+            # V1.4: Aşama 1 ve 2 hedefleri kırmızıdır; sınıflandırma gerekmez.
+            mask_r1 = cv2.inRange(hsv, self.RED_LOW1, self.RED_HIGH1)
+            mask_r2 = cv2.inRange(hsv, self.RED_LOW2, self.RED_HIGH2)
+            mask = cv2.bitwise_or(mask_r1, mask_r2)
+            color_label = "unknown"
         else:
-            # Aşama 3: kırmızı / mavi ayrımı
+            # V1.4 Aşama 3: kırmızı düşman / mavi dost ayrımı
             mask_r1   = cv2.inRange(hsv, self.RED_LOW1,  self.RED_HIGH1)
             mask_r2   = cv2.inRange(hsv, self.RED_LOW2,  self.RED_HIGH2)
             mask_red  = cv2.bitwise_or(mask_r1, mask_r2)

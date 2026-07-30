@@ -31,10 +31,10 @@ export const HOSTILE_TYPES_BY_ROUND: TargetType[] = [
 ];
 
 export const STAGE2_TRAINING_SCENARIOS: Array<readonly [TargetType, TargetType, TargetType]> = [
-  ['F16', 'Helikopter', 'Balistik Füze'],
-  ['Mini/Micro İHA', 'F16', 'Helikopter'],
-  ['Balistik Füze', 'Mini/Micro İHA', 'F16'],
-  ['Helikopter', 'Balistik Füze', 'Mini/Micro İHA'],
+  ['Balistik Füze', 'Mini/Micro İHA', 'Balistik Füze'],
+  ['Mini/Micro İHA', 'Balistik Füze', 'Mini/Micro İHA'],
+  ['Balistik Füze', 'Mini/Micro İHA', 'Mini/Micro İHA'],
+  ['Mini/Micro İHA', 'Balistik Füze', 'Balistik Füze'],
   ['F16', 'Balistik Füze', 'Helikopter'],
   ['Mini/Micro İHA', 'Helikopter', 'F16'],
   ['Balistik Füze', 'F16', 'Mini/Micro İHA'],
@@ -59,7 +59,6 @@ export const competitionSimulationConfig = {
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 2.4, 0.1, 20),
     engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE2_ENGAGEMENT_PROGRESS_MIN', 0.2, 0.05, 0.9),
     pointsByDestroyedCount: { 0: -5, 1: 5, 2: 15, 3: 30 } as Record<0 | 1 | 2 | 3, number>,
-    failIfNoHitRoundsAtLeast: 3,
   },
   stage3: {
     rounds: 8,
@@ -68,7 +67,7 @@ export const competitionSimulationConfig = {
     targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE3_TARGET_SPEED_MPS', 2.0, 0.1, 20),
     engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE3_ENGAGEMENT_PROGRESS_MIN', 0.32, 0.05, 0.9),
     maxRoundPenalty: -10,
-    failIfConsecutiveHostileMisses: 3,
+    failIfConsecutiveHostileMisses: 4,
   },
   uavPreferredAutoEngagementMaxRangeMeters: numberFromEnv('VITE_GOKKALKAN_UAV_AUTO_ENGAGE_MAX_RANGE_M', 5, 0, 15),
   targetVisualScale: {

@@ -2,16 +2,18 @@
 
 ## Kanonik kaynak
 
-- Şartname sürümü: **v1.3**
-- PDF: [`docs/sartname_v1_3.pdf`](sartname_v1_3.pdf)
-- Aranabilir metin: [`docs/sartname_v1_3.txt`](sartname_v1_3.txt)
-- PDF oluşturma tarihi (metadata): **17.07.2026**
-- PDF SHA-256: `b57dba673f21adf9b2b4e502a41c4d7c52d39a3c3dc6e12cad624ab32990e91c`
+- Kanonik repo dosya sürümü: **v4**
+- Belgenin iç sürümü: **V1.4**, tarih **23.06.2026**
+- PDF: [`docs/sartname_v4.pdf`](sartname_v4.pdf)
+- Aranabilir metin: [`docs/sartname_v4.txt`](sartname_v4.txt)
+- PDF oluşturma tarihi (metadata): **28.07.2026**
+- PDF SHA-256: `b1e6069d69a09dfaef5abb40e73f1dcc5854b04a44d22b6f57b5582e4fc63ace`
+- TXT SHA-256: `2a1a3b7d67b41ab60d429e191070da291371f35eaf00192608b0c0d055536e0a`
 
 PDF, yarışma gereksinimlerinde son otoritedir. Metin dosyası yalnız arama, satır
 referansı ve otomatik kontrol içindir; tablo, şekil veya metin çıkarma hatasında
 PDF’e bakılır. KTR ve Ön Tasarım Raporu geçmiş tasarım kayıtlarıdır; yeni şartname
-ile çeliştiklerinde güncel karar ADR ile kaydedilir ve v1.3 uygulanır.
+ile çeliştiklerinde güncel karar ADR ile kaydedilir ve v1.4 uygulanır.
 
 ## Kanonik geometrik ek
 
@@ -39,18 +41,18 @@ koordinatı sıfırlanır.
 Poppler kurulu bir ortamda:
 
 ```bash
-pdftotext -enc UTF-8 docs/sartname_v1_3.pdf docs/sartname_v1_3.txt
-shasum -a 256 docs/sartname_v1_3.pdf docs/sartname_v1_3.txt
+pdftotext -enc UTF-8 docs/sartname_v4.pdf docs/sartname_v4.txt
+shasum -a 256 docs/sartname_v4.pdf docs/sartname_v4.txt
 ```
 
 Metin yeniden üretildiğinde satır numaraları değişebileceği için
-`docs/sartname_v1_3.txt:<satır>` referansları ve
+`docs/sartname_v4.txt:<satır>` referansları ve
 [`docs/requirements_traceability.md`](requirements_traceability.md) birlikte
 gözden geçirilir.
 
 ## Sürüm güncelleme prosedürü
 
-1. Yeni PDF ayrı bir commit’te `docs/sartname_v<major>_<minor>.pdf` adıyla eklenir.
+1. Yeni PDF, organizasyon tarafından yayımlanan repo dosya adı korunarak `docs/` altına eklenir.
 2. Aranabilir metin aynı taban adla üretilir.
 3. PDF hash’i ve metadata bu dosyada güncellenir.
 4. Eski/yeni sürüm farkları çıkarılır; tarihler, görevler, güvenlik ve video
@@ -58,12 +60,18 @@ gözden geçirilir.
 5. README, AGENTS, `TARIHLER.md`, teknik yönelim, ADR’lar ve traceability matrisi
    aynı commit/PR içinde yeni sürüme geçirilir.
 
-## v1.3 ile düzeltilen güncel tarihler
+## v4 / belge içi V1.4 değişiklik özeti
 
-Önceki repo notlarında kalan `25.06.2026` KTR sonucu ve `10.08.2026` video
-teslimi artık geçerli değildir. v1.3 takviminde:
+V1.3’e göre uygulamayı etkileyen değişiklikler:
 
-- KTR sonucu: **13.07.2026**
-- Sistem Kabiliyeti Videoları son teslimi: **17.08.2026 17:00**
+- Aşama 1 geçiş eşiği **30 puandan 20 puana** düşürülmüştür.
+- Aşama 2’de üç isabetsiz tur sonrası aşamanın sıfırlanması kuralı kaldırılmıştır; hedef
+  vurulamayan her tur için `-5` puan uygulanır.
+- Aşama 3 başarısızlık koşulu üç yerine **dört ardışık** düşman hedef kaçırmadır.
+- Aşama 1 ve Aşama 2 maketleri kırmızı; Aşama 3 düşmanları kırmızı, dostları mavidir.
+  Bütün hedef maketlerinin altındaki imha balonu kırmızıdır.
+- Video Yetenek 6 artık zorunludur; kırmızı düşman/mavi dost gösterimi Yetenek 7 olarak
+  opsiyonel eklenmiştir.
+- OTR teslim/sonuç, KTR sonuç, finalist açıklama ve final tarihleri güncellenmiştir.
 
-Kaynak: `docs/sartname_v1_3.txt:228-268`, şartname §2.2.
+Kaynak: `docs/sartname_v4.txt:174-216,318-342,462-509,701-718,759-907`.

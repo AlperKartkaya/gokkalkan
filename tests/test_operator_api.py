@@ -421,7 +421,7 @@ class OperatorHttpServerFactoryTest(unittest.TestCase):
 
 
 class MaintenanceBudgetTest(unittest.TestCase):
-    """Şartname v1.3: bakım bütçesi ve timer testleri (Adım 1)."""
+    """Şartname v1.4: bakım bütçesi ve timer testleri (Adım 1)."""
 
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()

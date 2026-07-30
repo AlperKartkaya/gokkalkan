@@ -9,9 +9,10 @@
   2. Planlanan gerçek operatör paneli.
   3. KTR/rapor arayüz ve mimari kanıtları.
 - Evidence reviewed:
-  - `docs/sartname_v1_3.txt:609-637; 491-504` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
-  - `docs/sartname_v1_3.txt:589-595,617-620` — Aşama 2’nin otonom tespit, takip ve hedef parkurdan çıkmadan imha yükümlülüğü.
-  - `docs/sartname_v1_3.txt:599-605,621-623` — Aşama 3’ün otonom doğru hedef ve doğru menzil yükümlülüğü.
+  - `docs/sartname_v4.txt:720-755` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
+  - `docs/sartname_v4.txt:701-718` — kırmızı/mavi hedef ve kırmızı imha balonu kuralları.
+  - `docs/sartname_v4.txt:822-858` — Aşama 2’nin otonom tespit, takip ve hedef parkurdan çıkmadan imha yükümlülüğü.
+  - `docs/sartname_v4.txt:862-907` — Aşama 3’ün otonom doğru hedef ve doğru menzil yükümlülüğü.
   - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi için güncel çizim kaynağı.
   - `frontend/src/App.tsx`, `frontend/src/competitionSimulation.ts`, `frontend/src/competitionCourse.ts`, `frontend/src/safetyGate.ts` — mevcut React/Vite simülatör uygulaması.
 

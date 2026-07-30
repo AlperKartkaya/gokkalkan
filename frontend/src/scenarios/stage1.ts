@@ -7,7 +7,7 @@ export const stage1Scenario: StageScenario = {
   durationSeconds: 92,
   defaultMode: 'manual',
   autoRunning: false,
-  sourceRefs: ['docs/sartname_v1_3.txt:609-617', 'docs/sartname_v1_3.txt:475-480,578-585,615-617'],
+  sourceRefs: ['docs/sartname_v4.txt:720-730', 'docs/sartname_v4.txt:759-820'],
   assumptions: [
     'Şartname Aşama 1 için 5 dakika verir; hands-off prova, operatör eğitiminde hızlı izlenebilmesi için 92 saniyelik hızlandırılmış koşudur.',
     'Hedefler şartnamedeki yaklaşık 5/10/15 m durağan hedef kuralına göre sabit tutulur.',
@@ -39,6 +39,6 @@ export const stage1Scenario: StageScenario = {
     { second: 58, kind: 'maintenance_request', actor: 'operatör', title: 'Bakım izni talebi', detail: 'Takım lideri kablo ve atış hattı görsel kontrolü için hakemden bakım izni ister.' },
     { second: 60, kind: 'maintenance_pause', actor: 'hakem', mode: 'maintenance', maintenanceDurationSeconds: 30, title: 'Bakım molası başlar', detail: 'Hakem onayıyla yarışma zamanı durdurulur; minimum 30 sn bütçe düşer.' },
     { second: 90, kind: 'maintenance_resume', actor: 'hakem', mode: 'safe', title: 'Bakım biter', detail: 'Sistem tekrar güvenli bekleme durumuna alınır.' },
-    { second: 92, kind: 'stage_complete', actor: 'hakem', mode: 'safe', title: 'Aşama 1 tamam', detail: 'Toplam 55 puan; 30 puan barajı geçildi.' },
+    { second: 92, kind: 'stage_complete', actor: 'hakem', mode: 'safe', title: 'Aşama 1 tamam', detail: 'Toplam 55 puan; 20 puan barajı geçildi.' },
   ],
 };

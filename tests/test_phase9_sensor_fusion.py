@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path("perception/src").resolve()))
 from aim_alignment import AimCalibration, calibrated_aim_error
 from camera_node import CameraNode
 from evaluate_dataset import evaluate_records
-from frame_processor import CentroidTracker
+from frame_processor import CentroidTracker, FrameProcessor
 from gokkalkan_backend.lidar_adapter import TFA50LSerialAdapter, TFA50LSerialConfig
 from gokkalkan_backend.calibration_workflow import evaluate_lidar_observations
 from gokkalkan_backend.range_fusion import (
@@ -27,6 +27,40 @@ from gokkalkan_backend.mission_core import MissionCore
 from gokkalkan_backend.sensor_pipeline import TFA50LFusionPipeline
 
 pytestmark = [pytest.mark.safety, pytest.mark.replay]
+
+
+def test_stage2_perception_accepts_red_and_rejects_blue_targets() -> None:
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    frame[10:40, 10:40] = (255, 0, 0)
+    frame[60:90, 60:90] = (0, 0, 255)
+
+    candidates = FrameProcessor(
+        image_width=100,
+        image_height=100,
+        min_area_px=100,
+    ).process(frame, stage=2)
+
+    assert len(candidates) == 1
+    assert candidates[0].friend_foe == "Bilinmeyen"
+    assert candidates[0].cx < 50
+
+
+def test_stage3_perception_classifies_red_enemy_and_blue_friend() -> None:
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    frame[10:40, 10:40] = (255, 0, 0)
+    frame[60:90, 60:90] = (0, 0, 255)
+
+    candidates = FrameProcessor(
+        image_width=100,
+        image_height=100,
+        min_area_px=100,
+    ).process(frame, stage=3)
+
+    assert {candidate.friend_foe for candidate in candidates} == {"Düşman", "Dost"}
 
 
 def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy() -> None:

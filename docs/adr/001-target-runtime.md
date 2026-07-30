@@ -64,6 +64,6 @@ yazılmaz.
 
 ## Kaynaklar
 
-- [`docs/sartname_v1_3.pdf`](../sartname_v1_3.pdf), §4.2 ve §6.
+- [`docs/sartname_v4.pdf`](../sartname_v4.pdf), §4.2 ve §6.
 - [`reports/Gökkalkan Kritik Tasarım Raporu.pdf`](../../reports/Gökkalkan%20Kritik%20Tasarım%20Raporu.pdf), §4.2.1–4.2.2.
 - [`docs/tech_stack.md`](../tech_stack.md).

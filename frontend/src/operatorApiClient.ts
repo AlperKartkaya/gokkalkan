@@ -333,7 +333,7 @@ export async function sendTracksUpdate(baseUrl: string, payload: TracksUpdatePay
   return requestJson<TracksUpdateResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/tracks/update`, payload);
 }
 
-/** POST /maintenance — Şartname v1.3: bakım modu başlat (bütçe kontrolü backend tarafında). */
+/** POST /maintenance — Şartname v1.4: bakım modu başlat (bütçe kontrolü backend tarafında). */
 export async function sendMaintenanceRequest(baseUrl: string): Promise<OperatorStateCommandResponse> {
   return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance`, {});
 }

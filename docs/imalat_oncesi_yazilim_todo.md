@@ -76,12 +76,12 @@ ile fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi de redded
 - [x] **DOC-001 — Güncel şartname yolunu ve sürümünü kanonikleştir**
   - README, AGENTS, teknik dokümanlar ve rapor bağlantıları mevcut PDF adına yönelmeli.
   - Aranabilir metin çıktısı üretilmeli; PDF son otorite olarak kalmalı.
-  - Kanıt: `docs/sartname_v1_3.pdf`, `docs/sartname_v1_3.txt`, `docs/requirements_source.md`; eski kanonik yola aktif bağlantı kalmadı.
+  - Kanıt: `docs/sartname_v4.pdf`, `docs/sartname_v4.txt`, `docs/requirements_source.md`; eski kanonik yola aktif bağlantı kalmadı.
 
 - [x] **DOC-002 — Takvim ve video yükümlülüklerini senkronize et**
   - `TARIHLER.md`, rapor notları ve görev traceability matrisi aynı tarihleri kullanmalı.
   - Video yetenekleri şartnamedeki sırayla test kimliklerine bağlanmalı.
-  - Kanıt: `TARIHLER.md`, `docs/delivery_video_plan.md`; v1.3’e göre KTR sonucu 13.07.2026, video teslimi 17.08.2026 17:00.
+  - Kanıt: `TARIHLER.md`, `docs/delivery_video_plan.md`; v1.4’e göre KTR sonucu 25.06.2026, video teslimi 17.08.2026 17:00.
 
 - [x] **ADR-001 — Hedef çalışma ortamı ADR’ını yaz**
   - Raspberry Pi OS, Python/React/Pico C++, `systemd`, no-ROS2 ve no-full-Rust kararları kaydedilmeli.
@@ -104,7 +104,7 @@ ile fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi de redded
 
 - [x] **DOC-003 — Şartname traceability matrisini oluştur**
   - Her zorunlu yetenek için requirement ID, modül, test, telemetri olayı ve video kanıtı alanları bulunmalı.
-  - Kanıt: `docs/requirements_traceability.md`; teslim, güvenlik, mod/aşama ve VID-Y1–Y6 bağları.
+  - Kanıt: `docs/requirements_traceability.md`; teslim, güvenlik, mod/aşama ve VID-Y1–Y7 bağları.
 
 **Faz kanıtı:** Aktif belgelerde OS, MCU, protokol, sensör rolü, kamera sayısı ve
 tarih çelişkisi kalmıyor. Yerel Markdown bağlantı denetimi geçti; eski şartname

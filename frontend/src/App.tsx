@@ -350,7 +350,13 @@ function CourseMap({
       {tracks.map((track) => {
         const selected = selectedTrack?.id === track.id;
         const destroyed = destroyedIds.includes(track.id);
-        const affiliationClass = track.friendFoe === 'Düşman' ? 'enemy' : track.friendFoe === 'Dost' ? 'friend' : 'neutral';
+        const affiliationClass = stage < 3
+          ? 'enemy'
+          : track.friendFoe === 'Düşman'
+            ? 'enemy'
+            : track.friendFoe === 'Dost'
+              ? 'friend'
+              : 'neutral';
         return (
           <button
             key={track.id}
@@ -379,8 +385,12 @@ function CourseMap({
       })}
 
       <div className="map-legend absolute bottom-3 left-3.5 z-[8] flex flex-wrap gap-1.5 rounded-lg border border-white/10 bg-[rgba(2,4,7,.76)] px-2 py-1.5 backdrop-blur">
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Düşman</span>
-        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Dost</span>
+        {stage < 3
+          ? <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Kırmızı hedef</span>
+          : <>
+              <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Kırmızı · Düşman</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Mavi · Dost</span>
+            </>}
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil uygun</span>
       </div>
       <div className="map-assumption absolute right-3.5 bottom-3 z-[8] max-w-[min(460px,48%)] rounded-lg border border-[rgba(255,187,66,.24)] bg-[rgba(255,187,66,.10)] px-2 py-1.5 text-[10px] leading-tight text-[#ffbb42] max-[760px]:right-3 max-[760px]:bottom-[62px] max-[760px]:left-3 max-[760px]:max-w-none">
@@ -925,19 +935,16 @@ function Console() {
     if (stage === 2) {
       const hits = resolution?.stage2Hits ?? destroyedIds.length;
       const delta = stage2RoundScore(hits);
-      const nextStreak = hits === 0 ? noHitStreak + 1 : 0;
-      const failed = nextStreak >= competitionSimulationConfig.stage2.failIfNoHitRoundsAtLeast;
-      setScore((value) => (failed ? 0 : value + delta));
-      setNoHitStreak(nextStreak);
-      setMissionStatus(failed ? 'Başarısız · 3 tur isabetsiz' : `Tur ${round} tamam · ${hits} imha · ${delta > 0 ? '+' : ''}${delta}`);
-      addEvent('telemetry', failed ? 'STAGE_FAIL' : 'ROUND_SCORE', `Aşama 2 tur ${round}: ${hits} imha, ${delta} puan${forced ? ' · süre doldu' : ''}`);
+      setScore((value) => value + delta);
+      setMissionStatus(`Tur ${round} tamam · ${hits} imha · ${delta > 0 ? '+' : ''}${delta}`);
+      addEvent('telemetry', 'ROUND_SCORE', `Aşama 2 tur ${round}: ${hits} imha, ${delta} puan${forced ? ' · süre doldu' : ''}`);
     } else {
       const hostileDestroyed = resolution?.stage3HostileDestroyed ?? destroyedIds.some((id) => id.includes('-X'));
       const nextStreak = hostileDestroyed ? 0 : noHitStreak + 1;
       const failed = nextStreak >= competitionSimulationConfig.stage3.failIfConsecutiveHostileMisses;
       if (!hostileDestroyed) setScore((value) => (failed ? 0 : value + competitionSimulationConfig.stage3.maxRoundPenalty));
       setNoHitStreak(nextStreak);
-      setMissionStatus(failed ? 'Başarısız · 3 ardışık düşman kaçtı' : hostileDestroyed ? `Tur ${round} tamam · düşman vuruldu` : `Tur ${round} ceza · -10`);
+      setMissionStatus(failed ? 'Başarısız · 4 ardışık düşman kaçtı' : hostileDestroyed ? `Tur ${round} tamam · düşman vuruldu` : `Tur ${round} ceza · -10`);
       addEvent('telemetry', failed ? 'STAGE_FAIL' : hostileDestroyed ? 'ROUND_CLEAR' : 'HOSTILE_MISSED_PENALTY', `Aşama 3 tur ${round}: ${hostileDestroyed ? 'düşman imha' : '-10 ceza'}`);
     }
 

@@ -1,6 +1,6 @@
 # Gökkalkan Teknik Yönelim ve Yazılım Mimarisi
 
-Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v1_3.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v1_3.txt` dosyasında tutulur.
+Bu doküman, Gökkalkan yazılımının teknik yönünü `docs/sartname_v4.pdf` şartnamesine göre belirler. Şartname ile bu doküman arasında çelişki olursa şartname geçerlidir. PDF’in metin kopyası `docs/sartname_v4.txt` dosyasında tutulur.
 
 ## 1. Şartnameye Göre Sistem Hedefi
 
@@ -27,7 +27,8 @@ Yazılım gereksinimleri:
 - Yarışma öncesi verilen hedef sırasını operatöre açık gösterme.
 - Yanlış hedef/sıra riskini azaltan uyarılar.
 - `5 dakika` görev süresi ve kalan süre kaydı.
-- Aşama geçiş eşiği: en az `30 puan`.
+- Aşama geçiş eşiği: en az `20 puan`.
+- Aşama 1 ve Aşama 2 hedef maketlerini kırmızı hedef olarak algılama; imha değerlendirmesinin maket değil maketin altındaki kırmızı balon üzerinden yapıldığını operatöre gösterme.
 
 ### 2.2. Aşama 2 — Sürü Saldırısı ve Hedeflerin İmhası
 
@@ -37,7 +38,7 @@ Yazılım gereksinimleri:
 
 - Üç koldan yaklaşan hedefleri tespit ve takip etme.
 - Her turda parkurdaki hedefleri tur tamamlanmadan imha etmeye yönelik önceliklendirme.
-- Hedef vuramama durumlarını kaydetme; 3 tur boyunca hedef vuramama başarısızlık sebebidir.
+- Hedef vuramama durumlarını tur başına `-5 puan` olarak kaydetme; v1.4’te Aşama 2 için ardışık isabetsiz tur nedeniyle bütün aşamayı sıfırlayan ayrı bir koşul bulunmaz.
 - Aşama geçiş eşiği: en az `20 puan`.
 
 ### 2.3. Aşama 3 — Farklı Katmanlardaki Hareketli Hedeflerin İmhası
@@ -52,7 +53,7 @@ Yazılım gereksinimleri:
   - Helikopter ve Balistik Füze: `5–15 m` aralığında imha puanlanır.
   - Mini/Micro İHA: `0–15 m` aralığında imha puanlanır.
 - Dost hedef vurma ve düşman hedef vuramama durumlarını ceza olarak kaydetme.
-- 3 ardışık tur boyunca düşman hedef vuramama başarısızlık sebebidir.
+- 4 ardışık tur boyunca düşman hedef vuramama başarısızlık sebebidir.
 - Başarı eşiği ve ödül sıralamasına girebilme koşulu: Aşama 3’ten en az `10 puan`.
 
 ## 3. Ürün Yüzeyleri

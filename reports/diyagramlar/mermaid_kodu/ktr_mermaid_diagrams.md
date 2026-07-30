@@ -141,9 +141,9 @@ flowchart TD
     Fire --> Result["Vuruş / kaçırma olayını kaydet"]
     Result --> Round{"Tur bitti mi?"}
     Round -->|Hayır| Detect
-    Round -->|Evet| Fail{"3 tur hedef vuramama var mı?"}
-    Fail -->|Evet| Stop["Aşama başarısız"]
-    Fail -->|Hayır| Done["Sonraki tur / aşama tamam"]
+    Round -->|Evet| Complete{"4 resmi tur tamamlandı mı?"}
+    Complete -->|Evet| Done["Aşama tamamlandı"]
+    Complete -->|Hayır| Detect
 ```
 
 ## Şekil 8 - asama3_dost_dusman_menzil

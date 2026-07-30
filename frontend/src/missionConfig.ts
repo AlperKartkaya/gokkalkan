@@ -18,8 +18,8 @@ export const STAGE_CONFIGS: Record<Stage, StageConfig> = {
     stage: 1,
     title: 'Farklı Menzillerde Duran Hedef İmhası',
     modeExpectation: 'Manuel Mod',
-    summary: 'Manuel · 5 dk · hedef sırası · ≥30 puan',
-    threshold: 30,
+    summary: 'Manuel · 5 dk · hedef sırası · ≥20 puan',
+    threshold: 20,
     durationSeconds: 300,
     classificationRequired: false,
   },
@@ -113,8 +113,14 @@ export const VIDEO_EVIDENCE_STEPS: VideoEvidenceStep[] = [
   {
     id: 'Y6',
     label: '5/10/15 m sınıflandırma',
-    description: 'Opsiyonel hedef tipi kanıtı',
+    description: 'Zorunlu hedef tipi kanıtı',
     match: (event) => event.stage === 3 && event.type === 'target',
+  },
+  {
+    id: 'Y7',
+    label: 'Dost/düşman otonom gösterimi',
+    description: 'Opsiyonel kırmızı düşman ve mavi dost koruma kanıtı',
+    match: (event) => event.stage === 3 && event.decision === 'AUTO_ENGAGE',
   },
 ];
 

@@ -48,9 +48,9 @@ export const stage3Scenario: StageScenario = {
   durationSeconds: 182,
   defaultMode: 'autonomous',
   autoRunning: true,
-  sourceRefs: ['docs/sartname_v1_3.txt:621-623', 'docs/sartname_v1_3.txt:599-605,621-623'],
+  sourceRefs: ['docs/sartname_v4.txt:734-736', 'docs/sartname_v4.txt:862-907'],
   assumptions: [
-    'Şartname hedef görsellerinin temsili olduğunu ve nihai tasarımların paylaşılacağını belirtir; bu prova renk/dost-düşman mantığını mock olarak taşır.',
+    'Şartnameye göre düşman hedef kırmızı, dost hedef mavi ve bütün hedeflerin altındaki imha balonu kırmızıdır; bu prova renk/dost-düşman mantığını mock olarak taşır.',
     'Her turda bir düşman ve iki dost unsur bulunur; uygun menzil dışı veya dost hedefte strike üretilmez.',
   ],
   routeAdjustableNote: 'Round hedeflerinin route dizileri uçak/İHA rotasını saniye saniye kontrol eder; gerçek parkur ölçüsü gelince sadece bu koordinatlar güncellenir.',

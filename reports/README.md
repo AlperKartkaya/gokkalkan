@@ -1,6 +1,6 @@
 # Raporlar
 
-Bu klasör OTR/KTR rapor materyalleri, diyagram kaynakları ve teslim hazırlık notları için kullanılır. Yarışma şartnamesi (`docs/sartname_v1_3.pdf` / `docs/sartname_v1_3.txt`) rapor içeriğinde nihai otoritedir.
+Bu klasör OTR/KTR rapor materyalleri, diyagram kaynakları ve teslim hazırlık notları için kullanılır. Yarışma şartnamesi (`docs/sartname_v4.pdf` / `docs/sartname_v4.txt`) rapor içeriğinde nihai otoritedir.
 
 ## Güncel odak
 

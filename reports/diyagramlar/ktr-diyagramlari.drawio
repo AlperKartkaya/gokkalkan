@@ -518,13 +518,13 @@
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="_BOvExpJNv3qznWji6e2-12" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Üst üste 3 tur hedef&amp;nbsp;&lt;div&gt;vurulamadı mı?&lt;/div&gt;" vertex="1">
+                <mxCell id="_BOvExpJNv3qznWji6e2-12" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="4 resmi tur tamamlandı mı?" vertex="1">
                     <mxGeometry height="80" width="175" x="472.5" y="980" as="geometry"/>
                 </mxCell>
-                <mxCell id="_BOvExpJNv3qznWji6e2-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Aşama başarısız olur" vertex="1">
+                <mxCell id="_BOvExpJNv3qznWji6e2-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Aşama tamamlanır" vertex="1">
                     <mxGeometry height="50" width="180" x="360" y="1090" as="geometry"/>
                 </mxCell>
-                <mxCell id="_BOvExpJNv3qznWji6e2-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Sonraki tura geçilir / aşama tamamlanır" vertex="1">
+                <mxCell id="_BOvExpJNv3qznWji6e2-14" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Sonraki tura geçilir" vertex="1">
                     <mxGeometry height="50" width="180" x="600" y="1090" as="geometry"/>
                 </mxCell>
             </root>

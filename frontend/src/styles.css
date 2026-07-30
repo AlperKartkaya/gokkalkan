@@ -165,7 +165,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .check-icon { width: 24px; height: 24px; stroke-width: 2.7; }
 
 .aircraft.enemy { color: #ff6876; }
-.aircraft.friend { color: #33e68c; }
+.aircraft.friend { color: var(--blue); }
 .aircraft.unknown { color: #8f98a3; }
 .operator-track-scene.stage-1 .aircraft:not(.is-shot),
 .operator-track-scene.stage-2 .aircraft:not(.is-shot) {
@@ -249,7 +249,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 .map-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .enemy-dot { background: var(--red); }
-.friend-dot { background: var(--green); }
+.friend-dot { background: var(--blue); }
 .unknown-dot { background: #8f98a3; box-shadow: 0 0 8px rgba(143,152,163,.38); }
 .window-dot { background: var(--green); }
 
@@ -350,7 +350,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .sensor-3d-target.enemy { color: #ff6876; }
-.sensor-3d-target.friend { color: #33e68c; }
+.sensor-3d-target.friend { color: var(--blue); }
 .sensor-3d-target.unknown { color: #8f98a3; }
 .sensor-3d-target.is-shot {
   color: #aeb8c2 !important;
@@ -389,7 +389,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   box-shadow: 0 0 12px rgba(255,255,255,.18);
 }
 .confidence-swatch.enemy { background: var(--red); }
-.confidence-swatch.friend { background: var(--green); }
+.confidence-swatch.friend { background: var(--blue); }
 .confidence-swatch.unknown { background: #f5fbff; }
 
 .operator-confidence-grid {
@@ -478,7 +478,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 
 .accuracy-circle.enemy { --accuracy-color: var(--red); }
-.accuracy-circle.friend { --accuracy-color: var(--green); }
+.accuracy-circle.friend { --accuracy-color: var(--blue); }
 .accuracy-circle.unknown { --accuracy-color: #f5fbff; }
 .accuracy-circle.type { --accuracy-color: var(--blue); }
 

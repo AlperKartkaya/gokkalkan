@@ -2,7 +2,7 @@
 
 **Purpose of this file:** define what a coding agent should build when creating a simulator for the **final phase** of the TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri competition.
 
-This is **not** a fictional scenario script. The simulator must reproduce the **real final competition flow** as specified in `sartname_v1_3.pdf`, especially the three final stages, the manual/autonomous mode differences, the parkour diagrams, the scoring rules, and the interaction requirements.
+This is **not** a fictional scenario script. The simulator must reproduce the **real final competition flow** as specified in `sartname_v4.pdf`, especially the three final stages, the manual/autonomous mode differences, the parkour diagrams, the scoring rules, and the interaction requirements.
 
 The simulator should behave like a practice environment for competitors. It should visualize the targets on the real competition-style parkour map, move them along the same conceptual paths shown in the specification diagrams, apply the same scoring logic, and guide the user with an optional contextual onboarding/tutorial.
 
@@ -77,7 +77,7 @@ The document explicitly specifies:
 - Stage 3 has 3 moving targets per round:
   - 1 hostile target that must be destroyed,
   - 2 friendly targets that must not be destroyed.
-- Stage 3 uses red arrows for hostile targets and blue arrows for friendly targets in the official diagram.
+- Stage 1 and Stage 2 target mock-ups are red. In Stage 3, hostile targets are red and friendly targets are blue. Every mock-up carries a red balloon underneath; scoring is based on destroying that balloon.
 - For Stage 3, valid engagement distances depend on target type:
   - F16: valid from `10 m` to `15 m`; hits closer than 10 m do not count.
   - Helicopter and Ballistic Missile: valid from `5 m` to `15 m`; hits closer than 5 m do not count.
@@ -301,7 +301,7 @@ stage1.total = baseScore + bonus - penalties
 Minimum to advance to Stage 2:
 
 ```text
-30 points
+20 points
 ```
 
 ### 5.4 Stage 1 edge cases
@@ -356,7 +356,7 @@ The Stage 2 diagram shows:
   - `15 metre`,
   - `10 Metre`,
   - `5 Metre`,
-- the 3D view shows red/orange tracks and green target markers distributed through the lane paths.
+- the 3D view shows red target mock-ups distributed through the lane paths.
 
 ### 6.3 Stage 2 route interpretation for simulation
 
@@ -452,17 +452,8 @@ function scoreStage2Round(destroyedCount: number): number {
 }
 ```
 
-The document says the `-5` is the target-miss penalty applied per round. If the team cannot hit targets for 3 rounds, they fail the stage and receive 0 points for the stage.
-
-Implementation:
-
-```ts
-missRounds = number of rounds where destroyedCount === 0
-
-if missRounds >= 3:
-    stage2.totalScore = 0
-    stage2.failed = true
-```
+The document says the `-5` is the target-miss penalty applied per round. V1.4
+does not define a miss-streak condition that fails Stage 2 or resets its score.
 
 Minimum to advance to Stage 3:
 
@@ -502,8 +493,8 @@ Implement:
   - counts as missed for that target.
 - Round ends with 0 hits:
   - apply `-5`.
-- 3 rounds with no target hit:
-  - stage fails and score becomes 0.
+- Any round with no target hit:
+  - apply `-5`; retain the accumulated stage score and continue through the four official rounds.
 - Firing/engagement at a target already destroyed:
   - no extra points.
 - Duplicated hit on same target:
@@ -542,9 +533,9 @@ The Stage 3 diagram shows:
   - `10 Metre`,
   - `5 Metre`,
 - the defense system on the right side,
-- colored arrow markers on the top-down map:
-  - **red arrows = hostile / enemy targets**,
-  - **blue arrows = friendly targets**,
+- fixed target colors on the top-down map:
+  - **red target = hostile / enemy target**,
+  - **blue target = friendly target**,
 - each round contains three incoming targets,
 - one red hostile target must be engaged,
 - two blue friendly targets must not be engaged,
@@ -573,7 +564,7 @@ For a faithful practice simulator:
 
 - randomize which lane contains the hostile target each round,
 - randomize hostile target type according to config,
-- optionally randomize friendly target types/colors,
+- optionally randomize friendly target types while keeping their color blue,
 - keep the distinction visible to the simulator engine but optionally hidden from the competitor UI if desired.
 
 Because the user requested perfect radar/lidar and correct dost/düşman classification, the default UI may show friendly/enemy status correctly. However, to practice real reaction, there can be a toggle:
@@ -649,7 +640,7 @@ The document says:
 
 - If a friendly target is hit and/or the hostile target is not hit, penalty applies.
 - Maximum penalty per round is limited to `10 points`.
-- If the team cannot hit the hostile target for 3 consecutive rounds, it fails the stage and receives 0 points for the stage.
+- If the team cannot hit the hostile target for 4 consecutive rounds, it fails the stage and receives 0 points for the stage.
 - The team must get at least 10 points in Stage 3 to be considered successful / eligible for prize ranking.
 
 Implementation:
@@ -711,7 +702,7 @@ Implement:
 - Target reaches B:
   - if hostile and not validly destroyed, count as hostile miss.
   - if friendly, no penalty for simply exiting.
-- Three consecutive hostile misses:
+- Four consecutive hostile misses:
   - set entire Stage 3 score to 0 and fail stage.
 - If a round score would be negative:
   - allow negative round scores unless the final competition system clamps stage score. The official text does not state a lower clamp except failure cases, so keep this configurable:
@@ -835,7 +826,7 @@ Implement a preparation screen/timer:
 Official thresholds:
 
 ```text
-Stage 1 -> Stage 2 requires at least 30 points.
+Stage 1 -> Stage 2 requires at least 20 points.
 Stage 2 -> Stage 3 requires at least 20 points.
 Stage 3 success/prize criterion requires at least 10 points.
 ```
@@ -1035,7 +1026,7 @@ stage1 = {
   wrongTargetPenalty: -5,
   maxBaseScore: 80,
   bonusFormula: "20 * remainingSeconds / 300",
-  advancementThreshold: 30
+  advancementThreshold: 20
 }
 ```
 
@@ -1056,7 +1047,6 @@ stage2 = {
     3: 30
   },
   maxScore: 120,
-  failIfNoHitRoundsAtLeast: 3,
   advancementThreshold: 20
 }
 ```
@@ -1084,7 +1074,7 @@ stage3 = {
   },
   maxRoundPenalty: -10,
   maxScore: 160,
-  failIfConsecutiveHostileMisses: 3,
+  failIfConsecutiveHostileMisses: 4,
   successThreshold: 10
 }
 ```
@@ -1185,13 +1175,13 @@ The implementation is acceptable when it can do the following:
 - [ ] Spawn Stage 2 targets on 3 lanes, 4 rounds.
 - [ ] Move Stage 2 targets from A to B along traced wavy routes.
 - [ ] Score Stage 2 per destroyed target count.
-- [ ] Fail Stage 2 if no targets are hit for 3 rounds.
+- [ ] Apply `-5` for every Stage 2 round with no destroyed target; do not zero the whole stage for a miss streak.
 - [ ] Spawn Stage 3 targets on 3 lanes, 8 rounds.
 - [ ] Use exactly 1 hostile and 2 friendly targets per Stage 3 round.
-- [ ] Use red/blue or equivalent hostile/friendly visualization.
+- [ ] Use the required red hostile / blue friendly target colors and red balloon.
 - [ ] Apply Stage 3 distance-valid hit rules by target type.
 - [ ] Penalize friendly hits and hostile misses with max -10 per round.
-- [ ] Fail Stage 3 after 3 consecutive hostile misses.
+- [ ] Fail Stage 3 after 4 consecutive hostile misses.
 - [ ] Implement Stage 1 manual fire and target order logic.
 - [ ] Implement tutorial/onboarding that pauses the whole simulation.
 - [ ] Tutorial highlights buttons/regions with pulse/heartbeat animation.

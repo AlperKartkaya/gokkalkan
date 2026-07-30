@@ -9,7 +9,7 @@
   },
   "authority": {
     "geometry": "docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf",
-    "mission_rules": "docs/sartname_v1_3.pdf",
+    "mission_rules": "docs/sartname_v4.pdf",
     "policy": "Parkur çizimi yarışma öncesi kanonik geometrik kaynaktır. Çalışma zamanı rota kestirimi yalnız poligon sınırları içindeki kesintisiz yaklaşım parçasını kullanır; poligon dışındaki geri dönüş geometrisi tahmin ve angajman kapsamına alınmaz.",
     "precedence": [
       "DIRECT_DIMENSION",

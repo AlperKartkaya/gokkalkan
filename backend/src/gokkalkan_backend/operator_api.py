@@ -64,7 +64,7 @@ VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked"
 ENGAGEMENT_MODES: set[str] = {"autonomous", "engagement"}
 MAX_MANUAL_AIM_DELTA_DEG = 10.0
 MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30.0
-# Şartname v1.3: toplam bakım bütçesi 10 dakika (600 saniye), her istek min 30 sn
+# Şartname v1.4: toplam bakım bütçesi 10 dakika (600 saniye), her istek min 30 sn
 MAINTENANCE_BUDGET_SEC = 600
 MAINTENANCE_MIN_REQUEST_SEC = 30
 # Şartname: Aşama 1 görev süresi 5 dakika (300 saniye)
@@ -436,7 +436,7 @@ class OperatorService:
         self.pan_max_deg  = pan_max_deg
         self.tilt_min_deg = tilt_min_deg
         self.tilt_max_deg = tilt_max_deg
-        # Şartname v1.3 — bakım bütçesi (saniye)
+        # Şartname v1.4 — bakım bütçesi (saniye)
         self.maintenance_budget_sec: float = MAINTENANCE_BUDGET_SEC
         self.maintenance_used_sec: float = 0.0
         self._maintenance_started_at: float | None = None  # monotonic timestamp
@@ -734,7 +734,7 @@ class OperatorService:
             self.mission_started_at = _time.monotonic()
 
     def _maintenance_state(self) -> dict[str, Any]:
-        """Şartname v1.3 bakım bütçesi durumu."""
+        """Şartname v1.4 bakım bütçesi durumu."""
         in_maintenance = self.mode == "maintenance" and self._maintenance_started_at is not None
         current_elapsed = 0.0
         if in_maintenance and self._maintenance_started_at is not None:
@@ -1148,7 +1148,7 @@ class OperatorService:
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
     def handle_maintenance_request(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Bakım isteği — Şartname v1.3: toplam bütçe 600 sn, istek başı min 30 sn.
+        """Bakım isteği — Şartname v1.4: toplam bütçe 600 sn, istek başı min 30 sn.
 
         Kabul koşulları:
         - Kalan bütçe >= MAINTENANCE_MIN_REQUEST_SEC

@@ -6,10 +6,11 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
 
 Şartname kaynakları:
 
-- `docs/sartname_v1_3.txt:609-637; 491-504` — Manuel/Otonom Mod, Acil Durdur, bakım ve patlayıcı yasağı.
-- `docs/sartname_v1_3.txt:475-480,578-585,615-617` — Aşama 1, 5/10/15 m ve Manuel Mod yükümlülükleri.
-- `docs/sartname_v1_3.txt:589-595,617-620` — Aşama 2 otonom tespit/takip ve parkurdan çıkmadan imha yükümlülüğü.
-- `docs/sartname_v1_3.txt:599-605,621-623` — Aşama 3 doğru hedefi doğru menzilde imha yükümlülüğü.
+- `docs/sartname_v4.txt:720-755` — Manuel/Otonom Mod, Acil Durdur, bakım ve patlayıcı yasağı.
+- `docs/sartname_v4.txt:701-718` — Aşama 1/2 kırmızı hedef, Aşama 3 kırmızı düşman/mavi dost ve kırmızı imha balonu.
+- `docs/sartname_v4.txt:759-820` — Aşama 1, 5/10/15 m, 20 puan geçiş eşiği ve Manuel Mod yükümlülükleri.
+- `docs/sartname_v4.txt:822-858` — Aşama 2 otonom tespit/takip ve parkurdan çıkmadan imha yükümlülüğü.
+- `docs/sartname_v4.txt:862-907` — Aşama 3 doğru hedefi doğru menzilde imha ve dört ardışık kaçırmada başarısızlık yükümlülüğü.
 - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi ayrıntıları.
 - `docs/parkur_geometri_referansi.md` ve `config/course/plg26_a_001_002_r1.json` — teknik çizimden doğrulanan ölçü sınıfları, toleranslar, datumlar ve yalnız poligon içindeki eğri waypoint’leri.
 

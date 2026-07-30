@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COMPETITION_STAGE_ROUNDS, STAGE2_TRAINING_SCENARIOS, competitionSimulationConfig, generateCompetitionTracks, stage1ScoreForRange, stage2RoundScore, stage3TargetScore } from './competitionSimulation';
-import { rangeRuleFor } from './missionConfig';
+import { rangeRuleFor, thresholdFor, VIDEO_EVIDENCE_STEPS } from './missionConfig';
 
 describe('competition mechanics simulator', () => {
   it('keeps official stage round counts and configurable assumption notice', () => {
@@ -8,6 +8,18 @@ describe('competition mechanics simulator', () => {
     expect(competitionSimulationConfig.stage2.practiceRounds).toBeGreaterThan(COMPETITION_STAGE_ROUNDS[2]);
     expect(competitionSimulationConfig.stage2.targetSpeedMps).toBeGreaterThan(0);
     expect(competitionSimulationConfig.assumptionNotice).toContain('PLG26-A-001-002-00-R1');
+  });
+
+  it('implements the v1.4 advancement, target-set, video and failure rules', () => {
+    expect(thresholdFor(1)).toBe(20);
+    expect(competitionSimulationConfig.stage3.failIfConsecutiveHostileMisses).toBe(4);
+    expect(VIDEO_EVIDENCE_STEPS.map((step) => step.id)).toEqual(['Y1', 'Y2', 'Y3', 'Y4', 'Y5', 'Y6', 'Y7']);
+
+    for (let round = 1; round <= COMPETITION_STAGE_ROUNDS[2]; round += 1) {
+      expect(generateCompetitionTracks(2, 1, round).every(
+        (track) => track.type === 'Balistik Füze' || track.type === 'Mini/Micro İHA',
+      )).toBe(true);
+    }
   });
 
   it('scores Stage 1 and Stage 2 using final-phase rules', () => {
@@ -57,15 +69,15 @@ describe('competition mechanics simulator', () => {
     expect(engagementTracks.some((track) => track.candidate)).toBe(true);
   });
 
-  it('gates Stage 2 F16 engagement to the official 10-15 m window', () => {
+  it('keeps Stage 2 ballistic engagement inside the configured 5-15 m safety window', () => {
     const duration = competitionSimulationConfig.stage2.roundDurationSeconds;
     const samples = Array.from({ length: 80 }, (_, index) => generateCompetitionTracks(2, (duration * index) / 79, 1)
-      .find((track) => track.type === 'F16'));
+      .find((track) => track.type === 'Balistik Füze'));
     const candidateSamples = samples.filter((track): track is NonNullable<typeof track> => Boolean(track?.candidate));
 
     expect(candidateSamples.length).toBeGreaterThan(0);
-    expect(candidateSamples.every((track) => track.range >= 10 && track.range <= 15)).toBe(true);
-    expect(samples.some((track) => Boolean(track?.candidate && track.range < 10))).toBe(false);
+    expect(candidateSamples.every((track) => track.range >= 5 && track.range <= 15)).toBe(true);
+    expect(samples.some((track) => Boolean(track?.candidate && track.range < 5))).toBe(false);
   });
 
   it('generates Stage 3 rounds with exactly one hostile and two friendly targets plus valid scoring', () => {
