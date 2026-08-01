@@ -51,9 +51,9 @@ uydurulmaz.
 
 ## Mekanik referanslar
 
-- [`gokkalkan_izometrik_cizim.png`](../gokkalkan_izometrik_cizim.png): temel taret.
-- [`gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png`](../gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png): öncelikli köprü/profil.
-- [`gokkalkan_izometrik_cizim_lidar_konumu_2.png`](../gokkalkan_izometrik_cizim_lidar_konumu_2.png): merkezî kızak/direk alternatifi.
+- [`gokkalkan_izometrik_cizim.png`](../images/gokkalkan_izometrik_cizim.png): temel taret.
+- [`gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png`](../images/gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png): öncelikli köprü/profil.
+- [`gokkalkan_izometrik_cizim_lidar_konumu_2.png`](../images/gokkalkan_izometrik_cizim_lidar_konumu_2.png): merkezî kızak/direk alternatifi.
 
 ## Kabul ve fallback
 

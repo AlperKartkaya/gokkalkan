@@ -16,7 +16,7 @@ Aşağıdaki görsel, [`frontend/`](../frontend) içerisinde yer alan canlı **O
 ### B) Mekanik Taret CAD Tasarımı ve LiDAR Yerleşimi
 Taretin yaw (sağa-sola) ve pitch (yukarı-aşağı) eksenleri ile **Benewake TFA50-L LiDAR** sensörünün merkezî köprü üzerindeki mekanik konumu:
 
-![Gökkalkan Taret CAD Çizimi ve LiDAR Yerleşimi](./gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png)
+![Gökkalkan Taret CAD Çizimi ve LiDAR Yerleşimi](./images/gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png)
 
 ---
 

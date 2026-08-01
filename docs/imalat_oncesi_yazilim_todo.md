@@ -27,9 +27,9 @@
 
 ## LiDAR mekanik referansları
 
-- `gokkalkan_izometrik_cizim.png`: Taretin temel izometrik görünümü; dış yan plakalar yaw tablasıyla döner, iç mekanizma pitch ekseninde hareket eder.
-- `gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png`: Öncelikli çözüm; iki pitch-sabit yan plakayı birleştiren, yüksekliği elle ayarlanıp kilitlenen köprü/profil ve merkezde TFA50-L.
-- `gokkalkan_izometrik_cizim_lidar_konumu_2.png`: Alternatif çözüm; yaw tablasına bağlı, merkezî ve elle yükseltilip alçaltılabilen kızak/direk.
+- `docs/images/gokkalkan_izometrik_cizim.png`: Taretin temel izometrik görünümü; dış yan plakalar yaw tablasıyla döner, iç mekanizma pitch ekseninde hareket eder.
+- `docs/images/gokkalkan_izometrik_cizim_uzerinde_lidar_konumu.png`: Öncelikli çözüm; iki pitch-sabit yan plakayı birleştiren, yüksekliği elle ayarlanıp kilitlenen köprü/profil ve merkezde TFA50-L.
+- `docs/images/gokkalkan_izometrik_cizim_lidar_konumu_2.png`: Alternatif çözüm; yaw tablasına bağlı, merkezî ve elle yükseltilip alçaltılabilen kızak/direk.
 - Her iki çözümde de LiDAR taret yaw açısını takip eder, silahın yukarı-aşağı pitch hareketini takip etmez. Böylece silah hedefin üstüne nişan alırken menzil huzmesi hedef yüksekliğinde kalabilir.
 
 ## Her görev için tamamlanma standardı
