@@ -85,7 +85,9 @@ def test_estimator_tracks_speed_and_predicts_a_curve_aware_intercept() -> None:
     )
 
     assert state_1.inside_poligon is True
+    assert state_1.speed_source == "UNAVAILABLE"
     assert state_2.route_id == route.route_id
+    assert state_2.speed_source == "MEASURED"
     assert math.isclose(state_2.speed_mps, 2.0, abs_tol=0.02)
     assert lead is not None
     assert lead.flight_time_s > 0.05
@@ -94,6 +96,91 @@ def test_estimator_tracks_speed_and_predicts_a_curve_aware_intercept() -> None:
         lead.point,
         route_id=route.route_id,
     ).residual_m < 1e-9
+
+
+def test_configurable_speed_prior_only_enables_reacquisition_until_measured() -> None:
+    geometry = load_course_geometry()
+    route = geometry.route("POLIGON_ROUTE_2")
+    estimator = CourseTrackEstimator(geometry, initial_speed_mps=0.4)
+    measurement = geometry.measurement_for_point(
+        geometry.point_at_s(route.route_id, 2.0)
+    )
+
+    state = estimator.update("TRACK-PRIOR", *measurement, observed_at_s=1.0)
+    prior_lead = estimator.predict_intercept(
+        "TRACK-PRIOR",
+        projectile_speed_mps=40.0,
+    )
+
+    assert math.isclose(state.speed_mps, 0.4)
+    assert state.speed_source == "PRIOR"
+    assert prior_lead is None
+
+    next_measurement = geometry.measurement_for_point(
+        geometry.point_at_s(route.route_id, 2.4)
+    )
+    measured = estimator.update(
+        "TRACK-PRIOR",
+        *next_measurement,
+        observed_at_s=2.0,
+    )
+    measured_lead = estimator.predict_intercept(
+        "TRACK-PRIOR",
+        projectile_speed_mps=40.0,
+    )
+
+    assert measured.speed_source == "MEASURED"
+    assert measured_lead is not None
+    assert measured_lead.s_m > measured.s_m
+
+
+def test_absent_target_coasts_on_curve_for_reacquisition_but_not_fire() -> None:
+    geometry = load_course_geometry()
+    route = geometry.route("POLIGON_ROUTE_1")
+    estimator = CourseTrackEstimator(
+        geometry,
+        initial_speed_mps=0.4,
+        clock=lambda: 2.0,
+    )
+    measurement = geometry.measurement_for_point(
+        geometry.point_at_s(route.route_id, 2.0)
+    )
+    measured = estimator.update("TRACK-COAST", *measurement, observed_at_s=1.0)
+
+    estimator.mark_absent(set(), observed_at_s=2.0)
+    predicted = estimator.state("TRACK-COAST")
+
+    assert predicted is not None
+    assert predicted.lifecycle == "PREDICTED_IN_POLIGON"
+    assert predicted.speed_source == "PRIOR"
+    assert math.isclose(predicted.s_m, measured.s_m + 0.4, abs_tol=1e-3)
+    assert predicted.projected_point is not None
+    assert estimator.predicted_states() == (predicted,)
+    assert estimator.predict_intercept(
+        "TRACK-COAST",
+        projectile_speed_mps=40.0,
+    ) is None
+
+
+def test_absent_prediction_closes_at_the_poligon_exit() -> None:
+    geometry = load_course_geometry()
+    route = geometry.route("POLIGON_ROUTE_3")
+    estimator = CourseTrackEstimator(
+        geometry,
+        initial_speed_mps=0.4,
+    )
+    measurement = geometry.measurement_for_point(
+        geometry.point_at_s(route.route_id, route.length_m - 0.1)
+    )
+    estimator.update("TRACK-EXIT-COAST", *measurement, observed_at_s=1.0)
+
+    estimator.mark_absent(set(), observed_at_s=2.0)
+    state = estimator.state("TRACK-EXIT-COAST")
+
+    assert state is not None
+    assert state.lifecycle == "OUTSIDE_POLIGON"
+    assert state.prediction_valid is False
+    assert estimator.predicted_states() == ()
 
 
 def test_estimator_closes_prediction_outside_and_increments_pass_on_reentry() -> None:

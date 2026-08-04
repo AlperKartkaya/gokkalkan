@@ -95,12 +95,12 @@ ile fiziksel CAN yetkisi olmayan adapter’ın `can0` iletim girişimi de redded
   - Kanıt: `docs/adr/002-mcu-can.md`; Pico/RP2040 + klasik CAN 2.0B, 500 kbit/s, SN65HVD230, mevcut ICD v0 ve fail-safe davranış kaydedildi.
 
 - [x] **ADR-003 — Kamera/LiDAR yerleşim kararını kaydet**
-  - Yukarıdaki üç CAD görseli karar kanıtı olarak bağlanmalı.
-  - Sabit geniş kamera, nişan kamerası, yaw ekseni, silah pitch ekseni ve TFA50-L referans koordinatları tanımlanmalı.
-  - Köprü/profil öncelikli, merkezî kızak/direk mekanik alternatif olarak kaydedilmeli; ikisinin de yaw’ı izlediği fakat silah pitch’ini izlemediği belirtilmeli.
-  - TFA50-L’nin elle ayarlanan yükseklik aralığı, merkezleme toleransı, kilitleme yöntemi ve kablo güzergâhı mekanik ekiple kesinleştirilmeli.
+  - Temel ve nihai CAD görseli karar kanıtı olarak bağlanmalı.
+  - Tek `camera_main`, yaw ekseni, silah pitch ekseni, 700 mm LiDAR optik merkezi ve TFA50-L referans koordinatları tanımlanmalı.
+  - Kamera ve LiDAR'ın yaw'ı izlediği, silah pitch'ini izlemediği; ayrı nişan kamerası olmadığı belirtilmeli.
+  - Profil kilitleme yöntemi, kamera-LiDAR-bore extrinsic'i ve kablo güzergâhı imalat sonrası ölçülmeli.
   - TFA50-L gerçek hedef testini geçemezse fallback sırası: optik/algoritmik iyileştirme → ikinci tek nokta sensör değerlendirmesi → 2D tarayıcı değerlendirmesi.
-  - Kanıt: `docs/adr/003-camera-lidar-placement.md`; koordinat çerçeveleri, köprü/kızak kararı, kalibrasyon alanları ve fallback kaydedildi.
+  - Kanıt: `docs/adr/003-camera-lidar-placement.md` ve `docs/taret_mekanik_ve_sensor_yerlesimi.md`; koordinat çerçeveleri, tek kamera, 700 mm LiDAR merkezi ve kalibrasyon alanları kaydedildi.
 
 - [x] **DOC-003 — Şartname traceability matrisini oluştur**
   - Her zorunlu yetenek için requirement ID, modül, test, telemetri olayı ve video kanıtı alanları bulunmalı.
@@ -175,6 +175,8 @@ yoluna referans bulunmadı; PDF hash’i `docs/requirements_source.md` ile eşle
 kurulumu, test/build ve dry-run stack smoke akışını tanımlar. Yerel temiz `.venv`
 kurulumu, 95 Python testi, doctor ve `npm run dev:check` geçti. Fiziksel Pi
 üzerindeki `--host` doğrulaması imalat/donanım olmadan tamamlanmış sayılmıyor.
+Pi deploy hedefi AI HAT+ resmi gereksinimi nedeniyle Raspberry Pi OS Trixie /
+Python 3.13 olarak kilitlendi; CI'nin Python 3.11 alt sınırı korunur.
 
 ---
 
@@ -423,11 +425,12 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
   - Picamera2 frame’i kamera timestamp’i ve receive monotonic zamanı ile üretilmeli.
   - Kamera yokluğu/crash/stale health’e yansımalı.
 
-- [x] **PER-002 — Sabit geniş kamera track hattını oluştur** `[WP-02]`
+- [x] **PER-002 — Tek yaw-köprüsü kamera track hattını oluştur** `[WP-02]`
   - Hedef adayı, track ID, merkez, bbox, confidence, velocity ve freshness.
 
-- [x] **PER-003 — Nişan kamerası ince merkezleme hattını oluştur** `[WP-02]`
-  - Seçili track ile taret koordinatı arasındaki hata üretimi kalibre edilmeli.
+- [x] **PER-003 — Tek kamera ile weapon-bore merkezleme sınırını oluştur** `[WP-02]`
+  - Seçili track ile taret koordinatı arasındaki hata, kamera-bore extrinsic ve
+    balistik holdover ile kalibre edilmeli; ikinci kamera varsayılmamalı.
 
 - [x] **PER-004 — Track lifecycle kurallarını tamamla** `[WP-02]`
   - TTL, boş frame update’i, kayıp/yeniden edinim ve duplicate association.
@@ -437,6 +440,12 @@ retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanı
   - Renk/şekil/tip sınıflandırması gerçek görsellerle ölçülmeli.
   - Confusion matrix, precision/recall, FPS ve gecikme raporlanmalı.
   - Gereksiz YOLO/DeepSORT eklenmemeli; ihtiyaç ölçümle gösterilmeli.
+
+- [ ] **PER-006 — AI HAT+ 26 TOPS detector/classifier modelini kabul et** `[WP-02][WP-03]`
+  - [x] Hailo-8 donanım kimliği ve HEF artefaktı health sınırı eklendi.
+  - [x] Pi manifesti `hailo-all`, Hailo-8 ve tek Camera Module 3 Standard'a kilitlendi.
+  - [ ] CAD sentetik + gerçek hedef veri setiyle eğitilen model seçilmeli ve HEF'e derlenmeli.
+  - [ ] Precision/recall, 5/10/15 m, yaw tarama açıları, FPS ve p95 gecikme kabulü yapılmalı.
 
 - [ ] **LID-001 — TFA50-L UART protokolünü ve adapter’ını tamamla** `[WP-03]`
   - Protokol kaynağı: [TFA50-L Datasheet](https://www.e-kom.com/Datasheet/Benewake/TFA50-L_Datasheet.pdf); runtime vendor uygulamasına bağımlı olmamalı.

@@ -15,7 +15,9 @@ Pico/RP2040’a ayırmaktadır.
 
 ## Karar
 
-1. **Hedef bilgisayar:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS.
+1. **Hedef bilgisayar:** Raspberry Pi 5 üzerinde doğrudan 64-bit Raspberry Pi OS
+   Trixie / Python 3.13. AI HAT+ 26 TOPS resmi yazılım yığını Trixie gerektirdiği
+   için deploy manifesti bu sürüme kilitlidir.
    Hedefte VM/hypervisor bulunmaz. Geliştirici bilgisayarları macOS veya Linux
    olabilir; hedef davranışı Linux CI ve Pi üzerinde ayrıca doğrulanır.
 2. **Servis yönetimi:** Backend, perception, UI/static server ve recorder ayrı

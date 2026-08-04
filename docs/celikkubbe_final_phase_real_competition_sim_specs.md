@@ -469,21 +469,25 @@ For the simulator:
 
 - include `targetSpeedMps` as a required configuration value,
 - do not hard-code it as official,
+- use the committee-provided provisional `0.4 m/s` as the current default prior,
 - use the same speed for all Stage 2 targets unless configuration says otherwise,
-- allow the speed to be adjusted once real competition speed information is available.
+- replace the prior with route-arc speed estimated from consecutive observations
+  when sufficient measurements are available.
 
 Example:
 
 ```ts
 stage2Config = {
   rounds: 4,
-  targetSpeedMps: DEFAULT_CONFIGURABLE_VALUE,
+  targetSpeedMps: 0.4, // committee-provisional; not a specification value
   routeCompletionDefinesRound: true,
   oneTargetPerLane: true
 }
 ```
 
-The prompt says “move exactly in the speed they would in the competition.” Since the official file does not provide the numeric speed, the simulator must support a config slot for the real speed and clearly show when it is using an assumed default.
+The specification does not provide a numeric speed. The simulator must retain a
+config slot and clearly label `0.4 m/s` as committee-provisional rather than a
+specification value.
 
 ### 6.8 Stage 2 edge cases
 

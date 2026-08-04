@@ -3,8 +3,8 @@ target = "raspberry-pi-5"
 
 [os]
 family = "Raspberry Pi OS Lite 64-bit"
-version_id = "12"
-codename = "bookworm"
+version_id = "13"
+codename = "trixie"
 allowed_ids = ["debian", "raspbian"]
 architecture = "aarch64"
 
@@ -15,7 +15,7 @@ install_dir = "/opt/gokkalkan"
 venv_dir = "/opt/gokkalkan/.venv"
 config_dir = "/etc/gokkalkan"
 state_dir = "/var/lib/gokkalkan"
-python = "3.11"
+python = "3.13"
 frontend_dist_required = true
 
 [packages]
@@ -23,8 +23,9 @@ apt = [
   "ca-certificates",
   "can-utils",
   "chrony",
+  "dkms",
   "git",
-  "libcamera-tools",
+  "hailo-all",
   "python3",
   "python3-dev",
   "python3-numpy",
@@ -33,6 +34,7 @@ apt = [
   "python3-pip",
   "python3-venv",
   "rsync",
+  "rpicam-apps",
   "v4l-utils",
 ]
 
@@ -49,8 +51,26 @@ driver_configuration = "electronics-specific"
 
 [camera]
 stack = "libcamera-picamera2"
+model = "Raspberry Pi Camera Module 3 Standard"
+count = 1
+horizontal_fov_deg = 66.0
+follows_yaw = true
+follows_weapon_pitch = false
 legacy_camera_stack = false
 required_device_patterns = ["/dev/video*", "/dev/media*"]
+
+[lidar]
+model = "TFA50-L"
+optical_center_height_m = 0.700
+follows_yaw = true
+follows_weapon_pitch = false
+
+[accelerator]
+model = "Raspberry Pi AI HAT+"
+variant_tops = 26
+chip = "Hailo-8"
+interface = "PCIe"
+verification_command = "hailortcli fw-control identify"
 
 [verification]
 runtime_profile = "SIM"

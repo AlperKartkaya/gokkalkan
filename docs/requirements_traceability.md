@@ -19,6 +19,8 @@ tamamlandığını değil; **HIL/fiziksel bekliyor** ise donanım kanıtının h
 | ID | Şartname kaynağı | Gereksinim | Modül/karar | Test | Telemetri/Video | Durum |
 | --- | --- | --- | --- | --- | --- | --- |
 | `SYS-DIM-100` | txt 556–557 | Her sistem boyutu 100 cm’den küçük | Mekanik CAD | Ölçüm tutanağı | Final manifest | Mekanik ölçüm bekliyor |
+| `SYS-DIM-SCORE` | txt 647–660, 913–935 | En uzun boyut ≤60 cm ise 20 puan; 60–100 cm arası 0 puan | 700 mm LiDAR optik merkezi tasarım kararı | Nihai en/boy/yükseklik ölçümü | Final manifest | 20 puandan bilinçli vazgeçildi; teorik tavan 480/500, <100 cm doğrulaması bekliyor |
+| `SENSOR-MOUNT-700` | mimari türetim | Tek kamera ve LiDAR yaw'ı izler, weapon pitch'i izlemez; LiDAR merkezi 0,700 m | ADR-003, taret mekanik referansı, Pi manifesti | Extrinsic + mekanik ölçüm/HIL | Mount hash, health | Yazılım sözleşmesi hazır; fiziksel ölçüm bekliyor |
 | `SYS-RANGE-5-10-15` | txt 558, 794–820 | 5/10/15 m hedef imha | Mission Core, perception, TFA50-L | `LID-005`, `REL-003` | Range + `FireIntent`, `VID-Y2/Y6` | HIL/fiziksel bekliyor |
 | `TARGET-COLOR` | txt 701–718 | Aşama 1/2 kırmızı; Aşama 3 kırmızı düşman/mavi dost; imha kırmızı balon üzerinden | Perception renk sınıflandırması, simülatör | Perception renk testleri, frontend unit | Classification/Fire/`VID-Y7` | Sentetik OpenCV testi doğrulandı; gerçek hedef bekliyor |
 | `SAFE-MOTION-ZONE` | txt 581–585 | Harekete yasak alan | Backend Safety Gate | `tests/test_phase4_safety.py`; `SAFE-013` | `BLOCKED_MOTION_ZONE` | Unit doğrulandı; fiziksel bekliyor |

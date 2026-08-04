@@ -41,6 +41,7 @@ sys.path.insert(0, "perception/src")
 from camera_node import CameraNode
 from frame_processor import FrameProcessor
 from camera_stream_server import CameraStreamService
+from accelerator import AcceleratorProbe, Hailo8Accelerator
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,8 @@ class PerceptionBridge:
         heartbeat_interval_sec: float = 1.0,
         camera_stream_host: str = "127.0.0.1",
         camera_stream_port: int | None = None,
+        accelerator: AcceleratorProbe | None = None,
+        accelerator_required: bool = False,
     ) -> None:
         self.backend_url = backend_url.rstrip("/")
         self.stage       = stage
@@ -89,6 +92,8 @@ class PerceptionBridge:
 
         self.camera = CameraNode(**(camera_kw or {}))
         self.processor = FrameProcessor(**(processor_kw or {}))
+        self.accelerator = accelerator or Hailo8Accelerator()
+        self.accelerator_required = accelerator_required
         self.camera_stream = (
             CameraStreamService(camera_stream_host, camera_stream_port)
             if camera_stream_port is not None
@@ -213,13 +218,7 @@ class PerceptionBridge:
                 finally:
                     self._outbound.task_done()
             if time.monotonic() >= next_heartbeat:
-                camera_health = self.camera.health()
-                healthy = bool(camera_health.get("healthy", camera_health.get("running", False)))
-                reason = (
-                    "camera_ready"
-                    if healthy
-                    else str(camera_health.get("status", "camera_unhealthy")).lower()
-                )
+                healthy, reason = self._pipeline_health()
                 self._post_heartbeat(healthy=healthy, reason=reason)
                 next_heartbeat = time.monotonic() + self._heartbeat_interval_sec
 
@@ -249,6 +248,7 @@ class PerceptionBridge:
             self._last_update_at = _utc_now()
 
     def _post_heartbeat(self, *, healthy: bool, reason: str) -> None:
+        accelerator_health = self.accelerator.health()
         if self._post_json(
             "/perception/heartbeat",
             {
@@ -258,6 +258,7 @@ class PerceptionBridge:
                 "processId": os.getpid(),
                 "queueDepth": self._outbound.qsize(),
                 "droppedUpdates": self._dropped_updates,
+                "accelerator": accelerator_health,
             },
         ):
             self._heartbeats_sent += 1
@@ -290,6 +291,25 @@ class PerceptionBridge:
     # Sağlık bilgisi
     # ------------------------------------------------------------------
 
+    def _pipeline_health(self) -> tuple[bool, str]:
+        camera_health = self.camera.health()
+        camera_ready = bool(
+            camera_health.get("healthy", camera_health.get("running", False))
+        )
+        if not camera_ready:
+            return False, str(
+                camera_health.get("status", "camera_unhealthy")
+            ).lower()
+        accelerator_health = self.accelerator.health()
+        if self.accelerator_required and not accelerator_health["hardwareReady"]:
+            return False, "accelerator_unhealthy"
+        reason = (
+            "camera_and_accelerator_ready"
+            if self.accelerator_required
+            else "camera_ready"
+        )
+        return True, reason
+
     def health(self) -> dict[str, Any]:
         return {
             "running":       self._running,
@@ -307,6 +327,8 @@ class PerceptionBridge:
             "droppedUpdates": self._dropped_updates,
             "heartbeatsSent": self._heartbeats_sent,
             "camera":        self.camera.health(),
+            "acceleratorRequired": self.accelerator_required,
+            "accelerator":   self.accelerator.health(),
             "processor":     self.processor.stats(),
         }
 
@@ -336,6 +358,16 @@ def main() -> None:
     parser.add_argument("--no-classify", action="store_true",
                         help="Renk sınıflandırmasını devre dışı bırak (Aşama 2 gibi)")
     parser.add_argument(
+        "--require-accelerator",
+        action="store_true",
+        help="AI HAT+ Hailo-8 görünmüyorsa perception heartbeat'ini sağlıksız yap",
+    )
+    parser.add_argument(
+        "--hailo-model",
+        default=None,
+        help="İsteğe bağlı derlenmiş HEF model yolu; model hazır oluşu health'e yansır",
+    )
+    parser.add_argument(
         "--camera-stream-host",
         default="127.0.0.1",
         help="Ham kamera MJPEG servisinin dinleyeceği adres",
@@ -356,6 +388,8 @@ def main() -> None:
         processor_kw = {"classify_colors": not args.no_classify},
         camera_stream_host=args.camera_stream_host,
         camera_stream_port=args.camera_stream_port,
+        accelerator=Hailo8Accelerator(args.hailo_model),
+        accelerator_required=args.require_accelerator,
     )
 
     bridge.start()

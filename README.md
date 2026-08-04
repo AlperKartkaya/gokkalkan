@@ -8,7 +8,7 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
 - `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi ve CAN v1 codec çekirdeği.
-- `perception/` — **Kamera nodu + HSV renk takipçisi + perception bridge**. RPi Camera Module 3 (Picamera2) veya USB kamera (OpenCV) otomatik seçimi; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
+- `perception/` — **Tek Camera Module 3 Standard + HSV takipçi + AI HAT+ sağlık sınırı + perception bridge**. Pi'de Picamera2 ve Hailo-8 zorunlu health kontrolü, geliştirmede açıkça işaretli OpenCV fallback'i; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.

@@ -240,8 +240,8 @@ class FrameProcessor:
     # Minimum kontur alanı (piksel²) — gürültü eşiği
     MIN_AREA_PX: float = 300.0
 
-    # Kamera görüş alanı (varsayılan 62°, RPi Camera Module 3 geniş lens)
-    HFOV_DEG: float = 62.0
+    # Raspberry Pi Camera Module 3 Standard yatay görüş alanı (üretici: 66°)
+    HFOV_DEG: float = 66.0
 
     # Kaba mesafe tahmini katsayısı (kalibrasyonla düzeltilmeli)
     RANGE_AREA_K: float = 50_000.0  # range_m ≈ K / sqrt(area_px)
@@ -367,7 +367,9 @@ class FrameProcessor:
             clr = tr.get("color", "unknown")
             if stage == 3 and self.classify_colors:
                 friend_foe  = "Düşman" if clr == "red" else "Dost" if clr == "blue" else "Bilinmeyen"
-                target_type = "Mini/Micro İHA"   # kameradan tip tahmini henüz TBD
+                # Tip sınıfı doğrulanmış detector/HEF modeli bağlanana kadar
+                # uydurulmaz. Renk yalnız dost/düşman kararını destekler.
+                target_type = "Bilinmeyen"
             else:
                 friend_foe  = "Bilinmeyen"
                 target_type = "Bilinmeyen"

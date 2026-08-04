@@ -59,7 +59,7 @@ export interface OperatorTrackState {
   trackId: string;
   stage: Stage;
   round: number;
-  targetType: TargetType;
+  targetType: TargetType | 'Bilinmeyen';
   friendFoe: FriendFoe;
   rangeM: number;
   bearingDeg: number;
@@ -74,14 +74,23 @@ export interface OperatorCourseTrackState {
   routeId: 'POLIGON_ROUTE_1' | 'POLIGON_ROUTE_2' | 'POLIGON_ROUTE_3' | null;
   routeNumber: 1 | 2 | 3 | null;
   passIndex: number;
-  lifecycle: 'ACTIVE_IN_POLIGON' | 'OUTSIDE_POLIGON';
+  lifecycle: 'ACTIVE_IN_POLIGON' | 'PREDICTED_IN_POLIGON' | 'OUTSIDE_POLIGON';
   sM: number;
   speedMps: number;
+  speedSource: 'PRIOR' | 'MEASURED' | 'UNAVAILABLE';
   projectedCourseM: { x: number; y: number } | null;
   projectionResidualM: number | null;
   tangentCourseDeg: number | null;
   insidePoligon: boolean;
   predictionValid: boolean;
+}
+
+export interface OperatorCoursePrediction extends OperatorCourseTrackState {
+  lifecycle: 'PREDICTED_IN_POLIGON';
+  predictedRangeM: number;
+  predictedBearingDeg: number;
+  use: 'CAMERA_REACQUISITION_ONLY';
+  fireAuthoritative: false;
 }
 
 export interface OperatorSensorFrame {
@@ -99,7 +108,7 @@ export interface OperatorSensorFrame {
   snrDb: number | null;
   pointCount: number;
   quality: number;
-  targetType: TargetType;
+  targetType: TargetType | 'Bilinmeyen';
   friendFoe: FriendFoe;
   classificationConfidence: number;
   rangeGate: string;

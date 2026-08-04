@@ -44,6 +44,22 @@ class DummyProcessor:
         return {"activeTracks": 0}
 
 
+class DummyAccelerator:
+    def __init__(self, hardware_ready: bool = True) -> None:
+        self.hardware_ready = hardware_ready
+
+    def health(self) -> dict[str, object]:
+        return {
+            "accelerator": "Raspberry Pi AI HAT+ 26 TOPS",
+            "chip": "Hailo-8",
+            "tops": 26,
+            "hardwareReady": self.hardware_ready,
+            "modelReady": False,
+            "inferenceReady": False,
+            "status": "READY" if self.hardware_ready else "CLI_MISSING",
+        }
+
+
 class PerceptionProcessBoundaryTest(unittest.TestCase):
     def test_bounded_queue_drops_oldest_and_keeps_latest_results(self) -> None:
         bridge = PerceptionBridge(outbound_queue_size=2)
@@ -81,6 +97,20 @@ class PerceptionProcessBoundaryTest(unittest.TestCase):
             bridge.health()["processBoundary"],
             "separate-systemd-process",
         )
+
+    def test_required_ai_hat_closes_heartbeat_when_hailo8_is_missing(self) -> None:
+        bridge = PerceptionBridge(
+            accelerator=DummyAccelerator(hardware_ready=False),
+            accelerator_required=True,
+        )
+        bridge.camera = DummyCamera()
+        bridge.camera.running = True
+
+        healthy, reason = bridge._pipeline_health()
+
+        self.assertFalse(healthy)
+        self.assertEqual(reason, "accelerator_unhealthy")
+        self.assertFalse(bridge.health()["accelerator"]["hardwareReady"])
 
 
 if __name__ == "__main__":

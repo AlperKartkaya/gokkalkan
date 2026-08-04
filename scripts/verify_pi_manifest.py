@@ -49,6 +49,8 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         "permissions",
         "can",
         "camera",
+        "lidar",
+        "accelerator",
         "verification",
     ):
         if not isinstance(data.get(table), dict):
@@ -66,6 +68,31 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         raise ManifestError("CAN bitrate must match ADR-002 (500000)")
     if data["verification"].get("runtime_profile") != "SIM":
         raise ManifestError("clean image verification must start in SIM")
+    camera = data["camera"]
+    if (
+        camera.get("model") != "Raspberry Pi Camera Module 3 Standard"
+        or camera.get("count") != 1
+        or camera.get("follows_yaw") is not True
+        or camera.get("follows_weapon_pitch") is not False
+    ):
+        raise ManifestError("camera contract must match the final single-camera mount")
+    lidar = data["lidar"]
+    if (
+        lidar.get("model") != "TFA50-L"
+        or lidar.get("optical_center_height_m") != 0.7
+        or lidar.get("follows_yaw") is not True
+        or lidar.get("follows_weapon_pitch") is not False
+    ):
+        raise ManifestError("LiDAR contract must match the final 700 mm optical center")
+    accelerator = data["accelerator"]
+    if (
+        accelerator.get("model") != "Raspberry Pi AI HAT+"
+        or accelerator.get("variant_tops") != 26
+        or accelerator.get("chip") != "Hailo-8"
+    ):
+        raise ManifestError("accelerator contract must select AI HAT+ 26 TOPS/Hailo-8")
+    if "hailo-all" not in packages or "rpicam-apps" not in packages:
+        raise ManifestError("AI camera runtime packages are missing")
     for unit in (
         "gokkalkan-backend.service",
         "gokkalkan-perception.service",
@@ -195,6 +222,28 @@ def verify_host(data: dict[str, Any]) -> list[str]:
         )
         if "install ok installed" not in result.stdout:
             errors.append(f"apt package missing: {package}")
+
+    try:
+        hailo = subprocess.run(
+            ["hailortcli", "fw-control", "identify"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        errors.append("Raspberry Pi AI HAT+ 26 TOPS / Hailo-8 not detected")
+    else:
+        hailo_output = f"{hailo.stdout}\n{hailo.stderr}".upper()
+        if (
+            hailo.returncode != 0
+            or not (
+                "BOARD NAME: HAILO-8" in hailo_output
+                or "DEVICE ARCHITECTURE: HAILO8" in hailo_output
+            )
+            or "HAILO-8L" in hailo_output
+            or "HAILO8L" in hailo_output
+        ):
+            errors.append("Raspberry Pi AI HAT+ 26 TOPS / Hailo-8 not detected")
 
     for unit in (
         "gokkalkan.target",

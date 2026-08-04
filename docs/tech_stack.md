@@ -116,10 +116,17 @@ gelmez; söz konusu kanıtlar imalat sonrası HIL ve saha testinde üretilecekti
 
 ### 4.3. `perception/` — Algı, Takip ve Sınıflandırma
 
-`perception/` kamera verisinden hedef adaylarını üretir. Şartname hedeflerin maket, renk/şekil ve balonla temsil edileceğini söylediği için ilk tercih basit, açıklanabilir ve test edilebilir görüntü işleme olmalıdır; yapay zekâ modeli ancak gerçek hedef görselleri ve saha testleri bunu gerektirirse eklenmelidir.
+`perception/` tek Raspberry Pi Camera Module 3 Standard verisinden hedef
+adaylarını üretir. Kamera ve TFA50-L, yaw'ı izleyen fakat silah pitch'ini
+izlemeyen sensör köprüsündedir; LiDAR optik merkezi en alt noktadan 700 mm
+yukarıdadır. Kesin mekanik model
+[`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md)
+içinde tutulur.
 
-**Mevcut durum:** `camera_node.py` (Picamera2/OpenCV otomatik seçim),
+**Mevcut durum:** `camera_node.py` (Pi'de Picamera2, geliştirmede açıkça işaretli
+OpenCV fallback),
 `frame_processor.py` (HSV renk filtresi + CentroidTracker),
+`accelerator.py` (AI HAT+ 26 TOPS/Hailo-8 ve HEF hazırlık health sınırı),
 `perception_bridge.py` (ayrı `systemd` process’i; bounded latest-wins queue,
 heartbeat ve POST `/tracks/update`). Aşama 2 renk-nötr, Aşama 3
 kırmızı=Düşman/mavi=Dost. Heartbeat kaybı Mission Core’da perception fault’u
@@ -131,8 +138,12 @@ oluşturup canlı arm iznini kapatır.
 2. Renk/şekil tabanlı hedef aday çıkarımı. ✅ Uygulandı.
 3. Basit takip: merkez noktası, hız tahmini, hedef geçmişi. ✅ CentroidTracker uygulandı.
 4. Aşama 2 için sınıflandırmasız takip ve önceliklendirme. ✅ Uygulandı.
-5. Aşama 3 için dost-düşman ayrımı, hedef tipi ve menzil kapısı. ✅ Renk sınıflaması, TFA50-L UART adapterı ve kamera-yaw-menzil ilişkilendirme hattı uygulandı; gerçek 5/10/15 m kalibrasyon kanıtı imalat sonrası açık.
-6. Gerekiyorsa YOLO/DeepSORT/Hailo gibi model tabanlı yaklaşım.
+5. Aşama 3 için dost-düşman ayrımı ve menzil kapısı. ✅ Renk sınıflaması,
+   TFA50-L UART adapterı ve kamera-yaw-menzil ilişkilendirme hattı uygulandı;
+   gerçek 5/10/15 m kalibrasyon kanıtı imalat sonrası açık.
+6. Hedef tip modeli: AI HAT+ 26 TOPS üzerinde çalışacak detector/classifier için
+   HEF artefaktı ve gerçek+CAD sentetik veri seti seçilecek; model doğrulanana
+   kadar tip `Bilinmeyen` kalır. ⚠️ Donanım health sınırı hazır, model açık.
 
 ### 4.4. `frontend/` — Simülatör ve Operatör Arayüzleri
 
@@ -190,8 +201,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
 | Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
 | MCU haberleşmesi | **Onaylandı** | Klasik CAN 2.0B, 500 kbit/s; SN65HVD230 (×3); ISO 11898-2; 0x100 pan/tilt, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop. Ayrıntı: ADR-002 |
-| Kamera | **Onaylandı** | Raspberry Pi Camera Module 3 (12MP, OT AF, HDR), CSI bağlantı, Picamera2 API |
+| Kamera | **Onaylandı** | Tek Raspberry Pi Camera Module 3 Standard (12MP, AF, HDR, nominal 66° yatay FoV), CSI bağlantı, Picamera2 API; LiDAR merkezi 700 mm olan yaw köprüsünde, weapon pitch'ten bağımsız |
 | LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
+| AI hızlandırıcı | **Onaylandı / model açık** | Raspberry Pi AI HAT+ 26 TOPS, Hailo-8, PCIe; `hailo-all` + `hailortcli` health sözleşmesi hazır. HEF model artefaktı ve saha metrikleri bekliyor |
 | İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
@@ -214,8 +226,14 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
   Mutasyonlar Mission Core kuyruğuna girer; `GET /state/stream` SSE snapshot,
   `GET /commands/{id}` komut izleme, SQLite WAL + segmentli JSONL telemetri, `/readiness`,
   `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
-- **Görüntü işleme:** OpenCV; gerçek hedef görselleri netleşirse model tabanlı algı eklenebilir.
-- **Kamera:** Raspberry Pi uyumlu kamera hattı için Picamera2 değerlendirilebilir.
+- **Görüntü işleme:** OpenCV renk/adayı çıkarma korunur; tip tespiti için
+  doğrulanmış HEF model AI HAT+ üzerinde çalıştırılacaktır. Modelin Safety Gate
+  veya ateş yetkisi yoktur.
+- **Kamera:** Tek Raspberry Pi Camera Module 3 Standard, Picamera2, üretici
+  nominali 66° yatay FoV; intrinsics imalat sonrası kalibrasyonla değiştirilir.
+- **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi
+  perception heartbeat'i fail-closed sağlıksız olur; model ağırlıkları repoya
+  eklenmez.
 - **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.
 - **Test:** pytest + frontend için Vitest/Playwright.
 - **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
@@ -226,8 +244,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
   sonra kalibre edilmelidir.
 
 ROS 2 ve tam Rust yeniden yazımı bu fazın parçası değildir. Yeniden değerlendirme
-eşikleri ADR-001’de tanımlıdır. Hailo veya derin öğrenme tabanlı algı da yalnızca
-gecikme/doğruluk testleri ihtiyaç gösterirse eklenir.
+eşikleri ADR-001’de tanımlıdır. Hailo-8 donanım kararı kesindir; kullanılacak
+detector/classifier mimarisi ancak veri seti precision/recall, gecikme ve FPS
+ölçümleriyle kabul edilir.
 
 ## 7. İş Paketi Eşlemesi
 

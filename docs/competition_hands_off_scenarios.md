@@ -17,9 +17,11 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
 > Not: Parkur koordinatları için Rev 1 teknik çizim ve ondan türetilen kanonik
 > veri seti kullanılır. Poligon dışı geri dönüşte rota-tabanlı hedef konumu
 > üretilmez; batı sınırından her yeniden girişte `s=0` ile yeni geçiş başlar.
-> Hedef hız profili, uçuş süresi ve radar/LiDAR donanım
-> modeli kaynaklarda sayısal verilmediği için bunlar yapılandırılabilir
-> simülasyon/kalibrasyon girdisidir; resmi geometri gibi raporlanmamalıdır.
+> Şartname ve parkur çizimi hedef hızını sayısal vermez. Komite kaynaklı geçici
+> `0,4 m/s` bilgisi yapılandırılabilir başlangıç prior'ı olarak kullanılır ve
+> rota üzerindeki ölçülmüş hız yeterli olduğunda onunla değiştirilir. Uçuş
+> süresi ve LiDAR modeli de kalibrasyon girdisidir; resmi geometri gibi
+> raporlanmamalıdır.
 
 ## Güncel canlı simülasyon kaynakları
 

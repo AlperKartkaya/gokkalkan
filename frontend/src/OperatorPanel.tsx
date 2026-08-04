@@ -70,12 +70,22 @@ function isFrameUnidentified(frame: Pick<OperatorSensorFrame, 'friendFoe' | 'cla
   return frame.friendFoe === 'Bilinmeyen' || frame.classificationConfidence < 0.6;
 }
 
-function hasReliableTrackType(track: Pick<OperatorTrackState, 'confidence'>) {
-  return track.confidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD;
+function isKnownTargetType(type: string): type is TargetType {
+  return Object.hasOwn(targetLabel, type);
 }
 
-function hasReliableFrameType(frame: Pick<OperatorSensorFrame, 'classificationConfidence'>) {
-  return frame.classificationConfidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD;
+function hasReliableTrackType(
+  track: Pick<OperatorTrackState, 'confidence' | 'targetType'>,
+): track is Pick<OperatorTrackState, 'confidence' | 'targetType'> & { targetType: TargetType } {
+  return track.confidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
+    && isKnownTargetType(track.targetType);
+}
+
+function hasReliableFrameType(
+  frame: Pick<OperatorSensorFrame, 'classificationConfidence' | 'targetType'>,
+): frame is Pick<OperatorSensorFrame, 'classificationConfidence' | 'targetType'> & { targetType: TargetType } {
+  return frame.classificationConfidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
+    && isKnownTargetType(frame.targetType);
 }
 
 function hostilityConfidence(frame: OperatorSensorFrame) {
@@ -181,7 +191,7 @@ function domeRotationForVisualTrack(track?: ReturnType<typeof visualTrackFor>) {
 }
 
 function targetRangeGateOk(track: OperatorTrackState | undefined) {
-  if (!track) return false;
+  if (!track || !isKnownTargetType(track.targetType)) return false;
   const range = targetEngagementRange(track.targetType);
   return track.rangeM >= range.min && track.rangeM <= range.max;
 }
@@ -732,7 +742,9 @@ function OperatorTrackScene({
   const hostilityDetection = stageHasHostilityDetection(stage);
   const visualTracks = tracks.map((track, index) => visualTrackFor(track, index, stage));
   const selectedVisualTrack = visualTracks.find((track) => track.trackId === selectedTrackId) ?? visualTracks[0];
-  const permittedRange = selectedVisualTrack ? permittedRangeForStageTarget(stage, selectedVisualTrack.targetType) : { min: 5, max: 15 };
+  const permittedRange = selectedVisualTrack && isKnownTargetType(selectedVisualTrack.targetType)
+    ? permittedRangeForStageTarget(stage, selectedVisualTrack.targetType)
+    : { min: 5, max: 15 };
   const showPermittedRangeWindow = Boolean(selectedVisualTrack && stage === 3);
   const ruleWindow = selectedVisualTrack && stage === 3
     ? {

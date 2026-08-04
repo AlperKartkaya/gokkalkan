@@ -17,7 +17,12 @@ import time
 from typing import Any, Callable, Literal
 
 
-CourseLifecycle = Literal["ACTIVE_IN_POLIGON", "OUTSIDE_POLIGON"]
+CourseLifecycle = Literal[
+    "ACTIVE_IN_POLIGON",
+    "PREDICTED_IN_POLIGON",
+    "OUTSIDE_POLIGON",
+]
+CourseSpeedSource = Literal["PRIOR", "MEASURED", "UNAVAILABLE"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +77,7 @@ class CourseTrackState:
     lifecycle: CourseLifecycle
     s_m: float
     speed_mps: float
+    speed_source: CourseSpeedSource
     projected_point: CoursePoint | None
     projection_residual_m: float | None
     tangent_course_deg: float | None
@@ -88,6 +94,7 @@ class CourseTrackState:
             "lifecycle": self.lifecycle,
             "sM": round(self.s_m, 4),
             "speedMps": round(self.speed_mps, 4),
+            "speedSource": self.speed_source,
             "projectedCourseM": (
                 {
                     "x": round(self.projected_point.x_m, 4),
@@ -394,23 +401,44 @@ class CourseTrackEstimator:
         max_projection_residual_m: float = 0.75,
         route_switch_margin_m: float = 0.25,
         entry_window_m: float = 1.0,
+        initial_speed_mps: float = 0.0,
         speed_alpha: float = 0.35,
         backward_jitter_m: float = 0.25,
+        max_coast_seconds: float = 30.0,
     ) -> None:
         self.geometry = geometry
         self._clock = clock
         self.max_projection_residual_m = max_projection_residual_m
         self.route_switch_margin_m = route_switch_margin_m
         self.entry_window_m = entry_window_m
+        if not isfinite(initial_speed_mps) or initial_speed_mps < 0:
+            raise ValueError("Initial target speed must be finite and non-negative")
+        self.initial_speed_mps = initial_speed_mps
         self.speed_alpha = speed_alpha
         self.backward_jitter_m = backward_jitter_m
+        if not isfinite(max_coast_seconds) or max_coast_seconds <= 0:
+            raise ValueError("Maximum coast time must be finite and positive")
+        self.max_coast_seconds = max_coast_seconds
         self._states: dict[str, CourseTrackState] = {}
+        self._last_measured_at_s: dict[str, float] = {}
+        self._last_measurements: dict[str, tuple[float, float, str]] = {}
 
     def state(self, track_id: str) -> CourseTrackState | None:
         return self._states.get(track_id)
 
     def reset(self) -> None:
         self._states.clear()
+        self._last_measured_at_s.clear()
+        self._last_measurements.clear()
+
+    def predicted_states(self) -> tuple[CourseTrackState, ...]:
+        """Return route-only coast states for camera reacquisition, never fire."""
+
+        return tuple(
+            state
+            for state in self._states.values()
+            if state.lifecycle == "PREDICTED_IN_POLIGON"
+        )
 
     def update(
         self,
@@ -456,6 +484,7 @@ class CourseTrackEstimator:
                 lifecycle="OUTSIDE_POLIGON",
                 s_m=previous.s_m if previous else 0.0,
                 speed_mps=0.0,
+                speed_source="UNAVAILABLE",
                 projected_point=None,
                 projection_residual_m=(
                     projection.residual_m if projection is not None else None
@@ -466,6 +495,8 @@ class CourseTrackEstimator:
                 observed_at_s=observed_at,
             )
             self._states[track_id] = state
+            self._last_measured_at_s[track_id] = observed_at
+            self._last_measurements.pop(track_id, None)
             return state
 
         reentry = (
@@ -485,21 +516,31 @@ class CourseTrackEstimator:
         else:
             pass_index = previous.pass_index
 
-        speed_mps = 0.0
-        if (
-            previous is not None
-            and previous.lifecycle == "ACTIVE_IN_POLIGON"
-            and not route_changed
-            and previous.route_id == projection.route_id
-        ):
-            elapsed = observed_at - previous.observed_at_s
-            delta_s = projection.s_m - previous.s_m
-            if elapsed > 0 and delta_s >= -self.backward_jitter_m:
+        # İlk görünüşte veya poligona yeniden girişte, dış kaynaktan gelen
+        # değiştirilebilir prior kullanılır. İkinci ve sonraki gözlemde ölçülmüş
+        # rota yay hızı EMA ile bunun yerini alır.
+        speed_mps = self.initial_speed_mps
+        speed_source: CourseSpeedSource = (
+            "PRIOR" if self.initial_speed_mps > 0 else "UNAVAILABLE"
+        )
+        last_measurement = self._last_measurements.get(track_id)
+        if last_measurement is not None and not route_changed and not reentry:
+            last_observed_at, last_s_m, last_route_id = last_measurement
+            elapsed = observed_at - last_observed_at
+            delta_s = projection.s_m - last_s_m
+            if (
+                last_route_id == projection.route_id
+                and elapsed > 0
+                and delta_s >= -self.backward_jitter_m
+            ):
                 instantaneous = max(0.0, delta_s / elapsed)
                 speed_mps = (
                     self.speed_alpha * instantaneous
-                    + (1.0 - self.speed_alpha) * previous.speed_mps
+                    + (1.0 - self.speed_alpha) * (
+                        previous.speed_mps if previous is not None else 0.0
+                    )
                 )
+                speed_source = "MEASURED"
 
         state = CourseTrackState(
             track_id=track_id,
@@ -509,6 +550,7 @@ class CourseTrackEstimator:
             lifecycle="ACTIVE_IN_POLIGON",
             s_m=projection.s_m,
             speed_mps=speed_mps,
+            speed_source=speed_source,
             projected_point=projection.point,
             projection_residual_m=projection.residual_m,
             tangent_course_deg=projection.tangent_course_deg,
@@ -517,12 +559,67 @@ class CourseTrackEstimator:
             observed_at_s=observed_at,
         )
         self._states[track_id] = state
+        self._last_measured_at_s[track_id] = observed_at
+        self._last_measurements[track_id] = (
+            observed_at,
+            projection.s_m,
+            projection.route_id,
+        )
         return state
 
-    def mark_absent(self, observed_track_ids: set[str]) -> None:
-        now = self._clock()
+    def mark_absent(
+        self,
+        observed_track_ids: set[str],
+        *,
+        observed_at_s: float | None = None,
+    ) -> None:
+        """Coast unseen targets on their curves for camera reacquisition.
+
+        A single yaw-mounted camera cannot keep every target in frame while it
+        engages one target. Unseen targets therefore retain a bounded,
+        route-only prediction. These states are exposed separately from measured
+        tracks and ``predict_intercept`` rejects them, so they cannot authorize
+        firing.
+        """
+
+        now = self._clock() if observed_at_s is None else observed_at_s
         for track_id, state in tuple(self._states.items()):
             if track_id in observed_track_ids:
+                continue
+            last_measured_at = self._last_measured_at_s.get(track_id, state.observed_at_s)
+            coast_age_s = max(0.0, now - last_measured_at)
+            elapsed_s = max(0.0, now - state.observed_at_s)
+            predicted_s = state.s_m + state.speed_mps * elapsed_s
+            predicted_point = (
+                self.geometry.point_at_s(state.route_id, predicted_s)
+                if state.route_id is not None
+                and state.speed_mps > 0
+                and coast_age_s <= self.max_coast_seconds
+                else None
+            )
+            if predicted_point is not None:
+                projection = self.geometry.project_point(
+                    predicted_point,
+                    route_id=state.route_id,
+                )
+                self._states[track_id] = CourseTrackState(
+                    track_id=track_id,
+                    route_id=state.route_id,
+                    route_number=state.route_number,
+                    pass_index=state.pass_index,
+                    lifecycle="PREDICTED_IN_POLIGON",
+                    s_m=predicted_s,
+                    speed_mps=state.speed_mps,
+                    speed_source=state.speed_source,
+                    projected_point=predicted_point,
+                    projection_residual_m=None,
+                    tangent_course_deg=(
+                        None if projection is None else projection.tangent_course_deg
+                    ),
+                    inside_poligon=True,
+                    prediction_valid=True,
+                    observed_at_s=now,
+                )
                 continue
             self._states[track_id] = CourseTrackState(
                 track_id=track_id,
@@ -532,6 +629,7 @@ class CourseTrackEstimator:
                 lifecycle="OUTSIDE_POLIGON",
                 s_m=state.s_m,
                 speed_mps=0.0,
+                speed_source="UNAVAILABLE",
                 projected_point=None,
                 projection_residual_m=None,
                 tangent_course_deg=None,
@@ -560,8 +658,10 @@ class CourseTrackEstimator:
         if (
             state is None
             or not state.prediction_valid
+            or state.lifecycle != "ACTIVE_IN_POLIGON"
             or state.route_id is None
             or state.speed_mps <= 0
+            or state.speed_source != "MEASURED"
             or not isfinite(projectile_speed_mps)
             or projectile_speed_mps <= 0
             or not isfinite(fixed_latency_s)

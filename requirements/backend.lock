@@ -1,4 +1,4 @@
-# Python 3.11 / Raspberry Pi OS Bookworm backend runtime lock.
+# Python 3.13 / Raspberry Pi OS Trixie backend runtime lock.
 # Direct and transitive packages are exact-pinned.
 packaging==24.2
 msgpack==1.0.8

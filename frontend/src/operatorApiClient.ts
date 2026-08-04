@@ -4,6 +4,7 @@ import type {
   ManualAimCommand,
   ModeRequest,
   OperatorSafetyState,
+  OperatorCoursePrediction,
   OperatorSensorFrame,
   OperatorSensorHealth,
   OperatorTrackState,
@@ -61,6 +62,8 @@ export interface OperatorApiSnapshot {
     scope: 'POLIGON_INTERIOR_ONLY';
     outsideReturnIncluded: false;
     routeCount: 3;
+    targetSpeedPriorMps: number;
+    targetSpeedPriorAuthority: 'committee-provisional-not-spec';
     boundsCourseM: {
       westX: number;
       eastX: number;
@@ -68,6 +71,7 @@ export interface OperatorApiSnapshot {
       northY: number;
     };
   };
+  coursePredictions?: OperatorCoursePrediction[];
   turretCalibration?: {
     calibrationId: string;
     status: string;

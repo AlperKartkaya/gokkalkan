@@ -43,7 +43,7 @@ export const STAGE2_TRAINING_SCENARIOS: Array<readonly [TargetType, TargetType, 
 
 export const competitionSimulationConfig = {
   assumptionNotice:
-    'Rota koordinatları PLG26-A-001-002-00-R1 çiziminden alınır; hız, hedef boyutu ve atış gecikmesi çizimde verilmediği için simülasyon varsayımıdır.',
+    'Rota koordinatları PLG26-A-001-002-00-R1 çiziminden alınır; 0,4 m/s hız komite kaynaklı geçici prior olup şartname değeri değildir ve saha kestirimiyle güncellenir.',
   stage1: {
     timeLimitSeconds: 300,
     targetOrder: ['Balistik Füze', 'Helikopter', 'F16', 'Mini/Micro İHA'] as TargetType[],
@@ -56,7 +56,7 @@ export const competitionSimulationConfig = {
     practiceRounds: numberFromEnv('VITE_GOKKALKAN_STAGE2_PRACTICE_ROUNDS', 8, 5, 24),
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE2_ROUND_SECONDS', 18, 6, 120),
-    targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 2.4, 0.1, 20),
+    targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE2_TARGET_SPEED_MPS', 0.4, 0.1, 20),
     engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE2_ENGAGEMENT_PROGRESS_MIN', 0.2, 0.05, 0.9),
     pointsByDestroyedCount: { 0: -5, 1: 5, 2: 15, 3: 30 } as Record<0 | 1 | 2 | 3, number>,
   },
@@ -64,7 +64,7 @@ export const competitionSimulationConfig = {
     rounds: 8,
     lanes: 3,
     roundDurationSeconds: numberFromEnv('VITE_GOKKALKAN_STAGE3_ROUND_SECONDS', 20, 6, 120),
-    targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE3_TARGET_SPEED_MPS', 2.0, 0.1, 20),
+    targetSpeedMps: numberFromEnv('VITE_GOKKALKAN_STAGE3_TARGET_SPEED_MPS', 0.4, 0.1, 20),
     engagementProgressMin: numberFromEnv('VITE_GOKKALKAN_STAGE3_ENGAGEMENT_PROGRESS_MIN', 0.32, 0.05, 0.9),
     maxRoundPenalty: -10,
     failIfConsecutiveHostileMisses: 4,

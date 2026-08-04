@@ -40,7 +40,13 @@ from .turret_calibration import TurretCalibration
 
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
 Stage = Literal[1, 2, 3]
-TargetType = Literal["F16", "Helikopter", "Balistik Füze", "Mini/Micro İHA"]
+TargetType = Literal[
+    "F16",
+    "Helikopter",
+    "Balistik Füze",
+    "Mini/Micro İHA",
+    "Bilinmeyen",
+]
 FriendFoe = Literal["Dost", "Düşman", "Bilinmeyen"]
 CommandKind = Literal["ModeRequest", "StageRequest", "ManualAimCommand", "FireIntent"]
 SensorSource = Literal["radar", "lidar", "camera", "fusion", "dry-run"]
@@ -368,6 +374,7 @@ class OperatorService:
         disk_min_free_bytes: int = 0,
         lidar_stale_seconds: float = 0.3,
         course_geometry: CourseGeometry | None = None,
+        target_speed_prior_mps: float = 0.4,
         turret_calibration: TurretCalibration | None = None,
         ballistic_compensation: BallisticCompensation | None = None,
     ) -> None:
@@ -413,7 +420,11 @@ class OperatorService:
         self.motion_forbidden_zones = motion_forbidden_zones
         self.fire_forbidden_zones = fire_forbidden_zones
         self.course_geometry = course_geometry or load_course_geometry()
-        self.course_estimator = CourseTrackEstimator(self.course_geometry)
+        self.target_speed_prior_mps = target_speed_prior_mps
+        self.course_estimator = CourseTrackEstimator(
+            self.course_geometry,
+            initial_speed_mps=target_speed_prior_mps,
+        )
         self.turret_calibration = turret_calibration or TurretCalibration.identity()
         self.ballistic_compensation = (
             ballistic_compensation or BallisticCompensation.unverified()
@@ -750,6 +761,20 @@ class OperatorService:
 
     def snapshot(self) -> dict[str, Any]:
         selected = self._find_track(self.mission_flow.selected_target_id or "")
+        course_predictions = []
+        for state in self.course_estimator.predicted_states():
+            range_m, bearing_deg = self.course_geometry.measurement_for_point(
+                state.projected_point
+            )
+            course_predictions.append(
+                {
+                    **state.to_dict(),
+                    "predictedRangeM": round(range_m, 3),
+                    "predictedBearingDeg": round(bearing_deg, 3),
+                    "use": "CAMERA_REACQUISITION_ONLY",
+                    "fireAuthoritative": False,
+                }
+            )
         result = {
             "app": "gokkalkan-operator-api",
             "version": 1,
@@ -777,7 +802,12 @@ class OperatorService:
             "physicalOutputEnabled": False,
             "telemetry": self.telemetry.metadata(),
             "missionFlow": self.mission_flow.to_dict(),
-            "courseGeometry": self.course_geometry.metadata(),
+            "courseGeometry": {
+                **self.course_geometry.metadata(),
+                "targetSpeedPriorMps": self.target_speed_prior_mps,
+                "targetSpeedPriorAuthority": "committee-provisional-not-spec",
+            },
+            "coursePredictions": course_predictions,
             "turretCalibration": self.turret_calibration.to_dict(),
             "ballisticCompensation": self.ballistic_compensation.to_dict(
                 selected.rangeM if selected else None
@@ -1688,7 +1718,7 @@ class OperatorService:
                 normalized.append(
                     (
                         track_id,
-                        str(raw.get("targetType", "Mini/Micro İHA")),
+                        str(raw.get("targetType", "Bilinmeyen")),
                         str(raw.get("friendFoe", "Bilinmeyen")),
                         range_m,
                         bearing_deg,

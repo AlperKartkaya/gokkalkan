@@ -50,7 +50,9 @@ Farklı adres `VITE_GOKKALKAN_CAMERA_STREAM_URL` veya
 `?cameraStream=...` ile verilebilir. Perception bridge çalıştırıldığında aynı
 portta `/camera/frame.jpg` ve `/health` de sunulur.
 
-Nişangâhın mavi merkezi kamera/taret eksenidir. Operatör Space/deadman basılıyken
+Tek Camera Module 3 Standard, yaw ile dönen fakat silah pitch'ini izlemeyen
+LiDAR optik merkezi 700 mm olan sensör köprüsündedir. Nişangâhın mavi merkezi kamera eksenidir;
+`weapon_bore` ile çakıştığı varsayılmaz. Operatör Space/deadman basılıyken
 WASD, ok tuşları veya yön düğmeleriyle tareti doğrudan hareket ettirir. Adım
 `0,25°`, `0,5°`, `1°` veya `2°` seçilebilir. Yazılım limiti ve Safety Gate
 backend'de kalır.
@@ -60,7 +62,9 @@ backend'de kalır.
 2D LiDAR ham tarama sayfası kaldırılmıştır. Seçili hedefe ait boresight menzili
 Aşama 1 kamera görünümünün sol üstünde canlı sayı olarak gösterilir.
 
-`config/calibration/airsoft_trajectory.toml`, fiziksel atış denemelerinden gelen
+Kamera pitch yapmadığı için sarı darbe noktası; kalibre edilmiş
+`camera_main → weapon_bore` extrinsic'i ile aşağıdaki balistik tablonun birlikte
+uygulanmasıyla hesaplanmalıdır. `config/calibration/airsoft_trajectory.toml`, fiziksel atış denemelerinden gelen
 `range_m → elevation_deg` noktalarını taşır. En az iki nokta ve `status =
 "ACTIVE"` olmadıkça sarı darbe noktası gösterilmez. Aktif tabloda ara menziller
 doğrusal enterpolasyonla hesaplanır; tablo dışı menziller fail-closed kalır.

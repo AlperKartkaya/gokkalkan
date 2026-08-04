@@ -1,7 +1,7 @@
 """Gökkalkan Kamera Yakala Nodu.
 
 Platform tespiti:
-  Raspberry Pi Camera Module 3 (CSI) → Picamera2 (libcamera tabanlı)
+  Tek Raspberry Pi Camera Module 3 Standard (CSI) → Picamera2 (libcamera tabanlı)
   USB kamera / geliştirme makinesi   → OpenCV VideoCapture (fallback)
 
 Kullanım:
@@ -63,7 +63,7 @@ class CameraNode:
 
     Başarıyla yakalanan son kare `get_latest_frame()` ile alınır.
     Platform tespiti otomatik yapılır:
-      - Picamera2 kuruluysa → Raspberry Pi Camera Module 3
+      - Picamera2 kuruluysa → tek Raspberry Pi Camera Module 3 Standard
       - cv2 kuruluysa       → OpenCV VideoCapture (USB / /dev/video0)
       - Hiçbiri yoksa       → Mock (None döner, uyarı loglanır)
     """
@@ -173,6 +173,8 @@ class CameraNode:
         )
         return {
             "backend":         self._backend,
+            "cameraModel":     "Raspberry Pi Camera Module 3 Standard",
+            "cameraCount":     1,
             "running":         self._running,
             "framesCaptured":  self._frames_captured,
             "lastCaptureAt":   self._last_capture_at,
