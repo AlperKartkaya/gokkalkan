@@ -27,7 +27,7 @@ def is_probable_balloon_shape(*, area: float, perimeter: float, width: float, he
         return False
     circularity = 4.0 * 3.141592653589793 * area / (perimeter * perimeter)
     aspect_ratio = width / height
-    return circularity >= 0.72 and 0.72 <= aspect_ratio <= 1.28
+    return circularity >= 0.86 and 0.72 <= aspect_ratio <= 1.28
 
 # numpy ve opencv isteğe bağlı
 try:
@@ -244,7 +244,8 @@ class FrameProcessor:
     RED_HIGH2 = (180, 255, 255)
 
     # HSV Mavi
-    BLUE_LOW  = (100, 100, 60)
+    # Yayımlanan dost rengi #00A3E0 OpenCV HSV uzayında yaklaşık H=98'dir.
+    BLUE_LOW  = (88, 100, 60)
     BLUE_HIGH = (130, 255, 255)
 
     # Minimum kontur alanı (piksel²) — gürültü eşiği

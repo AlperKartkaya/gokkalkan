@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "2026-08-20-camera3-session01",
+  "capturedAt": "2026-08-20T10:00:00+03:00",
+  "camera": "Raspberry Pi Camera Module 3 Standard",
+  "printInstanceId": "PRINT-R2-01",
+  "backgroundId": "BLACK-CURTAIN-01",
+  "distanceMeters": null,
+  "lighting": "TODO",
+  "notes": "Mesafe görüntü bazında değişiyorsa dosya adında veya ayrı metadata dosyasında kaydedin."
+}

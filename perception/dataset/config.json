@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "randomSeed": 20260808,
+  "imageSize": [640, 640],
+  "syntheticSamplesPerPresentationClass": 40,
+  "syntheticNegativeSamples": 24,
+  "distanceMeters": [1.0, 15.0],
+  "yawDegrees": [-30.0, 30.0],
+  "inclineDegrees": [-15.0, 15.0],
+  "brightnessFactor": [0.65, 1.25],
+  "gaussianNoiseStd": [0.0, 8.0],
+  "blurKernelChoices": [0, 3, 5],
+  "jpegQuality": [72, 96],
+  "realSplitPercent": {"train": 70, "val": 15, "test": 15},
+  "classes": [
+    "dusman_drone_kirmizi",
+    "dusman_helikopter_kirmizi",
+    "dusman_f16_kirmizi",
+    "dusman_fuze_kirmizi",
+    "dost_helikopter_camgobegi",
+    "dost_f16_camgobegi",
+    "balon"
+  ]
+}

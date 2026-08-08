@@ -21,6 +21,7 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 | [`tech_stack.md`](tech_stack.md) | Teknik yığın, donanım mimarisi, CAN protokolü ve Safety Gate |
 | [`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md) | Nihai iki eksenli taret, tabana göre 700 mm / yere göre yaklaşık 1300 mm LiDAR merkezi, tek kamera ve AI HAT+ referansı |
 | [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md) | Video hedef baskıları, gerçek kamera veri toplama, grup split, augmentation, YOLO ve Hailo-8 kabul planı |
+| [`hedef_veri_seti_uygulama_rehberi.md`](hedef_veri_seti_uygulama_rehberi.md) | Çalışan augmentation, gerçek fotoğraf pull/import, YOLO dataset ve smoke eğitim komutları |
 | [`can_icd_v1.md`](can_icd_v1.md) | Sürümlü CAN frame, CRC, sequence ve ACK/NACK sözleşmesi |
 | [`message_contracts.md`](message_contracts.md) | Mission Core komut/olay şeması ve mesaj sıralaması |
 | [`adr/`](adr/) | Mimari Karar Kayıtları (ADR-001 … ADR-004) |

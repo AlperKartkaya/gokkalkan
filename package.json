@@ -22,6 +22,9 @@
     "test:competition": "npm --prefix frontend run test:competition --",
     "build": "npm --prefix frontend run build --",
     "typecheck": "npm --prefix frontend run typecheck --",
-    "test:unit": "npm --prefix frontend run test:unit --"
+    "test:unit": "npm --prefix frontend run test:unit --",
+    "dataset:pull": ".venv-perception/bin/python perception/tools/dataset_pipeline.py pull-captures",
+    "dataset:prepare": ".venv-perception/bin/python perception/tools/dataset_pipeline.py prepare",
+    "model:train:smoke": ".venv-training/bin/python perception/tools/train_yolo.py --allow-unverified --epochs 1 --name target-smoke"
   }
 }

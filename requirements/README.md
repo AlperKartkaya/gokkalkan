@@ -2,7 +2,8 @@
 
 - `backend.lock`: Backend, CAN ve TFA50-L UART çalışma bağımlılıkları.
 - `dev.lock`: Backend kilidine ek test/coverage araçları.
-- `perception-dev.lock`: Pi olmayan geliştirme/CI için NumPy ve headless OpenCV.
+- `perception-dev.lock`: Pi olmayan geliştirme/CI ve augmentation için NumPy ve headless OpenCV.
+- `training-dev.lock`: Python 3.11 üzerinde YOLO araştırma/smoke eğitimi için kilitli Ultralytics/Torch yığını (`training.in` kaynağından üretilir).
 
 Hedef Raspberry Pi’de NumPy, OpenCV ve Picamera2 aynı Raspberry Pi OS Trixie
 deposundan `python3-numpy`, `python3-opencv` ve `python3-picamera2` olarak

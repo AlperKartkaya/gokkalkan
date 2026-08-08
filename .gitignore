@@ -6,6 +6,8 @@ __pycache__/
 *$py.class
 *.egg-info/
 .venv/
+.venv-perception/
+.venv-training/
 venv/
 env/
 pip-log.txt
@@ -51,6 +53,16 @@ CMakeFiles/
 *.log
 telemetry_data/
 recordings/
+
+# Perception capture/dataset/model çalışma alanları. Yalnız sözleşme,
+# örnek metadata ve .gitkeep dosyaları repoda tutulur.
+perception/dataset/captures/drop/*/
+perception/dataset/captures/store/*
+!perception/dataset/captures/store/.gitkeep
+perception/dataset/generated/*
+!perception/dataset/generated/.gitkeep
+perception/dataset/model_runs/*
+!perception/dataset/model_runs/.gitkeep
 
 # ==========================================
 # PySide6 / Qt Build Files
