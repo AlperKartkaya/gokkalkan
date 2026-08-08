@@ -2,7 +2,7 @@
 
 Şartname V1.4 hedef renk kodlaması:
   Aşama 1/2 → Kırmızı hedef; dost/düşman sınıflandırması yapılmaz
-  Aşama 3   → Kırmızı düşman, mavi dost
+  Aşama 3   → Kırmızı düşman, camgöbeği dost; kırmızı balon IFF kanıtı değildir
 
 Algı çıktısı: TrackCandidate listesi → perception_bridge → /tracks/update API
 
@@ -18,6 +18,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def is_probable_balloon_shape(*, area: float, perimeter: float, width: float, height: float) -> bool:
+    """Kırmızı balon için yalnız şekil tabanlı, konservatif ön filtre."""
+
+    if perimeter <= 0.0 or width <= 0.0 or height <= 0.0:
+        return False
+    circularity = 4.0 * 3.141592653589793 * area / (perimeter * perimeter)
+    aspect_ratio = width / height
+    return circularity >= 0.72 and 0.72 <= aspect_ratio <= 1.28
 
 # numpy ve opencv isteğe bağlı
 try:
@@ -317,7 +327,9 @@ class FrameProcessor:
             mask = cv2.bitwise_or(mask_r1, mask_r2)
             color_label = "unknown"
         else:
-            # V1.4 Aşama 3: kırmızı düşman / mavi dost ayrımı
+            # V1.4 + güncel hedef tablosu: kırmızı düşman / camgöbeği dost.
+            # Camgöbeği (#00A3E0) mevcut OpenCV "blue" HSV bandının içindedir;
+            # taşıma sözleşmesindeki color değeri geriye uyumluluk için blue kalır.
             mask_r1   = cv2.inRange(hsv, self.RED_LOW1,  self.RED_HIGH1)
             mask_r2   = cv2.inRange(hsv, self.RED_LOW2,  self.RED_HIGH2)
             mask_red  = cv2.bitwise_or(mask_r1, mask_r2)
@@ -355,6 +367,21 @@ class FrameProcessor:
                 clr = "red" if red_count >= blue_count else "blue"
             else:
                 clr = color_label
+
+            if stage == 3 and clr == "red":
+                # Bütün maketlerin altında kırmızı ve yaklaşık dairesel bir
+                # imha balonu bulunur. Balon rengi dost/düşman kanıtı değildir;
+                # onu bağımsız bir düşman izi olarak yayınlamak dost hedefe
+                # ateş riski doğurur. Doğrulanmış maket+balon ilişkilendiricisi
+                # gelene kadar dairesel kırmızı blob fail-closed elenir.
+                perimeter = float(cv2.arcLength(cnt, True))
+                if is_probable_balloon_shape(
+                    area=area,
+                    perimeter=perimeter,
+                    width=float(w),
+                    height=float(h),
+                ):
+                    continue
 
             detections.append((cx, cy, float(w), float(h), area, clr))
 

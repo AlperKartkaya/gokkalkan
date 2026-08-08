@@ -7,7 +7,7 @@ Buradaki eski `frontend/src/scenarios/` özetleri; demo, replay, QA veya video p
 Şartname kaynakları:
 
 - `docs/sartname_v4.txt:720-755` — Manuel/Otonom Mod, Acil Durdur, bakım ve patlayıcı yasağı.
-- `docs/sartname_v4.txt:701-718` — Aşama 1/2 kırmızı hedef, Aşama 3 kırmızı düşman/mavi dost ve kırmızı imha balonu.
+- `docs/sartname_v4.txt:701-718` + operasyon güncellemesi — Aşama 1/2 kırmızı hedef, Aşama 3 kırmızı düşman/camgöbeği dost ve bütün maketlerin altında kırmızı imha balonu.
 - `docs/sartname_v4.txt:759-820` — Aşama 1, 5/10/15 m, 20 puan geçiş eşiği ve Manuel Mod yükümlülükleri.
 - `docs/sartname_v4.txt:822-858` — Aşama 2 otonom tespit/takip ve parkurdan çıkmadan imha yükümlülüğü.
 - `docs/sartname_v4.txt:862-907` — Aşama 3 doğru hedefi doğru menzilde imha ve dört ardışık kaçırmada başarısızlık yükümlülüğü.

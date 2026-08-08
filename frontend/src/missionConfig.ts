@@ -119,7 +119,7 @@ export const VIDEO_EVIDENCE_STEPS: VideoEvidenceStep[] = [
   {
     id: 'Y7',
     label: 'Dost/düşman otonom gösterimi',
-    description: 'Opsiyonel kırmızı düşman ve mavi dost koruma kanıtı',
+    description: 'Opsiyonel kırmızı düşman ve camgöbeği dost koruma kanıtı',
     match: (event) => event.stage === 3 && event.decision === 'AUTO_ENGAGE',
   },
 ];

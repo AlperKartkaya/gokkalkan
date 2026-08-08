@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "assetSetId": "GOKKALKAN-TARGET-PRINT-SPEC-V4-P14-R2",
+  "purpose": "REFERENCE_DATASET_SEED_AND_PRINT_PROTOTYPE_ONLY",
+  "trainingReady": false,
+  "sourceDocument": "docs/sartname_v4.pdf",
+  "sourcePhysicalPage": 14,
+  "colorAuthority": "docs/images/hedef_maket_bilgileri.png",
+  "assets": [
+    {
+      "classId": 0,
+      "presentationClass": "Düşman Drone",
+      "targetType": "Mini/Micro İHA",
+      "friendFoe": "Düşman",
+      "colorHex": "#F50A0A",
+      "approxPhysicalSize": "30 cm",
+      "source": "source_spec_page14/mini_micro_iha.png",
+      "sourceSha256": "383d8ae1695a6bd0ff90e99d3416dddf703affa43b551f72f651612af15da02e",
+      "blackBackground": "black_background/dusman_drone_kirmizi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "b28aa2984ac21c700fe6a2e2a739c3f7ac4877a3312ca97d3a70a3fc9d628116",
+      "pixels": {
+        "pixelWidth": 355,
+        "pixelHeight": 213
+      }
+    },
+    {
+      "classId": 1,
+      "presentationClass": "Düşman Helikopter",
+      "targetType": "Helikopter",
+      "friendFoe": "Düşman",
+      "colorHex": "#F50A0A",
+      "approxPhysicalSize": "50 cm",
+      "source": "source_spec_page14/helikopter.png",
+      "sourceSha256": "286a2edd52fe782214f9b979ef63ed87fdc4412ad1990d31f84de9a8ba285e3f",
+      "blackBackground": "black_background/dusman_helikopter_kirmizi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "9789873f3ab671b1c8959dc0f272388485a715efa832416e1d72395c772d1154",
+      "pixels": {
+        "pixelWidth": 421,
+        "pixelHeight": 213
+      }
+    },
+    {
+      "classId": 2,
+      "presentationClass": "Düşman F16",
+      "targetType": "F16",
+      "friendFoe": "Düşman",
+      "colorHex": "#F50A0A",
+      "approxPhysicalSize": "50 cm",
+      "source": "source_spec_page14/f16.png",
+      "sourceSha256": "f9c35ff3a8df4e265a68979e42fdec042b6801950f78971bee94523be34f8c60",
+      "blackBackground": "black_background/dusman_f16_kirmizi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "88da5ab9a2c2b6f38b3f029a158d9f4ee0d6c71b27d63adfebe51fe0ad410cfc",
+      "pixels": {
+        "pixelWidth": 361,
+        "pixelHeight": 258
+      }
+    },
+    {
+      "classId": 3,
+      "presentationClass": "Düşman Füze",
+      "targetType": "Balistik Füze",
+      "friendFoe": "Düşman",
+      "colorHex": "#F50A0A",
+      "approxPhysicalSize": "boy: 40 cm",
+      "source": "source_spec_page14/balistik_fuze.png",
+      "sourceSha256": "74d9f87f0882436a45e5a6ffff67a451e76ac92bb08279b307927095784dce23",
+      "blackBackground": "black_background/dusman_fuze_kirmizi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "2395fe410dc5162083219827519c6db32d0f61c428c812e0ef28de1c0750e44d",
+      "pixels": {
+        "pixelWidth": 380,
+        "pixelHeight": 195
+      }
+    },
+    {
+      "classId": 4,
+      "presentationClass": "Dost Helikopter",
+      "targetType": "Helikopter",
+      "friendFoe": "Dost",
+      "colorHex": "#00A3E0",
+      "approxPhysicalSize": "50 cm",
+      "source": "source_spec_page14/helikopter.png",
+      "sourceSha256": "286a2edd52fe782214f9b979ef63ed87fdc4412ad1990d31f84de9a8ba285e3f",
+      "blackBackground": "black_background/dost_helikopter_camgobegi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "85b3e15a6e3a70e9745501e0da330b9b1d199c51c29fd6e1046fbb15f4544c61",
+      "pixels": {
+        "pixelWidth": 421,
+        "pixelHeight": 213
+      }
+    },
+    {
+      "classId": 5,
+      "presentationClass": "Dost F16",
+      "targetType": "F16",
+      "friendFoe": "Dost",
+      "colorHex": "#00A3E0",
+      "approxPhysicalSize": "50 cm",
+      "source": "source_spec_page14/f16.png",
+      "sourceSha256": "f9c35ff3a8df4e265a68979e42fdec042b6801950f78971bee94523be34f8c60",
+      "blackBackground": "black_background/dost_f16_camgobegi_siyah_arka_plan.png",
+      "blackBackgroundSha256": "6f1cdb0174620fac2da72929ad1a99e46a2eec79daa9b0ef9b59339a586b8f0f",
+      "pixels": {
+        "pixelWidth": 361,
+        "pixelHeight": 258
+      }
+    }
+  ],
+  "balloon": {
+    "colorHex": "#F50A0A",
+    "diameterCmApprox": [
+      12,
+      16
+    ],
+    "position": "below_target",
+    "determinesDestruction": true,
+    "determinesFriendFoe": false
+  }
+}

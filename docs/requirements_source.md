@@ -15,6 +15,15 @@ referansı ve otomatik kontrol içindir; tablo, şekil veya metin çıkarma hata
 PDF’e bakılır. KTR ve Ön Tasarım Raporu geçmiş tasarım kayıtlarıdır; yeni şartname
 ile çeliştiklerinde güncel karar ADR ile kaydedilir ve v1.4 uygulanır.
 
+## Sonraki tarihli operasyon bilgilendirmesi
+
+Ekibin 8 Ağustos 2026'da sağladığı hedef/parkur mesajı ve görselleri
+[`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md)
+dosyasında tutulur. Bu kaynak; dost rengini `#00A3E0` camgöbeği olarak
+kesinleştirir, balon çapını yaklaşık 12–16 cm, parkuru 10×16 m, hedef yüksekliğini
+yaklaşık 1,30 m ve sistem masasını 0,60 m olarak bildirir. Duyuru metni yeni bir
+şartname PDF'i değildir; yeni resmî doküman geldiğinde bu kayıt yeniden doğrulanır.
+
 ## Kanonik geometrik ek
 
 - Teknik çizim:

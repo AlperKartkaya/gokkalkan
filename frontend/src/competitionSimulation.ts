@@ -35,10 +35,10 @@ export const STAGE2_TRAINING_SCENARIOS: Array<readonly [TargetType, TargetType, 
   ['Mini/Micro İHA', 'Balistik Füze', 'Mini/Micro İHA'],
   ['Balistik Füze', 'Mini/Micro İHA', 'Mini/Micro İHA'],
   ['Mini/Micro İHA', 'Balistik Füze', 'Balistik Füze'],
-  ['F16', 'Balistik Füze', 'Helikopter'],
-  ['Mini/Micro İHA', 'Helikopter', 'F16'],
-  ['Balistik Füze', 'F16', 'Mini/Micro İHA'],
-  ['Helikopter', 'Mini/Micro İHA', 'Balistik Füze'],
+  ['Balistik Füze', 'Mini/Micro İHA', 'Balistik Füze'],
+  ['Mini/Micro İHA', 'Balistik Füze', 'Mini/Micro İHA'],
+  ['Balistik Füze', 'Mini/Micro İHA', 'Mini/Micro İHA'],
+  ['Mini/Micro İHA', 'Balistik Füze', 'Balistik Füze'],
 ];
 
 export const competitionSimulationConfig = {
@@ -47,6 +47,7 @@ export const competitionSimulationConfig = {
   stage1: {
     timeLimitSeconds: 300,
     targetOrder: ['Balistik Füze', 'Helikopter', 'F16', 'Mini/Micro İHA'] as TargetType[],
+    orderPolicy: 'hakem-random-observed-at-runtime',
     wrongTargetPenalty: -5,
     maxBaseScore: 80,
     bonusFormula: '20 × kalan saniye / 300',
@@ -152,7 +153,7 @@ function movingTrack(params: {
     velocity,
     direction: stage === 2
       ? `Poligon giriş→çıkış · Rota ${lane} · ${velocity.toFixed(1)} m/s varsayım${uavTrainingNote}`
-      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Mavi/dost'} · Rota ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}${uavTrainingNote}`,
+      : `${friendFoe === 'Düşman' ? 'Kırmızı/düşman' : 'Camgöbeği/dost'} · Rota ${lane} · ${hostileLane === lane ? 'ana hedef' : 'korunacak unsur'}${uavTrainingNote}`,
     rangeGate: gate,
     candidate,
   };
@@ -196,7 +197,7 @@ export function generateCompetitionTracks(stage: Stage, elapsedInRound: number, 
 
   const hostileLane = (((round - 1) % 3) + 1) as 1 | 2 | 3;
   const hostileType = HOSTILE_TYPES_BY_ROUND[(round - 1) % HOSTILE_TYPES_BY_ROUND.length];
-  const friendlyTypes: TargetType[] = round % 2 === 0 ? ['F16', 'Mini/Micro İHA'] : ['Helikopter', 'Balistik Füze'];
+  const friendlyTypes: TargetType[] = round % 2 === 0 ? ['F16', 'Helikopter'] : ['Helikopter', 'F16'];
   let friendlyIndex = 0;
   return ([1, 2, 3] as const).map((lane) => {
     const isHostile = lane === hostileLane;

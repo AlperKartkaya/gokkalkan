@@ -40,11 +40,11 @@ describe('competition mechanics simulator', () => {
     expect(tracks.every((track) => track.direction.includes('Poligon giriş→çıkış'))).toBe(true);
   });
 
-  it('continues Stage 2 practice scenarios past official round 4 with varied target types', () => {
+  it('continues Stage 2 practice past round 4 using only announced drone and missile types', () => {
     expect(STAGE2_TRAINING_SCENARIOS).toHaveLength(8);
     const roundFiveTracks = generateCompetitionTracks(2, 1, 5);
     expect(roundFiveTracks.map((track) => track.id)).toEqual(['S2-R5-L1', 'S2-R5-L2', 'S2-R5-L3']);
-    expect(new Set(roundFiveTracks.map((track) => track.type))).toEqual(new Set(['F16', 'Balistik Füze', 'Helikopter']));
+    expect(new Set(roundFiveTracks.map((track) => track.type))).toEqual(new Set(['Balistik Füze', 'Mini/Micro İHA']));
   });
 
   it('updates Stage 2 and Stage 3 target positions on sub-second time deltas', () => {
@@ -84,6 +84,7 @@ describe('competition mechanics simulator', () => {
     const tracks = generateCompetitionTracks(3, 3, 1);
     expect(tracks.filter((track) => track.friendFoe === 'Düşman')).toHaveLength(1);
     expect(tracks.filter((track) => track.friendFoe === 'Dost')).toHaveLength(2);
+    expect(tracks.filter((track) => track.friendFoe === 'Dost').every((track) => ['F16', 'Helikopter'].includes(track.type))).toBe(true);
     expect(stage3TargetScore('F16')).toBe(30);
     expect(stage3TargetScore('Helikopter')).toBe(20);
     expect(stage3TargetScore('Balistik Füze')).toBe(20);

@@ -38,7 +38,9 @@ ekibin kesinleştirdiği tasarım ölçüsüdür.
    `weapon_pitch` ile yukarı-aşağı dönmez.
 4. LiDAR optik merkezinin sistemin **en alt fiziksel noktasından düşey
    yüksekliği 700 mm (0,700 m)** olacak şekilde profil ayarlanır ve mekanik
-   olarak kilitlenir. Hedeflerin beklenen geliş yüksekliği de 700 mm’dir.
+   olarak kilitlenir. Bu değer sistem tabanına göredir. Sistem 600 mm masaya
+   konduğunda optik merkezin yerden yüksekliği yaklaşık `600 + 700 = 1300 mm`
+   olur ve güncel hedef hareket yüksekliğiyle hizalanır.
 5. Kamera LiDAR ile aynı sensör köprüsündedir ve hedefleri karşıdan görecek
    biçimde hizalanır. Görselde `L` üstte, `C` altta gösterilmiştir; aralarındaki
    kesin düşey/yatay mesafe görselden uydurulmaz.
@@ -87,6 +89,8 @@ dönüşümü ile menzile bağlı balistik elevasyon birlikte kalibre edilmelidi
 | `camera.model` | `Raspberry Pi Camera Module 3 Standard` | Kesinleşmiş karar |
 | `camera.horizontal_fov_deg` | `66.0` üretici nominali | Üretici verisi; kamera kalibrasyonu bunun yerini alır |
 | `lidar.mount_height_m` | `0.700` | Kesinleşmiş tasarım hedefi |
+| `site.table_height_m` | `0.600` | Güncel operasyon bilgilendirmesi; dünya koordinatı hesabı |
+| `site.target_center_height_m` | `1.300` | Yaklaşık/değişebilir; fiziksel doğrulama bekler |
 | `camera.follows_yaw` / `lidar.follows_yaw` | `true` | Kesinleşmiş kinematik |
 | `camera.follows_weapon_pitch` / `lidar.follows_weapon_pitch` | `false` | Kesinleşmiş kinematik |
 | `accelerator.model` | `Raspberry Pi AI HAT+ 26 TOPS` | Kesinleşmiş karar |

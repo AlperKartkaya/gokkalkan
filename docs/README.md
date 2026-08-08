@@ -12,13 +12,15 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 | [`parkur_geometri_referansi.md`](parkur_geometri_referansi.md) | Parkur geometrisi kanonik referansı ve deterministik fallback modeli |
 | [`requirements_source.md`](requirements_source.md) | Şartname sürümü, hash ve güncelleme prosedürü |
 | [`requirements_traceability.md`](requirements_traceability.md) | Gereksinim → modül / test / telemetri / video izlenebilirlik matrisi |
+| [`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md) | Güncel hedef tablosu, balon, 10×16 m parkur ve 60/70/130 cm yükseklik sözleşmesi |
 
 ## 🏗️ Mimari ve Teknik Tasarım
 
 | Dosya | Açıklama |
 |-------|----------|
 | [`tech_stack.md`](tech_stack.md) | Teknik yığın, donanım mimarisi, CAN protokolü ve Safety Gate |
-| [`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md) | Nihai iki eksenli taret, 700 mm LiDAR merkezi, tek kamera ve AI HAT+ yazılım referansı |
+| [`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md) | Nihai iki eksenli taret, tabana göre 700 mm / yere göre yaklaşık 1300 mm LiDAR merkezi, tek kamera ve AI HAT+ referansı |
+| [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md) | Video hedef baskıları, gerçek kamera veri toplama, grup split, augmentation, YOLO ve Hailo-8 kabul planı |
 | [`can_icd_v1.md`](can_icd_v1.md) | Sürümlü CAN frame, CRC, sequence ve ACK/NACK sözleşmesi |
 | [`message_contracts.md`](message_contracts.md) | Mission Core komut/olay şeması ve mesaj sıralaması |
 | [`adr/`](adr/) | Mimari Karar Kayıtları (ADR-001 … ADR-004) |

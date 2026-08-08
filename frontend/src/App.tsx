@@ -87,7 +87,7 @@ const tutorialSteps: Array<{
     id: 'stage3-friend',
     stage: 3,
     title: 'Dost hedefler korunur',
-    message: 'Aşama 3’te her turda 1 kırmızı/düşman ve 2 mavi/dost unsur vardır. Dost hedef vurulmamalı; düşman hedef kendi menzil kapısında imha edilmelidir.',
+    message: 'Aşama 3’te her turda 1 kırmızı/düşman ve 2 camgöbeği/dost unsur vardır. Bütün balonlar kırmızıdır; dost maketle ilişkili balon vurulmamalıdır.',
     highlight: 'guidance',
   },
 ];
@@ -389,7 +389,7 @@ function CourseMap({
           ? <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Kırmızı hedef</span>
           : <>
               <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="enemy-dot" />Kırmızı · Düşman</span>
-              <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Mavi · Dost</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="friend-dot" />Camgöbeği · Dost</span>
             </>}
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-[#cde1ec]"><i className="window-dot" />Menzil uygun</span>
       </div>

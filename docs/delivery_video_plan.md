@@ -37,7 +37,7 @@ Kaynak: `docs/sartname_v4.txt:462-509`.
 | 4 | `VID-Y4-ESTOP-FIRE` | Ateş sırasında Acil Durdur ile ateşin kesilmesi | `ESTOP_CHANGE`, fire command/result ve interlock olayı | Güvenli yapay yükle ateş hattı kesme testi |
 | 5 | `VID-Y5-TRACK` | Yan ve yükseliş ekseninde hareket eden hedef takibi | Track ID, bearing, pan/tilt feedback, frame index | Gerçek hareketli hedefle yaw/elev takip |
 | 6 | `VID-Y6-CLASSIFY` | 5/10/15 m hedef tipi tespit/sınıflandırma | Classification, TFA50-L range, UI hedef tipi | Gerçek hedef yüzeyi ve kayıtlı mesafe |
-| 7 | `VID-Y7-IFF` *(opsiyonel)* | Yaklaşık 10 m’de 1 kırmızı düşman ve 2 mavi dost arasından düşmanı otonom imha; 10 sn sonra Acil Durdur, 10 sn sonra kapatma | Classification, Safety Gate, `AUTO_ENGAGE`, `ESTOP_CHANGE` | Dost hedefe ateş edilmediğinin entegre fiziksel gösterimi |
+| 7 | `VID-Y7-IFF` *(opsiyonel)* | Yaklaşık 10 m’de 1 kırmızı düşman ve 2 camgöbeği dost arasından düşmanın altındaki kırmızı balonu otonom imha; 10 sn sonra Acil Durdur, 10 sn sonra kapatma | Maket sınıflandırma + maket→balon ilişkisi, Safety Gate, `AUTO_ENGAGE`, `ESTOP_CHANGE` | Dost makete ait kırmızı balona ateş edilmediğinin entegre fiziksel gösterimi |
 
 `frontend/src/missionConfig.ts` içindeki `Y1`–`Y7` sırası bu tabloyla aynı
 kalmalıdır. Fiziksel kabul sütunu tamamlanmadan yalnız simülasyon videosu

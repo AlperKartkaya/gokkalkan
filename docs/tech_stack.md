@@ -47,7 +47,7 @@ Bu aşama Otonom Mod içinde dost-düşman ayrımı gerektirir. Her turda 1 dü�
 
 Yazılım gereksinimleri:
 
-- Dost hedefi vurmamak için hedef tipi, renk/şekil ve görev bağlamını birlikte değerlendirme.
+- Dost hedefi vurmamak için hedef tipi, maket rengi/şekli ve görev bağlamını birlikte değerlendirme; bütün balonlar kırmızı olduğundan balon rengini dost/düşman kanıtı saymama.
 - Hedef tipine göre menzil kapısı uygulama:
   - F16: `10–15 m` aralığında imha puanlanır.
   - Helikopter ve Balistik Füze: `5–15 m` aralığında imha puanlanır.
@@ -129,7 +129,9 @@ OpenCV fallback),
 `accelerator.py` (AI HAT+ 26 TOPS/Hailo-8 ve HEF hazırlık health sınırı),
 `perception_bridge.py` (ayrı `systemd` process’i; bounded latest-wins queue,
 heartbeat ve POST `/tracks/update`). Aşama 2 renk-nötr, Aşama 3
-kırmızı=Düşman/mavi=Dost. Heartbeat kaybı Mission Core’da perception fault’u
+kırmızı=Düşman/camgöbeği (`#00A3E0`)=Dost. Bütün maketlerin altındaki kırmızı
+balon ayrı imha nesnesidir; maket→balon ilişkisi kurulmadan ateş yetkisi yoktur.
+Heartbeat kaybı Mission Core’da perception fault’u
 oluşturup canlı arm iznini kapatır.
 
 Önerilen öncelik:
@@ -141,9 +143,12 @@ oluşturup canlı arm iznini kapatır.
 5. Aşama 3 için dost-düşman ayrımı ve menzil kapısı. ✅ Renk sınıflaması,
    TFA50-L UART adapterı ve kamera-yaw-menzil ilişkilendirme hattı uygulandı;
    gerçek 5/10/15 m kalibrasyon kanıtı imalat sonrası açık.
-6. Hedef tip modeli: AI HAT+ 26 TOPS üzerinde çalışacak detector/classifier için
-   HEF artefaktı ve gerçek+CAD sentetik veri seti seçilecek; model doğrulanana
-   kadar tip `Bilinmeyen` kalır. ⚠️ Donanım health sınırı hazır, model açık.
+6. Hedef tip modeli: dört özgün maket geometrisinden üretilen altı kanonik sunum varyantı
+   `perception/assets/target_prints/` altında sürümlenmiştir. Gerçek Camera
+   Module 3 baskı kayıtları ana veri olacak; YOLOv8n ve klasik HSV/template
+   baseline aynı grup-split testinde karşılaştırılacaktır. Kazanan model HEF'e
+   çevrilip AI HAT+ üzerinde doğrulanana kadar tip `Bilinmeyen` kalır. Ayrıntı:
+   `docs/hedef_gorseli_yolo_veri_plani.md`.
 
 ### 4.4. `frontend/` — Simülatör ve Operatör Arayüzleri
 
@@ -227,8 +232,9 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
   `GET /commands/{id}` komut izleme, SQLite WAL + segmentli JSONL telemetri, `/readiness`,
   `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
 - **Görüntü işleme:** OpenCV renk/adayı çıkarma korunur; tip tespiti için
-  doğrulanmış HEF model AI HAT+ üzerinde çalıştırılacaktır. Modelin Safety Gate
-  veya ateş yetkisi yoktur.
+  gerçek basılı hedef kayıtlarıyla klasik HSV/template ve YOLOv8n baseline'ları
+  karşılaştırılır; doğrulanmış kazanan HEF model AI HAT+ üzerinde
+  çalıştırılacaktır. Modelin Safety Gate veya ateş yetkisi yoktur.
 - **Kamera:** Tek Raspberry Pi Camera Module 3 Standard, Picamera2, üretici
   nominali 66° yatay FoV; intrinsics imalat sonrası kalibrasyonla değiştirilir.
 - **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path("perception/src").resolve()))
 from aim_alignment import AimCalibration, calibrated_aim_error
 from camera_node import CameraNode
 from evaluate_dataset import evaluate_records
-from frame_processor import CentroidTracker, FrameProcessor
+from frame_processor import CentroidTracker, FrameProcessor, is_probable_balloon_shape
 from gokkalkan_backend.lidar_adapter import TFA50LSerialAdapter, TFA50LSerialConfig
 from gokkalkan_backend.calibration_workflow import evaluate_lidar_observations
 from gokkalkan_backend.range_fusion import (
@@ -27,6 +27,11 @@ from gokkalkan_backend.mission_core import MissionCore
 from gokkalkan_backend.sensor_pipeline import TFA50LFusionPipeline
 
 pytestmark = [pytest.mark.safety, pytest.mark.replay]
+
+
+def test_balloon_shape_filter_is_conservative_and_dependency_free() -> None:
+    assert is_probable_balloon_shape(area=615.75, perimeter=87.96, width=29, height=29)
+    assert not is_probable_balloon_shape(area=600, perimeter=120, width=45, height=18)
 
 
 def test_stage2_perception_accepts_red_and_rejects_blue_targets() -> None:
@@ -61,6 +66,22 @@ def test_stage3_perception_classifies_red_enemy_and_blue_friend() -> None:
     ).process(frame, stage=3)
 
     assert {candidate.friend_foe for candidate in candidates} == {"Düşman", "Dost"}
+
+
+def test_stage3_does_not_classify_red_balloon_as_enemy_target() -> None:
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
+    frame = np.zeros((120, 120, 3), dtype=np.uint8)
+    cv2.circle(frame, (30, 80), 14, (255, 0, 0), -1)
+    frame[15:45, 70:105] = (0, 163, 224)  # güncel dost camgöbeği #00A3E0
+
+    candidates = FrameProcessor(
+        image_width=120,
+        image_height=120,
+        min_area_px=100,
+    ).process(frame, stage=3)
+
+    assert [candidate.friend_foe for candidate in candidates] == ["Dost"]
 
 
 def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy() -> None:
