@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 
 sys.path.insert(0, str(Path("perception/tools").resolve()))
 
@@ -82,8 +84,11 @@ def test_pull_is_content_addressed_and_idempotent(tmp_path: Path) -> None:
 
 
 def test_real_capture_auto_label_links_cyan_friend_to_red_balloon() -> None:
-    np = __import__("numpy")
-    cv2 = __import__("cv2")
+    # NumPy/OpenCV are optional outside perception environments. Both GitHub
+    # workflows install perception-dev.lock, so this test executes in CI while
+    # remaining collectable in backend-only developer environments.
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
     image = np.zeros((240, 320, 3), dtype=np.uint8)
     image[40:125, 80:240] = (224, 163, 0)  # BGR karşılığı: RGB #00A3E0
     cv2.circle(image, (160, 175), 18, (10, 10, 245), -1)
