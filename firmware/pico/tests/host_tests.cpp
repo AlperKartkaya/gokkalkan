@@ -19,13 +19,15 @@ static Command command(const std::string& value) {
   return Command::DISARM;
 }
 static void reach(SafetyStateMachine& machine, const std::string& state) {
+  Inputs safe_inputs;
+  safe_inputs.fire_interlock_closed = true;
   machine.apply(Command::BOOT_COMPLETE, 0);
   if (state == "BOOT" || state == "SAFE") return;
-  machine.apply(Command::HEARTBEAT, 1);
+  machine.apply(Command::HEARTBEAT, 1, safe_inputs);
   if (state == "READY") return;
-  machine.apply(Command::ARM, 2);
+  machine.apply(Command::ARM, 2, safe_inputs);
   if (state == "ARMED") return;
-  machine.apply(Command::FIRE, 3);
+  machine.apply(Command::FIRE, 3, safe_inputs);
 }
 int main() {
   std::ifstream input(GOKKALKAN_VECTOR_PATH);
@@ -41,6 +43,7 @@ int main() {
     SafetyStateMachine machine;
     reach(machine, fields[1]);
     Inputs inputs;
+    inputs.fire_interlock_closed = true;
     if (fields[3] == "estop") inputs.estop = true;
     if (fields[3] == "encoder_disconnected") inputs.encoder_connected = false;
     if (fields[3] == "encoder_overflow") inputs.encoder_overflow = true;
@@ -58,4 +61,22 @@ int main() {
   assert(!gokkalkan::can::valid(valid));
   assert(gokkalkan::can::sequence_is_newer(0, 255));
   assert(!gokkalkan::can::sequence_is_newer(5, 5));
+
+  SafetyStateMachine firing;
+  Inputs safe_inputs;
+  safe_inputs.fire_interlock_closed = true;
+  firing.apply(Command::BOOT_COMPLETE, 0, safe_inputs);
+  firing.apply(Command::HEARTBEAT, 1, safe_inputs);
+  assert(std::string(firing.apply(Command::ARM, 2, safe_inputs)) == "ARMED");
+  assert(std::string(firing.apply(Command::FIRE, 3, safe_inputs)) == "FIRING");
+  assert(firing.fire_output_enabled());
+  assert(std::string(firing.tick(123, safe_inputs)) == "FIRE_PULSE_COMPLETE");
+  assert(!firing.fire_output_enabled());
+  assert(firing.state() == gokkalkan::State::ARMED);
+
+  SafetyStateMachine rejected;
+  rejected.apply(Command::BOOT_COMPLETE, 0);
+  rejected.apply(Command::HEARTBEAT, 1);
+  assert(std::string(rejected.apply(Command::ARM, 2)) == "REJECTED_INTERLOCK");
+  assert(!rejected.outputs_enabled());
 }

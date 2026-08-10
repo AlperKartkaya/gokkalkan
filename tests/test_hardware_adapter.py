@@ -19,6 +19,7 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -230,6 +231,50 @@ class TestHardwareAdapterBase(unittest.TestCase):
         """__init__.py üzerinden içe aktarım çalışmalı."""
         adapter = CanMcuAdapterPkg(channel="test", bustype="virtual", dry_run=True)
         self.assertIsInstance(adapter, HardwareAdapterBase)
+
+    def test_v1_fire_fails_closed_without_fresh_armed_mcu_status(self) -> None:
+        adapter = CanMcuAdapter(
+            channel="test",
+            bustype="virtual",
+            dry_run=False,
+            physical_output_capable=False,
+        )
+        adapter._can_available = True
+        adapter._bus = object()
+
+        result = adapter.execute({
+            "commandId": "FIRE-NO-STATUS",
+            "kind": "FireIntent",
+            "payload": {"stage": 1},
+        })
+
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["resultCode"], "FIRE_PREFLIGHT_NO_STATUS")
+
+    def test_fire_preflight_requires_interlock_and_encoder_health(self) -> None:
+        adapter = CanMcuAdapter(
+            channel="test",
+            bustype="virtual",
+            dry_run=False,
+            physical_output_capable=False,
+        )
+        adapter._status.update({
+            "receivedAt": fixed_clock(),
+            "state": "ARMED",
+            "estopActive": False,
+            "fireReady": False,
+            "encoderOk": True,
+            "faultCode": 0,
+        })
+        self.assertEqual(adapter._fire_preflight_error(), "FIRE_PREFLIGHT_STALE_STATUS")
+
+        adapter._status["receivedAt"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        self.assertEqual(adapter._fire_preflight_error(), "FIRE_PREFLIGHT_INTERLOCK_OPEN")
+        adapter._status["fireReady"] = True
+        adapter._status["encoderOk"] = False
+        self.assertEqual(adapter._fire_preflight_error(), "FIRE_PREFLIGHT_ENCODER_UNHEALTHY")
+        adapter._status["encoderOk"] = True
+        self.assertIsNone(adapter._fire_preflight_error())
 
 
 # ---------------------------------------------------------------------------

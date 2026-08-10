@@ -171,6 +171,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 
 - `docs/CODEBASE_TUTORIAL.md` — kod tabanı ve mimari eğitim kılavuzu (Developer & Team Tutorial).
 - `docs/MALZEME_LISTESI.md` — güncel malzeme, teslimat durumu, ürün bağlantıları ve doğrulama notları.
+- `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` — imalat ekibi için bağlantı, ek BOM, lehimleme ve aşamalı kabul kılavuzu.
 - `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.

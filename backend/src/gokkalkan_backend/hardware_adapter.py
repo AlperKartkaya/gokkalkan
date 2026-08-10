@@ -649,6 +649,21 @@ class CanMcuAdapter(HardwareAdapterBase):
     ) -> dict[str, Any]:
         """Send one correlated v1 transaction and require a bounded ACK."""
 
+        if kind == "FireIntent":
+            preflight_error = self._fire_preflight_error()
+            if preflight_error:
+                result = self._v1_result(
+                    command_id,
+                    kind,
+                    False,
+                    self._tx_sequence,
+                    preflight_error,
+                )
+                with self._lock:
+                    self._commands.append({"command": command, "result": result})
+                self._command_count += 1
+                return result
+
         self._tx_sequence = (self._tx_sequence + 1) & 0xFF
         sequence = self._tx_sequence
         if kind == "ManualAimCommand":
@@ -697,6 +712,38 @@ class CanMcuAdapter(HardwareAdapterBase):
             self._commands.append({"command": command, "result": result})
         self._command_count += 1
         return result
+
+    def _fire_preflight_error(self) -> str | None:
+        """Require fresh, explicitly armed MCU state before transmitting FIRE.
+
+        Backend Safety Gate authorization is necessary but not sufficient.  The
+        adapter also fails closed when Pico status is stale, faulted, E-Stop is
+        active, encoder health is missing, or the physical fire interlock is
+        not reported ready.
+        """
+
+        with self._lock:
+            status = dict(self._status)
+        received_at = status.get("receivedAt")
+        if not received_at:
+            return "FIRE_PREFLIGHT_NO_STATUS"
+        try:
+            received = datetime.fromisoformat(str(received_at).replace("Z", "+00:00"))
+            if (datetime.now(UTC) - received).total_seconds() >= self._heartbeat_timeout_sec:
+                return "FIRE_PREFLIGHT_STALE_STATUS"
+        except (TypeError, ValueError):
+            return "FIRE_PREFLIGHT_BAD_TIMESTAMP"
+        if bool(status.get("estopActive", False)):
+            return "FIRE_PREFLIGHT_ESTOP"
+        if status.get("state") != "ARMED":
+            return "FIRE_PREFLIGHT_NOT_ARMED"
+        if not bool(status.get("fireReady", False)):
+            return "FIRE_PREFLIGHT_INTERLOCK_OPEN"
+        if not bool(status.get("encoderOk", False)):
+            return "FIRE_PREFLIGHT_ENCODER_UNHEALTHY"
+        if int(status.get("faultCode", status.get("errorCode", 0)) or 0) != 0:
+            return "FIRE_PREFLIGHT_MCU_FAULT"
+        return None
 
     def _v1_result(
         self, command_id: str, kind: str, accepted: bool, sequence: int, result_code: str

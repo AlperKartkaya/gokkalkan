@@ -149,10 +149,10 @@ def test_firmware_faults_always_disable_outputs(kwargs: dict[str, bool], reason:
     model = FirmwareModel()
     model.boot_complete()
     model.update_inputs(now_ms=1, estop_active=False, heartbeat=True)
-    assert model.command("ARM") == "ARMED"
+    assert model.command("ARM", fire_interlock_closed=True) == "ARMED"
     assert model.outputs_enabled
     fault_inputs = {"estop_active": False, **kwargs}
-    assert model.update_inputs(now_ms=2, **fault_inputs) == reason
+    assert model.update_inputs(now_ms=2, fire_interlock_closed=True, **fault_inputs) == reason
     assert model.state == "FAULT"
     assert not model.outputs_enabled
 
@@ -161,8 +161,8 @@ def test_watchdog_loss_disables_outputs() -> None:
     model = FirmwareModel()
     model.boot_complete()
     model.update_inputs(now_ms=1, estop_active=False, heartbeat=True)
-    model.command("ARM")
-    assert model.update_inputs(now_ms=252, estop_active=False) == "HEARTBEAT_TIMEOUT"
+    model.command("ARM", fire_interlock_closed=True)
+    assert model.update_inputs(now_ms=252, estop_active=False, fire_interlock_closed=True) == "HEARTBEAT_TIMEOUT"
     assert not model.outputs_enabled
 
 
@@ -178,9 +178,9 @@ def test_python_model_consumes_shared_contract_vectors() -> None:
         if initial not in {"BOOT", "SAFE"}:
             model.update_inputs(now_ms=1, estop_active=False, heartbeat=True)
         if initial in {"ARMED", "FIRING"}:
-            model.command("ARM")
+            model.command("ARM", fire_interlock_closed=True)
         if initial == "FIRING":
-            model.command("FIRE")
+            model.command("FIRE", fire_interlock_closed=True)
         kwargs: dict[str, bool] = {}
         if input_name == "estop":
             kwargs["estop_active"] = True
@@ -193,16 +193,52 @@ def test_python_model_consumes_shared_contract_vectors() -> None:
         if input_name == "deviation_fault":
             kwargs["deviation_ok"] = False
         if kwargs:
-            reason = model.update_inputs(now_ms=4, **{"estop_active": False, **kwargs})
+            reason = model.update_inputs(now_ms=4, fire_interlock_closed=True, **{"estop_active": False, **kwargs})
         elif command == "BOOT_COMPLETE":
             model = FirmwareModel()
             reason = model.boot_complete()
         elif command == "HEARTBEAT":
-            reason = model.update_inputs(now_ms=4, estop_active=False, heartbeat=True)
+            reason = model.update_inputs(now_ms=4, estop_active=False, heartbeat=True, fire_interlock_closed=True)
         else:
-            reason = model.command(command)
+            reason = model.command(command, fire_interlock_closed=True)
         assert model.state == expected_state
         assert reason == expected_reason
         assert model.outputs_enabled is (outputs == "1")
         checked += 1
     assert checked >= 10
+
+
+def test_fire_requires_closed_interlock_and_has_bounded_pulse() -> None:
+    model = FirmwareModel()
+    model.boot_complete()
+    model.update_inputs(now_ms=1, estop_active=False, heartbeat=True)
+    assert model.command("ARM") == "REJECTED_INTERLOCK"
+    assert not model.outputs_enabled
+
+    assert model.command("ARM", fire_interlock_closed=True) == "ARMED"
+    assert model.command("FIRE", now_ms=10, fire_interlock_closed=True) == "FIRING"
+    assert model.fire_output_enabled
+    assert model.update_inputs(
+        now_ms=130,
+        estop_active=False,
+        fire_interlock_closed=True,
+    ) == "FIRE_PULSE_COMPLETE"
+    assert model.state == "ARMED"
+    assert not model.fire_output_enabled
+
+
+def test_fire_interlock_or_trigger_feedback_fault_drops_output() -> None:
+    model = FirmwareModel()
+    model.boot_complete()
+    model.update_inputs(now_ms=1, estop_active=False, heartbeat=True)
+    model.command("ARM", fire_interlock_closed=True)
+    model.command("FIRE", now_ms=2, fire_interlock_closed=True)
+
+    assert model.update_inputs(
+        now_ms=3,
+        estop_active=False,
+        fire_interlock_closed=True,
+        trigger_released=False,
+    ) == "TRIGGER_FEEDBACK_STUCK"
+    assert model.state == "FAULT"
+    assert not model.fire_output_enabled

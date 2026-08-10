@@ -31,8 +31,10 @@
 
 State: `0 BOOT`, `1 SAFE`, `2 READY`, `3 ARMED`, `4 FIRING`, `5 FAULT`.
 
-STATUS flags: bit0 E-Stop, bit1 motion-ok, bit2 fire-ready, bit3 watchdog-ok. ENCODER flags: bit0 zero-reference, bit1 direction-ok, bit2 connected, bit3 overflow, bit4 expected/actual deviation fault. ACK result: `0 ACK`, `1 NACK_STATE`, `2 NACK_CRC`, `3 NACK_SEQUENCE`, `4 NACK_COMMAND`.
+STATUS flags: bit0 E-Stop, bit1 motion-ok, bit2 fire-ready, bit3 watchdog-ok. `fire-ready` yalnız fiziksel ateş interlock'u kapalı, tetik geri bildirimi serbest ve MCU fault'suz olduğunda `1` olabilir. ENCODER flags: bit0 zero-reference, bit1 direction-ok, bit2 connected, bit3 overflow, bit4 expected/actual deviation fault. ACK result: `0 ACK`, `1 NACK_STATE`, `2 NACK_CRC`, `3 NACK_SEQUENCE`, `4 NACK_COMMAND`.
 
 Pico, 250 ms heartbeat kaybında actuator çıkışlarını kapatıp `FAULT` durumuna geçer. E-Stop, encoder kopması/overflow/ters yön/sapma ve bozuk komut hiçbir motor veya imha çıkışını etkinleştiremez. Reset yalnız fiziksel E-Stop bırakılmışken `SAFE` durumuna geçebilir; yeniden arm için yeni operatör hold zinciri gerekir.
+
+FIRE komutu yalnız `ARMED` durumunda ve kapalı fiziksel interlock ile kabul edilir. Firmware ateş kuru-kontak çıkışını en fazla 120 ms etkin tutar ve sonra otomatik olarak `ARMED` durumuna döner. Interlock kopması veya tetik geri bildiriminin takılı görünmesi çıkışı hemen kapatıp `FAULT` üretir. Backend adaptörü de FIRE çerçevesinden önce taze STATUS, `ARMED`, `fire-ready`, sağlıklı enkoder ve sıfır fault arar.
 
 Referans codec: `backend/src/gokkalkan_backend/can_protocol.py`. Firmware karşılığı: `firmware/pico/include/can_protocol.hpp`.

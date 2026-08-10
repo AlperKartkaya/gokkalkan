@@ -23,3 +23,11 @@ picotool load -f build/firmware-pico/gokkalkan_pico.uf2
 Pin haritası ve gerçek kart revizyonu onaylanmadan actuator çıkışları açılmaz.
 Host testi fiziksel E-Stop, watchdog ve motor kesme kanıtı değildir; bunlar HIL
 ve saha kabulünde ayrıca doğrulanacaktır.
+
+Güvenlik çekirdeği FIRE için kapalı fiziksel interlock ve serbest tetik geri
+bildirimi ister; kuru-kontak çıkışını 120 ms ile sınırlar. Interlock kopması,
+takılı tetik geri bildirimi, E-Stop, heartbeat veya enkoder fault'u ateş
+çıkışını fail-closed kapatır. Gerçek CAN controller sürücüsü, kart pin haritası
+ve GPIO çıkış katı kart revizyonu onaylanana kadar `pico_main.cpp` içinde
+bilerek etkin değildir. İmalat ayrıntıları için
+`docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` dosyasına bakın.
