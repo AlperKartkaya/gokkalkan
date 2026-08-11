@@ -14,9 +14,11 @@ Sistemde tek Raspberry Pi 5 ve tek Raspberry Pi Pico vardır. Pico, USB device d
 - Backend `UsbSerialMcuAdapter` kullanacaktır.
 - USB byte stream'i COBS, length ve CRC16 ile çerçevelenir.
 - Mevcut sequence, command-tag, ACK/NACK, status, fault ve 250 ms Pico watchdog semantiği korunur.
-- LIVE yalnız `/dev/serial/by-id/...` cihaz yolu, fiziksel interlock ve readiness preflight ile açılır.
+- LIVE yalnız `/dev/serial/by-id/...` cihaz yolu, taze PC817 `ESTOP_SAFE_SENSE`, airsoft fiziksel interlock ve readiness preflight ile açılır.
 - USB kopması/reconnect otomatik arm üretmez.
-- Fiziksel E-Stop, Siemens 3SK1111 ve LP1K1201BD zinciri yazılımdan bağımsızdır.
+- Fiziksel tek NK E-Stop, LP1K1210BD kontaktör, anlık 1NA START mühürlemesi ve LA4KE1B bobin bastırma devresi yazılımdan bağımsızdır. `X` noktası 24 V girişli PC817 ile Pico'ya izole edilir.
+
+Bu asgari emniyet mimarisi çift kanallı/SIL olarak tanımlanmaz. `ESTOP_SAFE_SENSE`, E-Stop hattının kapalı olduğunu bildirir; kontaktör ana-kutup geri bildirimi değildir. Airsoft ayrı 7,4 V T-Plug alanında, ayrı sigorta ve DC motor/inrush değeri doğrulanmış fiziksel kesme elemanıyla kalır.
 
 ## Reddedilen seçenekler
 

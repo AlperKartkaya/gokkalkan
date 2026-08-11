@@ -33,8 +33,10 @@ Pi 100 ms aralıkla heartbeat gönderir. Pico 250 ms boyunca geçerli heartbeat 
 
 - Her komut `COMMAND_META` + payload ve eşleşen sequence ile gönderilir.
 - Backend 250 ms içinde aynı sequence ve command-tag ile ACK almazsa komutu başarısız sayar.
-- Yeniden bağlanan MCU `SAFE` kabul edilir; manuel reset/arm zinciri yeniden tamamlanır.
-- USB, emniyet rölesi değildir. E-Stop → 3SK1111 → LP1K1201BD fiziksel zinciri USB ve Linux'tan bağımsızdır.
+- Yeniden bağlanan MCU `SAFE` kabul edilir; açık bir yazılım reset/arm zinciri yeniden tamamlanır. Bu işlem fiziksel START mühürlemesinden ayrıdır.
+- USB, emniyet elemanı değildir. Tek NK E-Stop → LP1K1210BD + 1NA START mühürleme devresi USB ve Linux'tan bağımsızdır; LA4KE1B A1/A2 bobin bastırmasını sağlar.
+- E-Stop sonrası `X` noktası 24 V girişli PC817/EL817 üzerinden `ESTOP_SAFE_SENSE` olarak Pico'ya gelir. `estopActive`, kaydedilmiş aktif polariteye göre bu sinyalin fail-closed tersidir.
+- `ESTOP_SAFE_SENSE`, kontaktör ana kontaklarının gerçekten kapandığını kanıtlamaz; protokol böyle bir geri bildirim varmış gibi `contactorEnergized` üretmez.
 - Fiziksel HIL monitor-only modunda yalnız heartbeat gönderilir; hareket, arm ve
   ateş komutları engellenir. Komut/ACK testi `loop://` veya aktüatörlerden
   fiziksel olarak ayrılmış özel güvenli-yük prosedürüyle yapılır.

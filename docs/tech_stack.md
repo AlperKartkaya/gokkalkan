@@ -203,14 +203,15 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 
 | Arayüz | Durum | KTR’de yazılacak bilgi |
 | --- | --- | --- |
-| Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
+| Ana güç | **Onaylandı / fiziksel kabul açık** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. RSP +24 V → 20 A ana sigorta → 6 yollu ATO/ATC kutu → LP1K1210BD ana kutupları → PAN/TILT DM542 yükleri. 1 A kontrol dalı kontaktör ana kutuplarından önce alınır |
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
-| Acil Durdur | **Zorunlu** | Gwest LAY2-KSE542E + iki bağımsız 1NK kontak; Siemens 3SK1111-1AB30 ve LP1K1201BD kontaktör güç hattında. Pico durum bildirimi USB `0x201` mesajıyla backend'e iletilir |
+| Acil Durdur | **Zorunlu / asgari tek kanal** | Mevcut kilitlemeli Gwest LAY2-KSE542E tek NK → LP1K1210BD 24 VDC kontaktör + anlık 1NA START mühürleme + LA4KE1B. E-Stop bırakılınca START olmadan kontaktör çekmez. `X` noktası 24 V girişli PC817 üzerinden Pico `ESTOP_SAFE_SENSE` girişine gelir; USB `0x201` edge + periyodik status backend'e iletilir. Bu mimari çift kanallı/SIL olarak tanımlanmaz |
+| Koruyucu toprak | **Onaylandı / fiziksel ölçüm açık** | Şebeke PE, RSP FG ve erişilebilir metal şasi ayrı ring pabuçlarla M5 yıldız noktasında birleşir; DC 0 V ile PE aynı sinyal değildir |
 | MCU haberleşmesi | **Yazılım uygulandı / fiziksel kabul açık** | Pi 5 ↔ Pico kısa veri destekli USB-A → Micro-USB; USB CDC, COBS+CRC16 framing, 100 ms heartbeat, ACK/NACK ve kararlı `/dev/serial/by-id/...` seçimi. CAN donanımı alınmaz; ADR-005 aktiftir |
 | Kamera | **Onaylandı** | Tek Raspberry Pi Camera Module 3 Standard (12MP, AF, HDR, nominal 66° yatay FoV), CSI bağlantı, Picamera2 API; LiDAR merkezi 700 mm olan yaw köprüsünde, weapon pitch'ten bağımsız |
 | LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
 | AI hızlandırıcı | **Onaylandı / model açık** | Raspberry Pi AI HAT+ 26 TOPS, Hailo-8, PCIe; `hailo-all` + `hailortcli` health sözleşmesi hazır. HEF model artefaktı ve saha metrikleri bekliyor |
-| İmha hattı | Güvenlik-kritik | Airsoft yay mekanizması (yay seti + şarjör). Yalnız Safety Gate + hardware interlock sonrası enable edilir. Patlayıcı yasak |
+| İmha hattı | **Güvenlik-kritik / DC kesme elemanı doğrulanacak** | APS PER701 kendi 7,4 V T-Plug alanında kalır; 24 V baraya bağlanmaz. Ayrı kapaklı sigorta + motor kalkış akımına uygun DC kesme elemanı + galvanik izole normalde açık kuru tetik kontağı gerekir. YL-314-C-T yalnız bobin ve DC motor/inrush değerleri doğrulanırsa adaydır. Yalnız Safety Gate + Pico interlock sonrası enable edilir; patlayıcı yasak |
 
 ## 6. Teknoloji Seçimi
 

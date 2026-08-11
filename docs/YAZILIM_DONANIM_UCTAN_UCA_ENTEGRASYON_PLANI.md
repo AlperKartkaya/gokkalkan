@@ -1,12 +1,14 @@
 # Gökkalkan Yazılım–Donanım Uçtan Uca Entegrasyon Planı
 
-> **Durum:** Uygulanacak ana çalışma planı
+> **Durum:** Uygulanacak ana çalışma planı — nihai BOM ve tek kanallı mühürleme devresiyle hizalı
 >
 > **Son güncelleme:** 11 Ağustos 2026
 >
 > **Kapsam:** WP-01 Manuel Mod, WP-02 Otonom Tespit ve Takip, WP-03 Dost-Düşman + Menzil, WP-04 Güvenlik Katmanı, WP-05 Log/Telemetri
 >
 > **Ana hedef:** Nihai mekanik ve elektrik imalat tamamlandığında Raspberry Pi 5, Pico, DM542 sürücüler, enkoderler, limit anahtarları, Camera Module 3, AI HAT+, TFA50-L ve airsoft arayüzünün fail-closed ve izlenebilir biçimde birlikte çalışması.
+
+> **Revizyon tabanı:** `Gökkalkan Malzeme Listesi - Nihai Kablolama.xlsx`, `docs/IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`, `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`, `docs/adr/005-pi-pico-usb-serial.md` ve `docs/usb_serial_mcu_protocol.md`. İmalat sırasında oluşacak imzalı as-built şema ve fiziksel cihaz etiketleri, satın alma bağlantılarından üstündür.
 
 ---
 
@@ -38,6 +40,16 @@ evidence/<YYYY-MM-DD>/<faz>/<kart-revizyonu>/<test-adi>.md
 
 Video, fotoğraf ve büyük loglar git'e eklenmemelidir. Repo içinde bunların hash'i, dosya adı ve haricî saklama konumu tutulmalıdır.
 
+### Bu revizyonda kilitlenen kararlar
+
+- Pi 5 ↔ Pico hattı **USB CDC Serial**'dır; fiziksel CAN donanımı kullanılmayacaktır.
+- Acil Durdur mimarisi, mevcut kilitlemeli **tek NK** Gwest buton + **LP1K1210BD** + anlık **1NA START** + **LA4KE1B** mühürleme devresidir.
+- Siemens 3SK, ikinci E-Stop kontağı, LP1K1201BD ve ayrı bir “manuel reset” butonu aktif mimaride yoktur.
+- `X` noktası **24 V girişli PC817/EL817 modülü** üzerinden Pico'ya `ESTOP_SAFE_SENSE` olarak gelir. Bu sinyal E-Stop hattının kapalı olduğunu gösterir; kontaktör ana kutuplarının gerçekten kapandığını kanıtlamaz.
+- 24 V ana dağıtım: RSP +24 V → 20 A ana sigorta → 6 yollu ATO/ATC kutu → LP1K1210BD ana kutupları → tehlikeli motor yükleri. 1 A kontrol dalı kontaktör ana kutuplarından önce alınır.
+- Airsoft, 24 V baradan ayrı 7,4 V T-Plug alanında kalır; ayrı kapaklı sigorta ve DC motor kalkış akımına uygun fiziksel kesme elemanı doğrulanmadan LIVE atış açılmaz.
+- Bu asgari mimari çift kanallı veya SIL dereceli bir emniyet sistemi olarak tanımlanmayacaktır.
+
 ---
 
 ## 2. Bağlayıcı sistem hedefi
@@ -56,10 +68,10 @@ Sistem ancak aşağıdaki koşulların tamamı sağlandığında **uçtan uca en
 
 1. Pi, Pico'yu kararlı `/dev/serial/by-id/...` yolu ile bulur.
 2. Pico açılışta motor ve FIRE çıkışlarını pasif tutar.
-3. USB kopması, heartbeat kaybı, E-Stop, limit, enkoder, interlock veya tetik geri bildirim hatasında fiziksel çıkışlar kapanır.
-4. E-Stop bırakıldığında sistem kendiliğinden arm olmaz.
+3. USB kopması, heartbeat kaybı, limit, enkoder, airsoft interlock veya tetik geri bildirim hatasında Pico motor/FIRE çıkışlarını fail-closed kapatır; E-Stop ayrıca kontaktör üzerinden tehlikeli 24 V hareket enerjisini yazılımdan bağımsız keser.
+4. E-Stop bırakıldığında kontaktör kendiliğinden çekmez. Önce fiziksel START, ardından ayrı yazılım reset/arm işlemi gerekir; bunlardan hiçbiri diğerinin yerine geçmez.
 5. Manuel pan/tilt komutu gerçek motorda uygulanır ve enkoder geri bildirimiyle doğrulanır.
-6. FIRE komutu yalnız backend Safety Gate ve Pico fiziksel interlock koşulları birlikte sağlandığında kuru kontağı sınırlı süreyle kapatır.
+6. FIRE komutu yalnız backend Safety Gate, taze Pico durumu, airsoft fiziksel kesme izni ve tetik geri bildirimi birlikte sağlandığında kuru kontağı sınırlı süreyle kapatır.
 7. LiDAR menzili doğru kamera track'i ve gerçek taret yaw açısıyla eşleştirilir.
 8. Aşama 2'de sistem operatörün tek tek aim/fire komutu olmadan angajman döngüsünü ilerletir.
 9. Aşama 3'te dost unsur ateş yetkisi alamaz; düşman hedef yalnız tipi için geçerli menzilde yetki alır.
@@ -84,14 +96,28 @@ Raspberry Pi 5
              ├─ izole STEP/DIR/ENA → DM542 TILT → NEMA23 TILT
              ├─ receiver/izolasyon ← PAN/TILT enkoderleri
              ├─ NC giriş ← PAN/TILT limit anahtarları
-             ├─ yardımcı kontak ← fiziksel E-Stop/emniyet zinciri
+             ├─ 3,3 V izole giriş ← PC817 ← 24 V `X`/E-Stop güvenli durum hattı
              └─ PhotoMOS/izole NO kuru kontak → airsoft stok tetik girişi
 
-Fiziksel emniyet zinciri:
-E-Stop 2×1NK → Siemens 3SK1111 → LP1K1201BD → tehlikeli hareket enerjisi
+24 V tek kanallı mühürleme devresi:
+RSP +24 V → 1 A kontrol sigortası → E-Stop NK → X
+X → START 1NA → LP1K1210BD A1
+LP1K1210BD yardımcı 1NA → START'a paralel mühürleme
+LP1K1210BD A2 → kontrol 0 V; LA4KE1B → A1/A2
+X → PC817 24 V giriş → izole Pico `ESTOP_SAFE_SENSE`
+
+Tehlikeli 24 V hareket enerjisi:
+RSP +24 V → 20 A ana sigorta → 6 yollu ATO/ATC kutu
+→ LP1K1210BD ana kutupları → PAN/TILT DM542 yükleri
+
+Airsoft enerji alanı:
+7,4 V batarya → T-Plug ara uzatma → ayrı sigorta
+→ DC değeri doğrulanmış fiziksel kesme elemanı → stok ETU/gearbox
 ```
 
 Aktif Pi–Pico taşıması USB CDC Serial'dır. CAN fiziksel katmanı satın alma ve imalat kapsamında değildir. Tarihsel CAN mesaj kimlikleri yalnız USB içindeki payload semantiğinde korunur (`docs/adr/005-pi-pico-usb-serial.md:11-25`).
+
+`ESTOP_SAFE_SENSE`, kontaktörün çektiği veya ana kontakların sağlıklı olduğu anlamına gelmez. Mevcut LP1K1210BD'nin tek yardımcı 1NA kontağı mühürleme için kullanıldığından bağımsız kontaktör geri bildirimi yoktur. Bu nedenle START/kontaktör fonksiyonu fiziksel kabulde ayrıca gözlenir; yazılım bu sinyalden kontaktör durumunu uydurmaz.
 
 ---
 
@@ -109,7 +135,7 @@ Aktif Pi–Pico taşıması USB CDC Serial'dır. CAN fiziksel katmanı satın al
 - Kamera, HSV aday çıkarma, centroid tracking ve perception bridge
 - Telemetri, replay ve release-gate altyapısı
 
-### Plan yazılırken alınan yerel kanıt
+### 11 Ağustos 2026'da yeniden alınan yerel kanıt
 
 ```text
 .venv/bin/python -m pytest
@@ -130,6 +156,8 @@ npm run dev:check
 python3 scripts/verify_pi_manifest.py --manifest-only
 → PASS
 ```
+
+Ana `.venv` koşusundaki dört skip, `numpy` bulunmayan perception testleridir; aynı hedefler `.venv-perception` içinde 23/23 geçmiştir. İki `python-can` deprecation uyarısı tarihsel vCAN test yolundadır ve fiziksel taşımanın USB olduğu kararını değiştirmez.
 
 ### Bu kanıtın sınırı
 
@@ -177,7 +205,9 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 - Enkoderin kesin model/etiket ve elektriksel çıkış bilgisi
 - Limit switch'lerin NC bağlantısı
 - PhotoMOS/izole kuru kontak arayüzü
-- E-Stop/emniyet zincirinden Pico'ya gelecek yardımcı kontak
+- E-Stop sonrası `X` noktasından Pico'ya gelecek 24 V girişli PC817/EL817 modülü
+- Tek NK E-Stop + START + LP1K1210BD yardımcı 1NA mühürleme devresinin imzalı bağlantı şeması
+- Airsoft 7,4 V dalındaki ayrı sigorta ve DC uygun kesme elemanının model/değerleri
 - Pico'nun USB ve haricî besleme topolojisi
 
 ## Görevler
@@ -188,7 +218,12 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 - [ ] PAN ve TILT `STEP/DIR/ENA` pinlerinin çakışmadığını doğrula.
 - [ ] PAN/TILT encoder A/B/Z pinlerini ve receiver seviyesini kaydet.
 - [ ] PAN/TILT limit NC girişlerini kaydet.
-- [ ] `ESTOP_AUX`, `FIRE_INTERLOCK`, `TRIGGER_FEEDBACK`, `FIRE_OUT` pinlerini kaydet.
+- [ ] `ESTOP_SAFE_SENSE`, `FIRE_INTERLOCK`, `TRIGGER_FEEDBACK`, `FIRE_OUT` pinlerini kaydet.
+- [ ] `ESTOP_SAFE_SENSE` için PC817 çıkış polaritesini ölç: `X=24 V`, `X=0 V` ve kablo kopuk durumlarında Pico GPIO seviyelerini kaydet.
+- [ ] `ESTOP_SAFE_SENSE=true` ifadesinin yalnız E-Stop hattının kapalı olduğunu, kontaktör geri bildirimi olmadığını pin haritasına yaz.
+- [ ] START butonunun yazılım girişi olmadığını; fiziksel mühürlemeyi başlattığını şemada ayır.
+- [ ] 24 V, 5 V/Pico ve 7,4 V airsoft elektrik alanlarını ve hangi noktalarda galvanik izolasyon bulunduğunu kaydet.
+- [ ] YL-314-C-T kullanılacaksa bobin gerilimi ile 7,4 V DC motor/inrush kesme değerini üretici belgesi veya ölçümle doğrula; doğrulanmazsa as-built listesine ekleme.
 - [ ] GPIO 3,3 V sınırını aşan saha sinyali olmadığını elektrik ekibiyle doğrula.
 - [ ] Pico USB VBUS/VSYS backfeed kararını şemaya ve dokümana yaz.
 - [ ] Boot/reset/USB kopmasında arayüzün fiziksel olarak pasif kaldığını lojik tabloyla göster.
@@ -197,7 +232,8 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 
 - `firmware/pico/include/board_config.hpp`
 - `docs/hardware/GKK-IO-REV-A_PIN_MAP.md`
-- `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md`
+- `Gökkalkan Malzeme Listesi - Nihai Kablolama.xlsx`
+- `docs/IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`
 - `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`
 - `config/runtime/hil-physical.toml`
 
@@ -208,12 +244,19 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 - Pin çakışma ve eksik kritik pin için compile-time `static_assert`
 - Boot seviyesi için masa üstü multimetre/osiloskop kontrolü
 - USB bağlı/bağlı değil durumlarında backfeed kontrolü
+- E-Stop için dört adımlı süreklilik testi: bırakılmış-kapalı, basılmış-açık, mekanik kilitli, çevrilince yeniden kapalı
+- START için üç adımlı test: bırakılmış-açık, basılmış-kapalı, bırakınca tekrar açık
+- START ile çekme/mühürleme, E-Stop ile düşme ve E-Stop bırakıldığında START'sız yeniden çekmeme testi
+- PC817 iki elektrik alanı arasında izolasyon, 3,3 V çıkış seviyesi ve aktif polarite ölçümü
 
 ## Çıkış kriterleri
 
 - [ ] Kart revizyonu ve pin haritası iki kişi tarafından kontrol edildi.
 - [ ] Hiçbir kritik pin `UNVERIFIED`, `TODO` veya varsayılan değil.
 - [ ] Boot/reset sırasında STEP, ENA ve FIRE pasif ölçüldü.
+- [ ] Kontaktör E-Stop bırakıldığında START olmadan çekmiyor; START bırakılınca mühürleme sürüyor; E-Stop'ta düşüyor.
+- [ ] PC817 polaritesi ve `ESTOP_SAFE_SENSE` anlamı imzalı pin haritasına işlendi.
+- [ ] Airsoft DC kesme elemanı ve sigorta değeri doğrulanmadıysa FIRE fiziksel yetkisi kapalı işaretlendi.
 - [ ] Pin haritası firmware ve imalat dokümanında aynı revizyonu gösteriyor.
 
 ---
@@ -222,7 +265,7 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 
 ## Amaç
 
-Güvenlik durum makinesinin varsayılan `Inputs` nesnesi yerine gerçek E-Stop, interlock, trigger feedback, limit ve enkoder sağlığıyla beslenmesi.
+Güvenlik durum makinesinin varsayılan `Inputs` nesnesi yerine PC817 üzerinden gerçek `ESTOP_SAFE_SENSE`, airsoft interlock, trigger feedback, limit ve enkoder sağlığıyla beslenmesi.
 
 ## Mevcut boşluk
 
@@ -233,11 +276,13 @@ Güvenlik durum makinesinin varsayılan `Inputs` nesnesi yerine gerçek E-Stop, 
 - [ ] `PicoIo`/HAL sınıfı oluştur.
 - [ ] Tüm kritik girişleri fail-closed polariteyle oku.
 - [ ] NC limit hattında kopuk kabloyu fault kabul et.
-- [ ] E-Stop yardımcı kontak değişimini edge event olarak raporla.
+- [ ] PC817 çıkışını `safety_chain_ok` olarak oku; `estop = !safety_chain_ok` dönüşümünü tek yerde ve testli uygula.
+- [ ] `ESTOP_SAFE_SENSE` değişimini edge event olarak raporla; periyodik status ile kayıp edge'i telafi et.
 - [ ] Mekanik kontaklar için zaman tabanlı debounce uygula.
 - [ ] Girişlerin ham ve debounce edilmiş durumunu ayrı tut.
 - [ ] Limit aktifken ilgili yöne hareketi yasakla; ters yönde kontrollü uzaklaşmaya izin kuralını ayrı test et.
-- [ ] E-Stop veya interlock fault sonrası manuel reset olmadan READY/ARMED durumuna dönme.
+- [ ] E-Stop veya interlock fault sonrası açık bir yazılım `RESET` ve yeni `ARM` olmadan READY/ARMED durumuna dönme. Fiziksel START yalnız kontaktör mühürlemesidir; yazılım reset'i değildir.
+- [ ] Pico açılışında PC817 polaritesi/config'i eksik veya çelişkiliyse `FAULT` durumunda kal.
 - [ ] Girişlerin kaybında GPIO çıkışlarını aynı kontrol döngüsünde pasifleştir.
 
 ## Dosyalar
@@ -255,6 +300,7 @@ Güvenlik durum makinesinin varsayılan `Inputs` nesnesi yerine gerçek E-Stop, 
 - [ ] E-Stop boot anında aktif → `FAULT`, tüm çıkışlar kapalı
 - [ ] E-Stop çalışma sırasında aktif → aynı tick'te çıkışlar kapalı
 - [ ] E-Stop bırakılır → otomatik arm yok
+- [ ] `X=24 V`/`X=0 V`/PC817 çıkış kablosu kopuk → kaydedilen polariteye göre doğru `estopActive`, kopukta fail-closed
 - [ ] Interlock açık → ARM ve FIRE reddedilir
 - [ ] Trigger feedback takılı → FIRE reddedilir/fault
 - [ ] PAN limit aktif ve PAN+ komutu → reddedilir
@@ -265,7 +311,7 @@ Güvenlik durum makinesinin varsayılan `Inputs` nesnesi yerine gerçek E-Stop, 
 ## Çıkış kriterleri
 
 - [ ] Kritik girişlerin hiçbiri sabit varsayılan değerden gelmiyor.
-- [ ] E-Stop, interlock ve limit fault'ları motor/FIRE yetkisini fiziksel çıkış eklenmeden önce lojik olarak kapatıyor.
+- [ ] E-Stop güvenli-durum sinyali, airsoft interlock ve limit fault'ları motor/FIRE yetkisini fiziksel çıkış eklenmeden önce lojik olarak kapatıyor.
 - [ ] Host testleri ve GPIO-in-the-loop monitor-only testi geçiyor.
 
 ---
@@ -357,15 +403,21 @@ Pico'nun stok airsoft motor/ETU güç hattına dokunmadan yalnız galvanik izole
 - 24 V sistem barası airsoft ETU'ya bağlanmaz.
 - Stok ETU/motor korumaları baypas edilmez.
 - Kuru kontak normalde açıktır.
-- E-Stop yazılımdan bağımsız fiziksel kesme uygular.
+- 7,4 V airsoft dalı ayrı kapaklı sigorta ve T-Plug ara uzatma kullanır.
+- E-Stop, DC motor/inrush değeri doğrulanmış ayrı kesme elemanı üzerinden yazılımdan bağımsız fiziksel kesme uygular.
+- LP1K1210BD ana kontağı, airsoft 7,4 V DC hattında DC kesme değeri kanıtlanmadan kullanılmaz.
 - İlk kabulde BB ve şarjör kullanılmaz.
 
 ## Görevler
 
 - [ ] `FireOutput` sınıfını fiziksel GPIO'dan soyutla.
 - [ ] Boot ve reset sırasında FIRE pinini pasif kur.
+- [ ] Yetkili teknisyenin cihaz üzerinde doğruladığı stok SDU 2.0 düşük-akım tetik uçlarını as-built kayda işle; kamuya açık olmayan pinleri tahmin etme.
+- [ ] Airsoft DC kesme elemanının modelini, bobin/sürücü gerilimini ve motor kalkış akımına uygun DC kontak değerini kaydet.
+- [ ] Mevcut YL-314-C-T yalnız bu değerler kanıtlanırsa adaydır; aksi durumda fiziksel FIRE kapalı kalır.
+- [ ] Airsoft stok sigorta değerini tespit et; bulunursa önce aynı değeri kullan. 20 A yalnız kontrollü ilk doğrulama değeridir ve ısınma ölçülmeden yükseltilmez.
 - [ ] FIRE için `ARMED`, interlock kapalı, trigger released, encoder/motion sağlıklı koşullarını zorunlu tut.
-- [ ] 120 ms üst sınırını donanım zamanlayıcısı/monotonic zamanla uygula.
+- [ ] Mevcut 120 ms üst sınırını donanım zamanlayıcısı/monotonic zamanla uygula; ETU kuru test sonucu daha kısa süre yeterliyse kalibrasyonla azalt, doğrulama olmadan artırma.
 - [ ] Ana döngü gecikse bile çıkışın 120 ms üstünde kalamayacağı ikinci koruma ekle.
 - [ ] Trigger feedback'i FIRE öncesi, sırası ve sonrası kontrol et.
 - [ ] Feedback beklenen sürede dönmezse `TRIGGER_FEEDBACK_STUCK` fault üret.
@@ -414,6 +466,8 @@ Hardware NACK, ACK timeout veya feedback fault durumunda hedef tamamlanmış say
 - [ ] Aynı sequence iki kez geliyor
 - [ ] Pico reset sonrası otomatik pulse olmadığı
 - [ ] Gerçek kuru kontak, airsoft bağlı fakat BB/şarjör yok
+- [ ] Ayrı 7,4 V sigorta ve DC kesme elemanı ile E-Stop fiziksel kesme
+- [ ] YL-314-C-T kullanılıyorsa belgelenmiş DC değer + ilk kalkışta akım/sıcaklık kaydı
 
 ## Çıkış kriterleri
 
@@ -422,6 +476,7 @@ Hardware NACK, ACK timeout veya feedback fault durumunda hedef tamamlanmış say
 - [ ] Duplicate/reconnect/reset ikinci istemsiz pulse oluşturmuyor.
 - [ ] Hardware NACK görev akışını ilerletmiyor.
 - [ ] BB ve şarjör olmadan kuru kontak/ETU kabulü kaydedildi.
+- [ ] Airsoft sigorta değeri, DC kesme elemanı, T-Plug ara kablo ve stok tetik uçları as-built kayıtta tanımlı.
 
 ---
 
@@ -438,7 +493,8 @@ Pico status mesajı yalnız `outputs_enabled` durumunu `0x02` bitiyle gönderir 
 ## Görevler
 
 - [ ] Status flag'lerini ICD ile birebir doldur.
-- [ ] `0x201` E-Stop edge event gönder.
+- [ ] `estopActive` bitini PC817 `ESTOP_SAFE_SENSE` değerinin fail-closed tersinden üret; bu biti kontaktör durumu olarak kullanma.
+- [ ] `0x201` E-Stop/`ESTOP_SAFE_SENSE` edge event gönder.
 - [ ] `0x202` firmware/protokol sürüm mesajını açılışta ve istek üzerine gönder.
 - [ ] `0x203` encoder mesajını PAN/TILT açıları ve health flag'leriyle gönder.
 - [ ] Fault kodlarını kararlı enum ve insan-okunur açıklamayla eşle.
@@ -446,6 +502,7 @@ Pico status mesajı yalnız `outputs_enabled` durumunu `0x02` bitiyle gönderir 
 - [ ] Stale status/encoder durumunda backend'i fail-closed tut.
 - [ ] ACK sonucu ile komutun tamamlanma bilgisini ayrılaştır.
 - [ ] USB decoder rejected-frame sayısını health/telemetry'ye ekle.
+- [ ] Bağımsız kontaktör geri bildirimi bulunmadığından `contactorEnergized` alanı uydurma; yalnız komut edilen durum ile gözlenen `ESTOP_SAFE_SENSE` değerini ayrı yayınla.
 
 ## Dosyalar
 
@@ -469,6 +526,7 @@ Pico status mesajı yalnız `outputs_enabled` durumunu `0x02` bitiyle gönderir 
 - [ ] Status stale
 - [ ] Encoder stale
 - [ ] E-Stop edge event kaybında periyodik status ile toparlama
+- [ ] PC817 çıkış kablosu kopuk ve polarite ters-config senaryosu
 - [ ] Firmware/protokol major mismatch
 
 ## Çıkış kriterleri
@@ -495,7 +553,10 @@ LIVE modunun bir config anahtarıyla değil, fiziksel kimlik ve sağlık kanıt�
 - [ ] `/dev/serial/by-id/...` Pico kimliğini allowlist ile doğrula.
 - [ ] Firmware/protokol sürümünü doğrula.
 - [ ] Pico status'ını taze ve `SAFE/READY` durumda doğrula.
-- [ ] Fiziksel interlock/E-Stop zinciri geri bildirimini doğrula.
+- [ ] Pico `ESTOP_SAFE_SENSE` geri bildirimini doğrula; bunun kontaktör ana-kutup geri bildirimi olmadığını readiness şemasında açık tut.
+- [ ] Fiziksel START/kontaktör mühürleme kabul kaydını BOM/as-built revizyonuyla eşleştir.
+- [ ] LIVE operatör prosedüründe fiziksel START adımını yazılım ARM'dan önce zorunlu sıraya koy; bağımsız runtime kontaktör sensörü olmadığı için bunu “ölçülmüş kontaktör durumu” olarak raporlama.
+- [ ] Airsoft ayrı 7,4 V fiziksel kesme elemanı ve tetik feedback readiness'ini doğrula.
 - [ ] Encoder, limit, kamera, perception, LiDAR ve disk readiness sağlayıcılarını birleştir.
 - [ ] Kalibrasyon dosyaları `UNVERIFIED` ise LIVE arm'ı kapat.
 - [ ] Gerçek BOM/as-built/config hash'lerini preflight kaynağına ekle.
@@ -524,6 +585,8 @@ LIVE modunun bir config anahtarıyla değil, fiziksel kimlik ve sağlık kanıt�
 - [ ] Yanlış USB kimliği → reddedilir
 - [ ] Firmware major mismatch → reddedilir
 - [ ] E-Stop aktif → reddedilir
+- [ ] `ESTOP_SAFE_SENSE` yok/kopuk → reddedilir
+- [ ] Fiziksel mühürleme kabul kaydı veya airsoft DC kesme doğrulaması eksik → ilgili fiziksel yetki reddedilir
 - [ ] Encoder/limit/perception/LiDAR stale → arm reddedilir
 - [ ] `UNVERIFIED` calibration → arm reddedilir
 - [ ] Tüm fiziksel kapılar geçerli → adapter oluşur fakat operatör hold-to-arm tamamlanmadan çıkış yok
@@ -894,6 +957,7 @@ Host testlerinden fiziksel sisteme kontrollü geçmek ve her seviyede bir sonrak
 - [ ] Pico USB CDC enumerate oluyor.
 - [ ] Kararlı `/dev/serial/by-id/...` yolu kaydedildi.
 - [ ] Status/firmware/encoder/E-Stop mesajları geliyor.
+- [ ] PC817 `X=24 V`, `X=0 V` ve çıkış-kablo-kopuk durumları doğru `estopActive` üretiyor.
 - [ ] USB disconnect/reconnect otomatik arm oluşturmuyor.
 - [ ] 250 ms heartbeat fault'u ölçüldü.
 - [ ] Pico watchdog reset davranışı kaydedildi.
@@ -904,6 +968,10 @@ Host testlerinden fiziksel sisteme kontrollü geçmek ve her seviyede bir sonrak
 - [ ] STEP/DIR/ENA osiloskopla doğrulandı.
 - [ ] FIRE yerine LED/lamba pulse testi yapıldı.
 - [ ] E-Stop fiziksel çıkışı yazılımdan bağımsız kesiyor.
+- [ ] E-Stop bırakılmışken kontaktör START olmadan çekmiyor.
+- [ ] START basılınca kontaktör çekiyor; START bırakılınca yardımcı 1NA mühürleme sürdürüyor.
+- [ ] E-Stop basılınca kontaktör düşüyor; E-Stop bırakıldığında START'sız yeniden çekmiyor.
+- [ ] START butonu bırakıldığında elektriksel olarak açık ve yayla geri dönüyor; takılı/kapalı buton kabul edilmiyor.
 - [ ] Kontaktör bobini devreye girerken USB framing/reconnect testi yapıldı.
 - [ ] Motor sürücü enerjilenirken EMI testi yapıldı.
 
@@ -921,6 +989,8 @@ Host testlerinden fiziksel sisteme kontrollü geçmek ve her seviyede bir sonrak
 ## D. Airsoft kuru test
 
 - [ ] Batarya ve 24 V alanlarının ayrılığı ölçüldü.
+- [ ] T-Plug ara uzatma, ayrı kapaklı sigorta ve sigorta değeri kaydedildi.
+- [ ] DC kesme elemanının motor/inrush değeri doğrulandı; YL-314-C-T kullanılıyorsa kanıtı eklendi.
 - [ ] Galvanik izolasyon ölçüldü.
 - [ ] BB ve şarjör yok.
 - [ ] Kuru kontak pulse ve feedback doğrulandı.
@@ -1024,7 +1094,7 @@ Fiziksel cihaz bulunmayan geliştirme makinesinde `doctor --strict` veya LIVE/HI
 | Alan | Unit | Entegrasyon | HIL | Saha |
 |---|---|---|---|---|
 | USB framing | C++/Python golden vectors | `loop://`, reconnect | Pi↔Pico USB | Motor/kontaktör EMI |
-| Safety state | State transition testleri | Backend + adapter | E-Stop/interlock/feedback | Kontrollü saha prosedürü |
+| Safety state | State transition testleri | Backend + adapter | Tek NK E-Stop, PC817, START/mühürleme, interlock/feedback | Kontrollü saha prosedürü |
 | Motion | Step profile/limit/encoder | Digital twin | DM542 + motor + encoder | Hedefleme tekrarı |
 | Airsoft | Pulse/duplicate/fault | Adapter ACK state | LED, sonra kuru kontak | Kontrollü menzil testi |
 | LiDAR | Parser/association | Mission Core queue | TFA50-L 5/10/15 m | Hareketli hedef association |
@@ -1049,9 +1119,11 @@ Her release adayında en az aşağıdaki hatalar tekrar denenmelidir:
 - [ ] PAN encoder kablosu çekildi
 - [ ] TILT encoder ters yön raporladı
 - [ ] PAN/TILT limit aktif oldu
-- [ ] E-Stop birinci kanal açıldı
-- [ ] E-Stop ikinci kanal açıldı
-- [ ] Interlock açıldı
+- [ ] Tek NK E-Stop hattı açıldı
+- [ ] PC817 24 V girişi veya Pico çıkış kablosu kesildi
+- [ ] E-Stop bırakıldı fakat START'a basılmadı
+- [ ] START basılı tutuldu/takılı kaldı; test durduruldu ve buton reddedildi
+- [ ] Airsoft DC kesme interlock'u açıldı
 - [ ] Trigger feedback takılı kaldı
 - [ ] Kontaktör devreye girdi ve EMI oluştu
 - [ ] Telemetri diski minimum boş alan altına indi
@@ -1067,6 +1139,8 @@ Fiziksel yetki kapanır
 → olay telemetriye yazılır
 → kontrollü reset prosedürü olmadan devam edilmez
 ```
+
+Not: Tek kanallı mühürleme devresi, çift kanal uyuşmazlığı veya kontaktör ana kontak yapışmasını teşhis etmez. START takılı kalma testi bir “güvenle devam” testi değildir; böyle bir durumda enerji kesilir ve buton değiştirilir.
 
 ---
 
@@ -1133,6 +1207,24 @@ Her faz PR/commit incelemesinde:
 
 **Azaltma:** Calibration dosyasına board/mount/mechanical revision; mismatch'te `STALE` ve LIVE block.
 
+### R8 — Asgari tek kanallı mühürleme devresinin teşhis sınırı
+
+**Sonuç:** Tek NK E-Stop devresi çift kanal uyuşmazlığını, kontaktör ana-kutup yapışmasını veya START kontağının yapışmasını kendi başına teşhis edemez.
+
+**Azaltma:** Bu mimariyi SIL/çift kanallı olarak tanımlama; her oturum öncesi E-Stop dört-adım ve START geri-dönüş testi yap; kontaktörün fiziksel düşmesini gözle; PC817 kablo-kopuk testini uygula; başarısız parçayla devam etme. Yazılım `ESTOP_SAFE_SENSE` değerini kontaktör geri bildirimi gibi göstermemelidir.
+
+### R9 — Airsoft DC kesme elemanının değeri belirsiz
+
+**Sonuç:** Kontak kaynaşması, ısınma veya E-Stop'ta 7,4 V airsoft enerjisinin kesilememesi.
+
+**Azaltma:** Stok sigorta değerini ve motor kalkış akımını ölç; DC motor/inrush değeri belgeli kesme elemanı kullan; YL-314-C-T'yi etiketi/verisi doğrulanmadan kabul etme; BB/şarjörsüz E-Stop ve sıcaklık testi geçmeden FIRE açma.
+
+### R10 — Yazılım kontaktörün çektiğini doğrudan göremiyor
+
+**Sonuç:** `ESTOP_SAFE_SENSE`, E-Stop bırakıldığında `true` olabilir; fakat START'a basılmadığı için kontaktör hâlâ kapalı olabilir. Tersi yönde, yazılım ARM edilmişken sonradan START'a basılması sürücü enerjisini beklenmeyen sırada açabilir.
+
+**Azaltma:** Saha sırasını `E-Stop bırak → fiziksel START → yazılım RESET → hold-to-arm` olarak kilitle; E-Stop edge'inde Pico'yu latched `FAULT` yap; UI yalnız `safetyChainOk` göstersin, `contactorEnergized` göstermesin. İleride runtime kontaktör kanıtı istenirse ayrıca izole bobin/switched-output sense eklenir; mevcut PC817 `X` ölçümü bu kanıt yerine kullanılamaz.
+
 ---
 
 ## 10. Ana ilerleme tablosu
@@ -1159,7 +1251,7 @@ Bu plan üzerinden ilk uygulama dilimi **FAZ 0 + FAZ 1** olmalıdır:
 
 1. İmal edilen/edilecek I/O kartının revizyonunu ve kesin pin haritasını repoya aktar.
 2. Pin haritası henüz kesinleşmemişse aktüatör GPIO'larını açmadan HAL ve host-test iskeletini geliştir.
-3. E-Stop, interlock, trigger feedback ve limit girişlerini fail-closed modele ekle.
+3. PC817 `ESTOP_SAFE_SENSE`, airsoft interlock, trigger feedback ve limit girişlerini fail-closed modele ekle.
 4. Host testlerini geçir.
 5. Fiziksel kart geldiğinde yalnız monitor-only GPIO kabulü yap.
 
@@ -1174,7 +1266,8 @@ Aşağıdakilerden biri eksikse sistem “%100 entegre” olarak raporlanmamalı
 - [ ] Pico fiziksel actuator firmware'i
 - [ ] Motor/encoder/limit HIL
 - [ ] Airsoft safe-load ve kuru kontak kabulü
-- [ ] Fiziksel E-Stop ve interlock kesme kanıtı
+- [ ] Tek NK E-Stop + START + LP1K1210BD mühürleme ve PC817 `ESTOP_SAFE_SENSE` kanıtı
+- [ ] Airsoft ayrı 7,4 V sigorta ve DC uygun fiziksel kesme kanıtı
 - [ ] USB disconnect/reconnect/EMI kabulü
 - [ ] Gerçek LIVE bootstrap
 - [ ] Production LiDAR fusion
