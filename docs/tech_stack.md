@@ -193,7 +193,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | Klasik CAN 2.0B, 500 kbit/s | ADR-002 + `can_icd_v1.md`; fiziksel HIL kabulü bekliyor |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | **Uygulanan:** Klasik CAN 2.0B, 500 kbit/s. **Planlanan fiziksel taşıma:** USB seri | ADR-002 + `can_icd_v1.md` mevcut kodun sözleşmesidir. USB adapter/firmware geçişi henüz uygulanmadı; fiziksel kabul bekliyor |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
@@ -205,7 +205,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
 | Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
-| MCU haberleşmesi | **Onaylandı** | Klasik CAN 2.0B, 500 kbit/s; SN65HVD230 (×3); ISO 11898-2; 0x100 pan/tilt, 0x101 ateş, 0x102 sistem, 0x200 durum, 0x201 E-stop. Ayrıntı: ADR-002 |
+| MCU haberleşmesi | **Geçiş kararı alındı / yazılım bekliyor** | Güncel satın alma kararı Pi 5 ↔ Pico için kısa veri destekli USB-A → Micro-USB hattıdır; CAN donanımı alınmayacaktır. Mevcut `CanMcuAdapter`, CAN frame/ACK sözleşmesi, Pico firmware ve testler bu turda değişmemiştir. USB framing, heartbeat, timeout, reconnect ve fail-closed kanıtından sonra yeni ADR ile karar yürürlüğe alınacaktır |
 | Kamera | **Onaylandı** | Tek Raspberry Pi Camera Module 3 Standard (12MP, AF, HDR, nominal 66° yatay FoV), CSI bağlantı, Picamera2 API; LiDAR merkezi 700 mm olan yaw köprüsünde, weapon pitch'ten bağımsız |
 | LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
 | AI hızlandırıcı | **Onaylandı / model açık** | Raspberry Pi AI HAT+ 26 TOPS, Hailo-8, PCIe; `hailo-all` + `hailortcli` health sözleşmesi hazır. HEF model artefaktı ve saha metrikleri bekliyor |
@@ -240,7 +240,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi
   perception heartbeat'i fail-closed sağlıksız olur; model ağırlıkları repoya
   eklenmez.
-- **Donanım haberleşmesi:** MCU için python-can/SocketCAN ile klasik CAN; TFA50-L için pySerial/UART. Vendor aracı runtime bağımlılığı değildir.
+- **Donanım haberleşmesi:** Mevcut çalışan MCU yolu python-can/SocketCAN ile klasik CAN'dır. Güncel BOM, fiziksel Pi–Pico bağlantısını USB seri olarak seçmiştir; kod dönüşümü henüz yapılmadığından USB bugün desteklenen LIVE taşıma değildir. Geçişte Safety/ACK/heartbeat sözleşmesi korunacak, yeni USB adapter ve Pico firmware test edilip ayrı ADR ile CAN kararının yerini alacaktır. TFA50-L pySerial/UART kullanmaya devam eder.
 - **Test:** pytest + frontend için Vitest/Playwright.
 - **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
   segmentli JSONL export, session manifest, ortak monotonic zaman tabanlı medya

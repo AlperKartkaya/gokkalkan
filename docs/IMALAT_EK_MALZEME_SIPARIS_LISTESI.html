@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>İmalat Ek Malzeme ve Bağlantı Listesi</title>
+  <style>
+    :root { color-scheme: light; --ink:#17202a; --muted:#59636e; --line:#d7dde3; --accent:#0b5cab; --soft:#f4f7fa; --warn:#fff4d6; }
+    body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:#eef2f5; }
+    main { max-width:980px; margin:32px auto; padding:36px; background:white; box-shadow:0 2px 16px #0001; }
+    h1 { margin-top:0; font-size:2rem; } h2 { margin-top:2rem; border-bottom:2px solid var(--line); padding-bottom:.35rem; }
+    h3 { margin-bottom:.35rem; } p { margin:.45rem 0 1rem; } ol { padding-left:1.4rem; } li { margin:.8rem 0; }
+    a { color:var(--accent); overflow-wrap:anywhere; } code { background:var(--soft); padding:.1rem .3rem; border-radius:4px; }
+    .note { padding:14px 16px; background:var(--warn); border-left:5px solid #d49300; }
+    .decision { padding:14px 16px; background:var(--soft); border-left:5px solid var(--accent); }
+    table { width:100%; border-collapse:collapse; margin:1rem 0; } th,td { border:1px solid var(--line); padding:9px; text-align:left; vertical-align:top; }
+    th { background:var(--soft); } .qty { white-space:nowrap; text-align:center; }
+    @media print { body { background:white; } main { margin:0; max-width:none; box-shadow:none; padding:18mm; } a { color:inherit; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>İmalat için ek malzeme ve bağlantı kararları</h1>
+  <p>Excel’deki kablo ve bağlantı tablosunu son konuştuğumuz kararlara göre aşağıdaki şekilde güncelleyelim.</p>
+
+  <h2>1. Güvenlik zinciri</h2>
+  <ol>
+    <li>
+      <h3>Emniyet rölesi</h3>
+      <p>Üst envanterdeki YL-314-C-T otomotiv rölesi emniyet rölesi değildir. Güncel seçim Siemens 3SK1111-1AB30'dur ve kontaktörle birlikte kullanılacaktır.</p>
+      <p><strong>Alınacak:</strong> 1 adet Siemens 3SK1111-1AB30 — <a href="https://www.yapotomasyon.com/urun/siemens-3sk1111-1ab30-standart-emniyet">ürün bağlantısı</a>.</p>
+    </li>
+    <li>
+      <h3>İkinci kanal Acil Durdur kontağı</h3>
+      <p>Ucuz bulduğumuz güvenlik rölesini kullanabilmek için mevcut Acil Durdur butonuna ikinci bir NK kanal eklememiz gerekiyor. Bu parça yedek olarak beklemeyecek; butona takılıp ikinci kanal olarak kullanılacak.</p>
+      <p><strong>Alınacak:</strong> 1 adet Gwest 6102 1NK stop kontak — <a href="https://www.krcelektromarket.com/gwest-6102-stop-kontak-1-nk">ürün bağlantısı</a>.</p>
+    </li>
+    <li>
+      <h3>Kontaktör</h3>
+      <p>Güvenlik rölesi kontaktörün yerine geçmiyor; güvenlik rölesi ile kontaktörü birlikte kullanacağız. Kontaktör olarak 24 VDC bobinli ve geri bildirim için 1NK yardımcı kontağı bulunan LP1K1201BD seçildi.</p>
+      <p><strong>Alınacak:</strong> 1 adet Schneider LP1K1201BD — <a href="https://anelelektromarket.com/schneider-lp1k1201bd-55-kw-3na1nk-24-vdc-kontaktor">ürün bağlantısı</a>.</p>
+    </li>
+    <li>
+      <h3>Manuel reset butonu</h3>
+      <p>Acil Durdur bırakıldıktan sonra sistemin kendiliğinden yeniden çalışmaması için anlık basmalı, 1NA manuel reset butonu gerekiyor.</p>
+      <p><strong>Alınacak:</strong> 1 adet anlık basmalı 1NA reset butonu — <a href="https://www.merterelektronik.com/reset-butonu-220-v-10-amper-mr1">ürün bağlantısı</a>.</p>
+    </li>
+    <li>
+      <h3>Kontaktör bobin bastırma modülü</h3>
+      <p>Kontaktör bobini bırakırken oluşan gerilim darbesini bastırmak için TeSys K ile uyumlu modül kullanılacak.</p>
+      <p><strong>Alınacak:</strong> 1 adet Schneider LA4KE1B — <a href="https://www.endustriyelmarket.com/schneider-electric-la4ke1b-tesys-k-supresor-modulu-varistor-12">ürün bağlantısı</a>.</p>
+    </li>
+  </ol>
+
+  <h2>2. Raspberry Pi–Pico haberleşmesi</h2>
+  <div class="decision"><strong>Karar:</strong> CAN donanımı almayacağız; Pico’yu Raspberry Pi’ye USB üzerinden bağlayacağız.</div>
+  <p><strong>Alınacak:</strong> 1 adet kısa USB-A → Micro-USB <strong>veri kablosu</strong>. Yalnız şarj damarları bulunan kablo alınmamalı.</p>
+  <p class="note">Bu karar yazılım tarafında USB seri adaptörü ve Pico USB firmware çalışması gerektiriyor. Yalnız kabloyu takmak mevcut CAN tabanlı yazılımı otomatik olarak USB’ye çevirmiyor.</p>
+
+  <h2>3. Hareketli gövde ve konnektörler</h2>
+  <ol>
+    <li><strong>Kapsül slip ring alınmayacak.</strong> Sistem sürekli 360° dönmeyecek. Yaw hareketi mekanik ve yazılımsal sınırlandırılacak.</li>
+    <li>
+      <strong>Airsoft bağlantısı:</strong> Güvenlik kesmesini batarya ile airsoft arasına stok kabloyu kesmeden eklemek için 1 adet kablolu T-Plug erkek-dişi 14 AWG uzatma seti alınacak.
+      <a href="https://www.robotistan.com/lipo-tplug-erkek-disi-konnektor-14awg">Robotistan ürün bağlantısı</a>.
+    </li>
+    <li>
+      <strong>XT60:</strong> Excel’deki 5 takım fazla. Üst ve alt gövdeyi bakım sırasında ayırabilmek için 2 takım kablolu XT60 erkek-dişi 14 AWG set alınacak.
+      <a href="https://www.hiber.com.tr/xt60-pigtail-erkek-disi-konnektor-kablosu">Hiber ürün bağlantısı</a>.
+    </li>
+  </ol>
+  <p>Excel’deki 3 m kırmızı ve 3 m siyah 14 AWG silikon kablolar T-Plug uzatmasından farklıdır; 24 V güç dağıtımı için listede kalacak.</p>
+
+  <h2>4. Motor ve sinyal kabloları</h2>
+  <p>İki motor için toplam 6 metre 4×1,0 mm² LIYCY ekranlı kablo alalım. Ürün 3 metrelik satıldığı için 2 adet sipariş verilecek.</p>
+  <p><strong>Alınacak:</strong> 2 × 3 m ERSE 4×1 mm² LIYCY — <a href="https://www.krcelektromarket.com/erse-4x1mm-liycy-sinyal-kablosu-blendajli-m3">ürün bağlantısı</a>.</p>
+
+  <h2>5. Dağıtım, klemens ve topraklama</h2>
+  <ol>
+    <li><strong>WAGO 221-415:</strong> 10 adet yerine 4 adet orijinal ürün alınacak. <a href="https://www.wago.com/global/installation-terminal-blocks-and-connectors/5-wire-splicing-connector/p/221-415">Üretici bağlantısı</a>.</li>
+    <li><strong>24 V dağıtım:</strong> 1 adet 6 yollu, negatif baralı 12/24 V ATO/ATC sigorta kutusu alınacak. <a href="https://www.karavanmalzemecim.com/pro-dc-barali-sigorta-kutusu-6li-12v24v-191">SHUIVAN AES ürün bağlantısı</a>.</li>
+    <li><strong>Koruma toprağı:</strong> Şebeke PE girişi, Mean Well PE bağlantısı ve metal şasi bağlantısı için 3 adet 4 mm² DIN ray PE/toprak klemensi alınacak. <a href="https://www.endustripazar.com/urun/4mm2-mtk-serisi-vida-baglantili-topraklama-ray-klemens-1010220-onka">ONKA ürün bağlantısı</a>.</li>
+  </ol>
+
+  <h2>6. Kablo kılıfı</h2>
+  <p><strong>Alınacak:</strong> Toplam 2 metre, 10 mm genişleyebilir PET kablo çorabı. Ürün metreyle satıldığı için 2 adet sipariş verilecek. <a href="https://www.maascoelektrik.com/urun/kablo-toplama-corap-cesitleri-1-metre-10mm-1-metre">Maasco ürün bağlantısı</a>.</p>
+  <p>Yalnız şu bölgelerde kullanılacak:</p>
+  <ol>
+    <li>24 V ana besleme çiftinin gövdeye sürtünebilecek hareketli bölümü,</li>
+    <li>airsoft batarya–emniyet kesme arayüzündeki kısa 14 AWG bağlantılar,</li>
+    <li>sabit gövdeden döner üst mekanizmaya geçen servis halkası.</li>
+  </ol>
+
+  <h2>7. Şebeke ve kamera kablosu düzeltmeleri</h2>
+  <ol>
+    <li><strong>Şebeke kablosu:</strong> 2×0,75 mm² TTR çıkarılacak. Yerine faz, nötr ve koruma toprağı taşıyan 3×1,0 mm² veya 3×1,5 mm² topraklı esnek kablo alınacak.</li>
+    <li><strong>Kamera kablosu:</strong> 5 metrelik 22-pin → 15-pin kablo çıkarılacak. Mekanik ölçüye göre 200, 300 veya en fazla 500 mm kablo seçilecek.</li>
+  </ol>
+
+  <h2>8. Sigorta malzemeleri</h2>
+  <table>
+    <thead><tr><th>Malzeme</th><th class="qty">Adet</th><th>Bağlantı</th></tr></thead>
+    <tbody>
+      <tr><td>SHUIVAN AES 6’lı baralı sigorta kutusu</td><td class="qty">1</td><td><a href="https://www.karavanmalzemecim.com/pro-dc-barali-sigorta-kutusu-6li-12v24v-191">Ürünü aç</a></td></tr>
+      <tr><td>Motoraid karışık standart/mini bıçak sigorta seti</td><td class="qty">1</td><td><a href="https://www.adamoto.com.tr/urun/100-adet-mini-ve-standart-super-karisik-oto-bicak-sigorta-seti-1a-3a-5a-7-5a-10a-15a-20a-25a-30a-40a">Ürünü aç</a></td></tr>
+      <tr><td>Motoraid MT-SY25, 2,5 mm² kablolu kapaklı ana sigorta yuvası</td><td class="qty">1</td><td><a href="https://www.adamoto.com.tr/urun/standart-bicak-sigorta-yuvasi-2-5mm-kablolu-kapakli-ic-mekan">Ürünü aç</a></td></tr>
+    </tbody>
+  </table>
+  <p>Sigorta değerleri sabit varsayılmayacak; ölçülen yük akımı, başlangıç akımı, kablo kesiti ve ilgili cihazın üretici bilgisine göre elektrik sorumlusu tarafından seçilecek.</p>
+  <p class="note"><strong>Yazılım kapsamı:</strong> Bu belge yalnız satın alma ve kablolama kararını günceller. Mevcut CAN adapter, firmware ve runtime profilleri henüz USB'ye çevrilmedi.</p>
+</main>
+</body>
+</html>

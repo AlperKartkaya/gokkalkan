@@ -1,7 +1,7 @@
 # Gökkalkan Malzeme Listesi ve Teslimat Durumu
 
-> **Kaynak:** `Gökkalkan Malzeme Listesi.xlsx`  
-> **Son aktarım ve bağlantı kontrolü:** 10 Ağustos 2026  
+> **Kaynaklar:** `Gökkalkan Malzeme Listesi.xlsx` ve `Gökkalkan Malzeme Listesi - Güncel Kablolama.xlsx`
+> **Son aktarım ve bağlantı kontrolü:** 11 Ağustos 2026
 > **Kullanım:** Bu dosya agentlar için hızlı başvuru kopyasıdır. Sipariş ve teslimat durumlarında Excel dosyası güncellendiyse bu Markdown da birlikte güncellenmelidir.
 
 ## Özet
@@ -63,6 +63,46 @@
 | 39 | Pil Şarj Aleti | Araç ve Gereçler | Havale Onayı Bekliyor | 1 | 2S–3S | [Bağlantı](https://www.robocombo.com/imax-b3-pro-1s-3s-lipo-sarj-aleti-3533) |
 | 40 | Şaft Mili | Araç ve Gereçler | Sipariş Verildi | 1 | 1 m | [Bağlantı](https://www.cnc-marketi.com/urun/25-mm-krom-kapli-induksiyonlu-taslanmis-mil) |
 
+## Kablolama ve bağlantı revizyonu
+
+Bu bölüm, güncel Excel kopyasındaki alt tabloyu aynı kararlarla Markdown'a taşır. Üstteki envanter satın alma kaydını korur; aşağıdaki tablo ise **bundan sonra alınacak veya miktarı/modeli düzeltilmiş** kablolama ve güvenlik elemanlarını gösterir.
+
+> **Haberleşme geçişi:** CAN donanımı satın alınmayacak; Raspberry Pi 5 ile Pico için kısa, veri destekli USB-A → Micro-USB kablosu kullanılacak. Ancak backend, firmware ve çalışma profilleri henüz CAN tabanlıdır. USB yazılım geçişi tamamlanana kadar fiziksel USB hattı canlı kontrol bağlantısı olarak kabul edilmez.
+
+| No | Malzeme | Adet | Özellik | Satın alma bağlantısı | Not |
+|---:|---|---:|---|---|---|
+| 1 | Silikon kablo — kırmızı | 1 | 14 AWG, 3 m | — | 24 V pozitif dağıtım; T-Plug uzatmasından farklıdır. |
+| 2 | Silikon kablo — siyah | 1 | 14 AWG, 3 m | — | 24 V negatif dağıtım; T-Plug uzatmasından farklıdır. |
+| 3 | Blendajlı sinyal kablosu | 1 | 4×0,22 mm², 10 m | — | Enkoder ve düşük seviyeli sinyal hatları. |
+| 4 | Siemens emniyet rölesi | 1 | 3SK1111-1AB30, 24 V AC/DC | [Yapı Otomasyon](https://www.yapotomasyon.com/urun/siemens-3sk1111-1ab30-standart-emniyet) | YL-314-C-T bunun yerine geçmez; kontaktörle birlikte kullanılır. |
+| 5 | İkinci kanal stop kontağı | 1 | Gwest 6102, 1NK | [KRC Elektromarket](https://www.krcelektromarket.com/gwest-6102-stop-kontak-1-nk) | Mevcut Acil Durdur butonuna ikinci bağımsız NK kanal olarak takılır. |
+| 6 | Schneider kontaktör | 1 | LP1K1201BD, 24 VDC bobin, 3NA+1NK | [Anel Elektromarket](https://anelelektromarket.com/schneider-lp1k1201bd-55-kw-3na1nk-24-vdc-kontaktor) | Üst listedeki LP1K1210BD yerine seçildi; emniyet rölesinin yerine geçmez. |
+| 7 | Manuel reset butonu | 1 | Anlık basmalı, 1NA | [Merter Elektronik](https://www.merterelektronik.com/reset-butonu-220-v-10-amper-mr1) | E-Stop bırakıldıktan sonra kendiliğinden yeniden çalışmayı önler. |
+| 8 | Kontaktör bobin bastırma modülü | 1 | Schneider LA4KE1B, TeSys K varistör | [Endüstriyel Market](https://www.endustriyelmarket.com/schneider-electric-la4ke1b-tesys-k-supresor-modulu-varistor-12) | Kontaktör bobini bırakırken oluşan gerilim darbesini bastırır. |
+| 9 | USB-A → Micro-USB veri kablosu | 1 | Kısa, veri destekli | — | Yalnız şarj kablosu alınmaz; Pi 5 ↔ Pico planlanan bağlantısıdır. |
+| 10 | T-Plug erkek-dişi kablolu uzatma | 1 | 14 AWG | [Robotistan](https://www.robotistan.com/lipo-tplug-erkek-disi-konnektor-14awg) | Airsoft bataryası ile emniyet kesme arayüzü arasına stok kabloyu kesmeden eklenir. |
+| 11 | XT60 erkek-dişi pigtail seti | 2 | 14 AWG | [Hiber](https://www.hiber.com.tr/xt60-pigtail-erkek-disi-konnektor-kablosu) | Üst ve alt gövdenin bakımda ayrılması için. |
+| 12 | Motor kablosu | 2 | ERSE 4×1,0 mm² LIYCY, 3 m/adet | [KRC Elektromarket](https://www.krcelektromarket.com/erse-4x1mm-liycy-sinyal-kablosu-blendajli-m3) | İki NEMA23 için toplam 6 m. |
+| 13 | Mandallı klemens | 4 | Orijinal WAGO 221-415 | [WAGO](https://www.wago.com/global/installation-terminal-blocks-and-connectors/5-wire-splicing-connector/p/221-415) | Eski 10 adet kararı iptal edilmiştir. |
+| 14 | İzoleli kablo yüksük seti | 1 | Kullanılan kesitlere uygun karışık set | — | Vidalı terminallerdeki çok telli iletken uçları için. |
+| 15 | Isıyla daralan makaron seti | 1 | Karışık çap | — | Lehimli ek ve açıkta kalabilecek bağlantıların yalıtımı için. |
+| 16 | Step motor pulse jeneratörü | 1 | DM542 ile uyumlu | — | Yazılımdan bağımsız masa testi için. |
+| 17 | Plastik kablo bağı paketi | 2 | 100 mm ve 200 mm | — | Sabit demet ve gerilim boşaltma. |
+| 18 | Genişleyebilir PET kablo çorabı | 2 | 10 mm, 1 m/adet | [Maasco](https://www.maascoelektrik.com/urun/kablo-toplama-corap-cesitleri-1-metre-10mm-1-metre) | Yalnız hareketli/sürtünen üç kısa kablo grubunda; toplam 2 m. |
+| 19 | Raspberry Pi kamera flex kablosu | 1 | 22-pin → 15-pin; 200/300/en fazla 500 mm | [Raspberry Pi](https://www.raspberrypi.com/products/camera-cable/?variant=camera-cable-std-mini-500) | Eski 5 m seçimi iptal; nihai boy mekanik ölçümle seçilir. |
+| 20 | Topraklı esnek şebeke kablosu | 1 | 3×1,0 veya 3×1,5 mm²; L/N/PE | — | Eski 2×0,75 mm² TTR seçimi iptal edilmiştir. |
+| 21 | DIN ray PE/toprak klemensi | 3 | 4 mm² ONKA MTK | [Endüstri Pazar](https://www.endustripazar.com/urun/4mm2-mtk-serisi-vida-baglantili-topraklama-ray-klemens-1010220-onka) | Şebeke PE, Mean Well PE ve metal şasi bağlantıları. |
+| 22 | Altı yollu baralı sigorta kutusu | 1 | 12/24 V ATO/ATC, negatif baralı | [Karavan Malzemecim](https://www.karavanmalzemecim.com/pro-dc-barali-sigorta-kutusu-6li-12v24v-191) | 24 V yük dallarının ayrı korunması. |
+| 23 | Karışık bıçak sigorta seti | 1 | Standart/mini, 1–40 A | [Adam Oto](https://www.adamoto.com.tr/urun/100-adet-mini-ve-standart-super-karisik-oto-bicak-sigorta-seti-1a-3a-5a-7-5a-10a-15a-20a-25a-30a-40a) | Nihai değerler ölçülen akım ve kablo kesitine göre seçilir. |
+| 24 | Kapaklı ana sigorta yuvası | 1 | Motoraid MT-SY25, 2,5 mm² kablolu | [Adam Oto](https://www.adamoto.com.tr/urun/standart-bicak-sigorta-yuvasi-2-5mm-kablolu-kapakli-ic-mekan) | 24 V kaynağa yakın, 6'lı dağıtım kutusundan önce. |
+
+### Alt tablodan çıkarılan kalemler
+
+- Kapsül slip ring: sürekli 360° dönüş kullanılmayacağı için alınmayacak.
+- Kablo taşıyıcı: güncel kısa kablo güzergâhında zorunlu satın alma kalemi değildir.
+- Breadboard ve üç jumper kablo seti: nihai imalat BOM'unda yer almayacak.
+- Beş takım XT60, on adet WAGO, 5 m kamera kablosu ve 2×0,75 mm² TTR: yukarıdaki yeni seçimlerle değiştirilmiştir.
+
 ## Ürün ayrıntıları ve entegrasyon notları
 
 ### Hesaplama, algı ve haberleşme
@@ -103,6 +143,7 @@
 - 3,3 V lojik seviyeli, ISO 11898-2 uyumlu yüksek hızlı CAN fiziksel katman transceiver'ı.
 - Pico'nun CAN denetleyicisi yoktur; projedeki seçime göre harici CAN denetleyici veya PIO tabanlı yaklaşım ayrıca gerekir.
 - Hat sonlandırması, ortak referans, ESD/EMI koruması ve modül üzerindeki 120 Ω direncin varlığı fiziksel kartta kontrol edilmelidir.
+- **Güncel karar:** Bu modül ve diğer CAN donanımı satın alınmayacaktır. Yukarıdaki bilgiler yalnız mevcut CAN kodunun/ADR'nin tarihsel bağlamıdır; planlanan Pi–Pico fiziksel hattı USB'dir ve yazılım geçişi henüz yapılmamıştır.
 
 #### 29. Benewake TFA50-L tek nokta LiDAR
 
@@ -153,10 +194,10 @@
 - NC kontak, kablo kopması gibi bazı arızaların algılanmasına yardımcı olur; ancak buton tek başına güvenlik fonksiyonu oluşturmaz.
 - Mekanik kilitleme/reset davranışı ve kontak sayısı fiziksel ürün üzerinde doğrulanmalıdır.
 
-#### 13. Schneider LP1K1210BD mini kontaktör
+#### 13. Kontaktör: eski LP1K1210BD kaydı, yeni LP1K1201BD seçimi
 
-- 24 V DC bobinli, 12 A sınıfında, 1 NO yardımcı kontaklı mini kontaktör.
-- Satıcı verisinde AC-3 için 440 V/12 A ve yaklaşık 5,5 kW sınıfı belirtiliyor; DC motor/ana bara kesmesinde uygunluk ayrıca değerlendirilmelidir.
+- Üst envanter satırı LP1K1210BD'yi korur; güncel kablolama revizyonunda **LP1K1201BD, 24 VDC bobin, 3NA+1NK** seçilmiştir.
+- 1NK yardımcı kontak EDM/kontaktör geri bildirimi için planlanır. Kesilecek AC/DC yük ve kullanma kategorisi ayrıca değerlendirilmelidir.
 - Bobin sönümleme, kontak kaynaklanması geri bildirimi ve güvenli enerji kesme mimarisi test edilmelidir.
 
 #### 14. YL-314-C-T röle
@@ -164,6 +205,7 @@
 - 24 V, 40 A, 5-pin **otomotiv rölesidir**.
 - **Kritik uyarı:** Ürün bağlantısı güvenlik sertifikalı bir “emniyet rölesi” göstermiyor. Zorlamalı kılavuzlu kontak, çift kanal izleme veya uygun güvenlik kategorisi kanıtı yoktur.
 - Güvenlik zincirinde emniyet rölesi yerine kullanılmamalı; bu satırın adı ve tasarım rolü düzeltilmelidir.
+- Güncel güvenlik seçimi **Siemens 3SK1111-1AB30** emniyet rölesi, ikinci Gwest 6102 1NK stop kontağı, 1NA manuel reset, LP1K1201BD kontaktör ve LA4KE1B bastırma modülüdür.
 
 #### 16. 40 × 40 × 10 mm fan
 
@@ -285,7 +327,7 @@
 ## Veri kalitesi ve satın alma kontrol listesi
 
 1. **Model uyuşmazlığını çöz:** Fenac F50-1024 ↔ Omron E6B2-CWZ6C 1000 P/R.
-2. **Güvenlik sınıflandırmasını düzelt:** YL-314-C-T otomotiv rölesini “Emniyet Rölesi” olarak kabul etme.
+2. **Güvenlik sınıflandırmasını düzelt:** YL-314-C-T otomotiv rölesini “Emniyet Rölesi” olarak kabul etme; 3SK1111-1AB30 + ikinci 1NK stop kontağı + manuel reset + LP1K1201BD zincirini esas al.
 3. **Rulman adlarını düzelt:** 6205-ZZ radyal rulman; FF25 ise vidalı mil uç yatağıdır.
 4. **PETG rengini doğrula:** Excel sarı, bağlantı siyah.
 5. **Şarjör/BB satırını ayır:** Bağlantı yalnızca BB ürününü gösteriyor.
@@ -293,6 +335,7 @@
 7. **Boş durumları tamamla:** Kontaktör ve cyan PLA satırlarında sipariş durumu yok.
 8. **Pil/şarj uyumluluğunu doğrula:** Kimya, hücre sayısı, balans bağlantısı ve şarj gerilimi eşleşmeli.
 9. **Kaynak sınırlamasını koru:** Satıcı sayfasındaki pazarlama değerleri fiziksel kabul veya üretici veri sayfası yerine geçmez.
+10. **USB geçiş durumunu doğru yaz:** Kablo/satın alma kararı verilmiştir; CAN → USB kod ve Pico firmware dönüşümü henüz yapılmamıştır.
 
 ## Agent kullanım notu
 

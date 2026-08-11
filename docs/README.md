@@ -18,7 +18,7 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 
 | Dosya | Açıklama |
 |-------|----------|
-| [`tech_stack.md`](tech_stack.md) | Teknik yığın, donanım mimarisi, CAN protokolü ve Safety Gate |
+| [`tech_stack.md`](tech_stack.md) | Teknik yığın, donanım mimarisi, mevcut CAN uygulaması, planlanan USB geçişi ve Safety Gate |
 | [`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md) | Nihai iki eksenli taret, tabana göre 700 mm / yere göre yaklaşık 1300 mm LiDAR merkezi, tek kamera ve AI HAT+ referansı |
 | [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md) | Video hedef baskıları, gerçek kamera veri toplama, grup split, augmentation, YOLO ve Hailo-8 kabul planı |
 | [`hedef_veri_seti_uygulama_rehberi.md`](hedef_veri_seti_uygulama_rehberi.md) | Çalışan augmentation, gerçek fotoğraf pull/import, YOLO dataset ve smoke eğitim komutları |
@@ -43,6 +43,10 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 
 | Dosya | Açıklama |
 |-------|----------|
+| [`IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`](IMALAT_KOMPONENT_BAGLANTI_REHBERI.html) | İmalat ekibi için kaynaklı, yazdırılabilir komponent bağlantı, kablolama, lehim/krimp ve aşamalı kabul rehberi |
+| [`IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md`](IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md) | Elektrik kablolama özeti, ek satın alma listesi ve imalat kontrol maddeleri |
+| [`IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`](IMALAT_EK_MALZEME_SIPARIS_LISTESI.html) | Güncel kablolama Excel'iyle eşleştirilmiş kısa satın alma ve bağlantı kararları |
+| [`MALZEME_LISTESI.md`](MALZEME_LISTESI.md) | Güncel malzeme ve teslimat durumlarının erişilebilir Markdown dökümü |
 | [`CODEBASE_TUTORIAL.md`](CODEBASE_TUTORIAL.md) | Kod tabanı ve mimari eğitim kılavuzu |
 | [`competition_hands_off_scenarios.md`](competition_hands_off_scenarios.md) | Yarışma hands-off senaryoları |
 

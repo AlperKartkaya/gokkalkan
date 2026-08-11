@@ -287,7 +287,15 @@ kapanışını doğrular. Sözleşme ve karar kayıtları
 - [x] **FW-007 — Encoder ve limit geri bildirimlerini bağla**
   - Yön, sıfır, overflow, kopukluk ve beklenen/gerçek açı farkı fault’a dönüşmeli.
 
-**Faz 5 yazılım/host kanıtı (25.07.2026):** CAN v1 ICD ve Python/C++ codec'leri, Pico güvenlik çekirdeği, backend ACK-timeout yolu ve ortak geçiş vektörleri uygulanmıştır. Python testleri ile CMake/CTest host testi reset, heartbeat kaybı, bozuk CRC/sequence ve encoder fault'larının çıkışları kapattığını doğrular. Pico flash, gerçek CAN controller/transceiver, kablolu E-Stop ve motor/imha hattı kesme kabulü imalat sonrası HIL/fiziksel kanıt olarak açık kalır.
+- [ ] **FW-008 — Pi–Pico taşımasını CAN'dan USB seriye geçir** `[WP-04]`
+  - **Durum (11.08.2026):** Yalnız satın alma/kablolama kararı verilmiştir; kod, firmware ve runtime profilleri henüz değiştirilmemiştir.
+  - Mevcut komut/status/fault semantiği, sequence, checksum, ACK/NACK, heartbeat ve timeout sözleşmesi taşıma katmanından bağımsız korunmalı.
+  - Backend'e USB seri hardware adapter eklenmeli; cihaz kimliği/port seçimi, framing, kısmi paket, reconnect, duplicate/out-of-order ve bağlantı kopması fail-closed test edilmelidir.
+  - Pico firmware USB cihaz/seri endpoint'i sağlamalı; boot/reset sırasında çıkışlar güvenli kalmalı ve host bağlantısı kaybolduğunda watchdog çıkışları kapatmalıdır.
+  - SIM/HIL/LIVE profilleri ile readiness/telemetri alanları CAN varsayımından ayrılmalı; geçiş tamamlanmadan LIVE fiziksel çıktı açılmamalıdır.
+  - Yeni USB kararı ayrı ADR ile kaydedildikten ve testler yeşil olduktan sonra ADR-002/CAN ICD tarihsel belge olarak işaretlenmelidir; önceden silinmez.
+
+**Faz 5 yazılım/host kanıtı (25.07.2026):** CAN v1 ICD ve Python/C++ codec'leri, Pico güvenlik çekirdeği, backend ACK-timeout yolu ve ortak geçiş vektörleri uygulanmıştır. Python testleri ile CMake/CTest host testi reset, heartbeat kaybı, bozuk CRC/sequence ve encoder fault'larının çıkışları kapattığını doğrular. Bu kanıt yeni USB taşımasını doğrulamaz. Pico flash, USB firmware/adapter, kablolu E-Stop ve motor/imha hattı kesme kabulü imalat sonrası HIL/fiziksel kanıt olarak açık kalır.
 
 ---
 
