@@ -51,12 +51,12 @@ class RecordingFactory:
 
 
 class RuntimeModeTest(unittest.TestCase):
-    def test_default_sim_mode_never_constructs_can_adapter(self) -> None:
+    def test_default_sim_mode_never_constructs_mcu_adapter(self) -> None:
         factory = RecordingFactory()
 
         service = build_runtime_service(
             RuntimeLaunchConfig(),
-            can_adapter_factory=factory,
+            mcu_adapter_factory=factory,
         )
 
         self.assertEqual(service.runtime_mode, "SIM")
@@ -64,31 +64,29 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertEqual(factory.instances, [])
         self.assertEqual(service.events[0]["payload"]["runtimeMode"], "SIM")
 
-    def test_hil_rejects_physical_can_channel_before_adapter_construction(self) -> None:
+    def test_hil_rejects_physical_usb_before_reviewed_enable(self) -> None:
         factory = RecordingFactory()
 
-        with self.assertRaisesRegex(RuntimeConfigurationError, "virtual CAN"):
+        with self.assertRaisesRegex(RuntimeConfigurationError, "loop://"):
             build_runtime_service(
                 RuntimeLaunchConfig(
                     mode="HIL",
-                    can_channel="can0",
-                    can_bustype="socketcan",
+                    mcu_port="/dev/serial/by-id/pico",
                 ),
-                can_adapter_factory=factory,
+                mcu_adapter_factory=factory,
             )
 
         self.assertEqual(factory.instances, [])
 
-    def test_hil_uses_virtual_can_without_physical_output_capability(self) -> None:
+    def test_hil_uses_usb_loopback_without_physical_output_capability(self) -> None:
         factory = RecordingFactory()
 
         service = build_runtime_service(
             RuntimeLaunchConfig(
                 mode="HIL",
-                can_channel="vcan0",
-                can_bustype="socketcan",
+                mcu_port="loop://",
             ),
-            can_adapter_factory=factory,
+            mcu_adapter_factory=factory,
         )
 
         self.assertEqual(service.runtime_mode, "HIL")
@@ -98,18 +96,17 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertFalse(factory.instances[0].options["dry_run"])
         self.assertFalse(factory.instances[0].options["physical_output_capable"])
 
-    def test_reviewed_hil_physical_can_is_monitor_only_without_output_capability(
+    def test_reviewed_hil_physical_usb_is_monitor_only_without_output_capability(
         self,
     ) -> None:
         factory = RecordingFactory()
         service = build_runtime_service(
             RuntimeLaunchConfig(
                 mode="HIL",
-                can_channel="can0",
-                can_bustype="socketcan",
-                hil_physical_can_enabled=True,
+                mcu_port="/dev/serial/by-id/pico",
+                hil_physical_mcu_enabled=True,
             ),
-            can_adapter_factory=factory,
+            mcu_adapter_factory=factory,
         )
         self.assertEqual(service.runtime_mode, "HIL")
         self.assertTrue(factory.instances[0].started)
@@ -120,8 +117,8 @@ class RuntimeModeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeConfigurationError, "explicitly enabled"):
             build_runtime_service(
-                RuntimeLaunchConfig(mode="LIVE", can_channel="can0"),
-                can_adapter_factory=factory,
+                RuntimeLaunchConfig(mode="LIVE", mcu_port="/dev/serial/by-id/pico"),
+                mcu_adapter_factory=factory,
             )
 
         self.assertEqual(factory.instances, [])
@@ -149,11 +146,10 @@ class RuntimeModeTest(unittest.TestCase):
                         RuntimeLaunchConfig(
                             mode="LIVE",
                             live_output_enabled=True,
-                            can_channel="can0",
-                            can_bustype="socketcan",
+                            mcu_port="/dev/serial/by-id/pico",
                         ),
                         live_preflight=preflight,
-                        can_adapter_factory=factory,
+                        mcu_adapter_factory=factory,
                     )
                 self.assertEqual(factory.instances, [])
 
@@ -164,15 +160,14 @@ class RuntimeModeTest(unittest.TestCase):
             RuntimeLaunchConfig(
                 mode="LIVE",
                 live_output_enabled=True,
-                can_channel="can0",
-                can_bustype="socketcan",
+                mcu_port="/dev/serial/by-id/pico",
             ),
             live_preflight=LivePreflight(
                 physical_interlock_ready=True,
                 backend_readiness_ok=True,
                 source="physical-interlock-test-fixture",
             ),
-            can_adapter_factory=factory,
+            mcu_adapter_factory=factory,
         )
 
         self.assertEqual(service.runtime_mode, "LIVE")

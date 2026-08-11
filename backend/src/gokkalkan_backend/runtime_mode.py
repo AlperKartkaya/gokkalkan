@@ -5,12 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-from .hardware_adapter import CanMcuAdapter, HardwareAdapterBase
+from .hardware_adapter import HardwareAdapterBase
 from .operator_api import DryRunHardwareAdapter, OperatorService
 from .telemetry_log import JsonlTelemetryStore
+from .usb_serial_adapter import UsbSerialMcuAdapter
 
 RuntimeMode = Literal["SIM", "HIL", "LIVE"]
-CanAdapterFactory = Callable[..., HardwareAdapterBase]
+McuAdapterFactory = Callable[..., HardwareAdapterBase]
 
 
 class RuntimeConfigurationError(RuntimeError):
@@ -26,12 +27,12 @@ class RuntimeLaunchConfig:
     """
 
     mode: RuntimeMode = "SIM"
-    can_channel: str = "vcan0"
-    can_bustype: str = "socketcan"
-    can_bitrate: int = 500_000
+    mcu_transport: str = "usb_serial"
+    mcu_port: str = "loop://"
+    mcu_baudrate: int = 115_200
     heartbeat_timeout_sec: float = 2.0
     live_output_enabled: bool = False
-    hil_physical_can_enabled: bool = False
+    hil_physical_mcu_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,14 +44,14 @@ class LivePreflight:
     source: str
 
 
-def _is_virtual_can(channel: str, bustype: str) -> bool:
-    return bustype == "virtual" or channel.startswith("vcan")
+def _is_virtual_mcu_port(port: str) -> bool:
+    return port.startswith("loop://")
 
 
 def _start_adapter(adapter: HardwareAdapterBase) -> None:
     start = getattr(adapter, "start", None)
     if not callable(start):
-        raise RuntimeConfigurationError("CAN adapter does not expose start()")
+        raise RuntimeConfigurationError("MCU adapter does not expose start()")
     start()
 
 
@@ -59,7 +60,7 @@ def build_runtime_service(
     *,
     telemetry: JsonlTelemetryStore | None = None,
     live_preflight: LivePreflight | None = None,
-    can_adapter_factory: CanAdapterFactory = CanMcuAdapter,
+    mcu_adapter_factory: McuAdapterFactory = UsbSerialMcuAdapter,
     operator_options: dict[str, Any] | None = None,
 ) -> OperatorService:
     """Build a service without letting client input influence output authority."""
@@ -75,18 +76,19 @@ def build_runtime_service(
         )
 
     if config.mode == "HIL":
+        if config.mcu_transport != "usb_serial":
+            raise RuntimeConfigurationError("HIL requires the USB serial MCU transport")
         if (
-            not _is_virtual_can(config.can_channel, config.can_bustype)
-            and not config.hil_physical_can_enabled
+            not _is_virtual_mcu_port(config.mcu_port)
+            and not config.hil_physical_mcu_enabled
         ):
             raise RuntimeConfigurationError(
-                "HIL requires virtual CAN unless the reviewed monitor-only "
-                "physical CAN profile is explicitly enabled"
+                "HIL requires loop:// USB simulation unless the reviewed "
+                "safe-load physical MCU profile is explicitly enabled"
             )
-        adapter = can_adapter_factory(
-            channel=config.can_channel,
-            bustype=config.can_bustype,
-            bitrate=config.can_bitrate,
+        adapter = mcu_adapter_factory(
+            port=config.mcu_port,
+            baudrate=config.mcu_baudrate,
             heartbeat_timeout_sec=config.heartbeat_timeout_sec,
             dry_run=False,
             physical_output_capable=False,
@@ -120,13 +122,16 @@ def build_runtime_service(
         )
     if not live_preflight.source.strip():
         raise RuntimeConfigurationError("LIVE preflight source must be auditable")
-    if _is_virtual_can(config.can_channel, config.can_bustype):
-        raise RuntimeConfigurationError("LIVE requires a physical CAN channel")
+    if config.mcu_transport != "usb_serial":
+        raise RuntimeConfigurationError("LIVE requires the USB serial MCU transport")
+    if _is_virtual_mcu_port(config.mcu_port):
+        raise RuntimeConfigurationError("LIVE requires a physical USB serial device")
+    if "/dev/serial/by-id/" not in config.mcu_port:
+        raise RuntimeConfigurationError("LIVE requires a stable /dev/serial/by-id/ MCU path")
 
-    adapter = can_adapter_factory(
-        channel=config.can_channel,
-        bustype=config.can_bustype,
-        bitrate=config.can_bitrate,
+    adapter = mcu_adapter_factory(
+        port=config.mcu_port,
+        baudrate=config.mcu_baudrate,
         heartbeat_timeout_sec=config.heartbeat_timeout_sec,
         dry_run=False,
         physical_output_capable=True,

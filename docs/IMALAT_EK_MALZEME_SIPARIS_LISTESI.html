@@ -55,7 +55,7 @@
   <h2>2. Raspberry Pi–Pico haberleşmesi</h2>
   <div class="decision"><strong>Karar:</strong> CAN donanımı almayacağız; Pico’yu Raspberry Pi’ye USB üzerinden bağlayacağız.</div>
   <p><strong>Alınacak:</strong> 1 adet kısa USB-A → Micro-USB <strong>veri kablosu</strong>. Yalnız şarj damarları bulunan kablo alınmamalı.</p>
-  <p class="note">Bu karar yazılım tarafında USB seri adaptörü ve Pico USB firmware çalışması gerektiriyor. Yalnız kabloyu takmak mevcut CAN tabanlı yazılımı otomatik olarak USB’ye çevirmiyor.</p>
+  <p class="note">USB seri adaptörü, Pico USB CDC taşıması ve runtime profilleri uygulanmıştır. Kabloyu takmak yine de fiziksel HIL/EMI kabulü olmadan LIVE yetkisi vermez.</p>
 
   <h2>3. Hareketli gövde ve konnektörler</h2>
   <ol>
@@ -107,7 +107,7 @@
     </tbody>
   </table>
   <p>Sigorta değerleri sabit varsayılmayacak; ölçülen yük akımı, başlangıç akımı, kablo kesiti ve ilgili cihazın üretici bilgisine göre elektrik sorumlusu tarafından seçilecek.</p>
-  <p class="note"><strong>Yazılım kapsamı:</strong> Bu belge yalnız satın alma ve kablolama kararını günceller. Mevcut CAN adapter, firmware ve runtime profilleri henüz USB'ye çevrilmedi.</p>
+  <p class="note"><strong>Yazılım kapsamı:</strong> USB adapter, firmware taşıması ve runtime profilleri güncellendi; fiziksel kablo/EMI/HIL kabulü ayrıca gereklidir.</p>
 </main>
 </body>
 </html>

@@ -9,7 +9,7 @@ gösterimlerinin yerine geçmez.
 
 `gokkalkan_backend.digital_twin` şu sınırları modellenebilir yapar:
 
-- CAN v1 META + payload, sequence, CRC, ACK/NACK;
+- USB taşımasında da korunan tarihsel v1 META + payload, sequence ve ACK/NACK;
 - ACK gecikmesi, drop/timeout, bozuk ACK, E-Stop, heartbeat ve encoder fault;
 - pan/tilt hız, ivme, soft limit, backlash ve encoder geri bildirimi;
 - kamera track ve TFA50-L menzil/no-detection fixture’ları;
@@ -78,13 +78,13 @@ gokkalkan evidence build telemetry_data/operator-api-dry-run-<zaman>-<id>.sessio
 gokkalkan evidence verify telemetry_data/VID-Y3.zip
 ```
 
-Kamera karesi, TFA50-L paketi, Safety kararı, CAN ACK’i ve sonuç olayı aynı
+Kamera karesi, TFA50-L paketi, MCU ACK’i ve sonuç olayı aynı
 `commandId` ve monotonic zaman aralığıyla ilişkilendirilmelidir. Fiziksel testte
 video segmenti ayrıca session’a `index_media` ile bağlanmalıdır.
 
 ## 5. İmalat sonrası açık kabul kapıları
 
-1. CAN/Pico gerçek ACK zamanları ve hata oranı.
+1. USB/Pico gerçek ACK zamanları, disconnect/reconnect davranışı ve hata oranı.
 2. Motor yükü altında hız/ivme/backlash ve encoder sapması.
 3. Kablolu E-Stop’un motor ve imha enerjisini fiziksel kesmesi.
 4. TFA50-L gerçek UART/no-detection/stale davranışı ve kamera-LiDAR hizası.

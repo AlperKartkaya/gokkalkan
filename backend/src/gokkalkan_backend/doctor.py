@@ -109,19 +109,19 @@ def _check_camera(settings: RuntimeSettings) -> DoctorCheck:
     )
 
 
-def _check_can(settings: RuntimeSettings) -> DoctorCheck:
+def _check_mcu(settings: RuntimeSettings) -> DoctorCheck:
     if settings.profile == "SIM":
-        return DoctorCheck("can", "PASS", "SIM profile: CAN was not opened")
-    if settings.can.bustype == "virtual":
-        return DoctorCheck("can", "PASS", "python-can virtual channel selected")
-    interface = Path("/sys/class/net") / settings.can.channel
-    if interface.exists():
-        return DoctorCheck("can", "PASS", f"interface exists: {settings.can.channel}")
+        return DoctorCheck("mcu", "PASS", "SIM profile: USB MCU device was not opened")
+    if settings.mcu.port.startswith("loop://"):
+        return DoctorCheck("mcu", "PASS", "USB serial loopback selected")
+    device = Path(settings.mcu.port)
+    if device.exists():
+        return DoctorCheck("mcu", "PASS", f"USB serial device exists: {device}")
     status: Status = "WARN" if settings.profile == "HIL" else "FAIL"
     return DoctorCheck(
-        "can",
+        "mcu",
         status,
-        f"interface missing: {settings.can.channel}; no bus was opened",
+        f"USB serial device missing: {device}; no device was opened",
     )
 
 
@@ -157,7 +157,7 @@ def run_doctor(
             _check_disk(settings),
             _check_recording_dir(settings),
             _check_camera(settings),
-            _check_can(settings),
+            _check_mcu(settings),
         ]
     )
 

@@ -4,10 +4,10 @@ Bu klasördeki TOML dosyaları `gokkalkan_backend.runtime_config` tarafından
 şema sürümü, tip, aralık ve güvenlik bağıntılarıyla doğrulanır.
 
 - `SIM`: Fiziksel adapter oluşturmaz.
-- `HIL`: Varsayılan `hil.toml` yalnız `vcan*`/`python-can virtual` preflight
-  kullanır. `hil-physical.toml` gerçek `can0` hattını yalnız izleme ve
+- `HIL`: Varsayılan `hil.toml` `loop://` USB seri simülasyonu kullanır.
+  `hil-physical.toml` kararlı `/dev/serial/by-id/...` Pico yolunu yalnız
   lamba/yapay yük kabulü için açar; gerçek imha çıkış yetkisi vermez.
-- `LIVE`: Fiziksel CAN, interlock/readiness sağlayıcı adları ve operatör token
+- `LIVE`: Fiziksel USB CDC cihazı, interlock/readiness sağlayıcı adları ve operatör token
   yolu zorunludur; API yalnız loopback adresinde dinler. Örnek dosyada
   `live_output_enabled=false` bırakılmıştır.
 

@@ -30,12 +30,12 @@ Pico/RP2040’a ayırmaktadır.
    çıkış durumlarını yöneten programıdır; Raspberry Pi’a kurulan ayrı bir işletim
    sistemi veya ROS dağıtımı değildir.
 5. **ROS 2 kullanılmaz.** Mevcut ihtiyaçlar yerel süreçler, açık adapter sınırları,
-   HTTP/state stream ve CAN/UART ile karşılanır.
+   HTTP/state stream, USB CDC Serial ve sensör UART'ı ile karşılanır.
 6. **Tam Rust yeniden yazımı yapılmaz.** Thread güvenliği; tek sahipli Mission
    Core, immutable snapshot, queue/event köprüsü ve process sınırıyla çözülür.
    Gerçek zamanlı emniyet Linux dil seçimine değil MCU ve fiziksel kesme zincirine
    dayanır.
-7. **Runtime profilleri:** Varsayılan `SIM`, sanal CAN için `HIL`, fiziksel çıkış
+7. **Runtime profilleri:** Varsayılan `SIM`, USB `loop://` için `HIL`, fiziksel çıkış
    için `LIVE` kullanılır. `LIVE`; backend config, fiziksel interlock preflight ve
    readiness olmadan adapter oluşturamaz. Operatör arm zinciri ayrıca kapalıdır.
 

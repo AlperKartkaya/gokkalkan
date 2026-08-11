@@ -67,7 +67,7 @@
 
 Bu bölüm, güncel Excel kopyasındaki alt tabloyu aynı kararlarla Markdown'a taşır. Üstteki envanter satın alma kaydını korur; aşağıdaki tablo ise **bundan sonra alınacak veya miktarı/modeli düzeltilmiş** kablolama ve güvenlik elemanlarını gösterir.
 
-> **Haberleşme geçişi:** CAN donanımı satın alınmayacak; Raspberry Pi 5 ile Pico için kısa, veri destekli USB-A → Micro-USB kablosu kullanılacak. Ancak backend, firmware ve çalışma profilleri henüz CAN tabanlıdır. USB yazılım geçişi tamamlanana kadar fiziksel USB hattı canlı kontrol bağlantısı olarak kabul edilmez.
+> **Haberleşme kararı:** CAN donanımı satın alınmayacak; Raspberry Pi 5 ile Pico kısa, veri destekli USB-A → Micro-USB kablosuyla bağlanacaktır. Backend USB seri adapter, COBS+CRC16 framing, heartbeat/ACK ve Pico USB CDC firmware taşıması uygulanmıştır. Fiziksel USB/EMI/HIL kabulü tamamlanana kadar LIVE çıkış yine kapalıdır.
 
 | No | Malzeme | Adet | Özellik | Satın alma bağlantısı | Not |
 |---:|---|---:|---|---|---|
@@ -143,7 +143,7 @@ Bu bölüm, güncel Excel kopyasındaki alt tabloyu aynı kararlarla Markdown'a 
 - 3,3 V lojik seviyeli, ISO 11898-2 uyumlu yüksek hızlı CAN fiziksel katman transceiver'ı.
 - Pico'nun CAN denetleyicisi yoktur; projedeki seçime göre harici CAN denetleyici veya PIO tabanlı yaklaşım ayrıca gerekir.
 - Hat sonlandırması, ortak referans, ESD/EMI koruması ve modül üzerindeki 120 Ω direncin varlığı fiziksel kartta kontrol edilmelidir.
-- **Güncel karar:** Bu modül ve diğer CAN donanımı satın alınmayacaktır. Yukarıdaki bilgiler yalnız mevcut CAN kodunun/ADR'nin tarihsel bağlamıdır; planlanan Pi–Pico fiziksel hattı USB'dir ve yazılım geçişi henüz yapılmamıştır.
+- **Güncel karar:** Bu modül ve diğer CAN donanımı satın alınmayacaktır. Yukarıdaki bilgiler yalnız mevcut CAN kodunun/ADR'nin tarihsel bağlamıdır; aktif Pi–Pico fiziksel hattı USB CDC Serial olarak uygulanmıştır; CAN içeriği tarihsel payload bağlamıdır.
 
 #### 29. Benewake TFA50-L tek nokta LiDAR
 
@@ -335,7 +335,7 @@ Bu bölüm, güncel Excel kopyasındaki alt tabloyu aynı kararlarla Markdown'a 
 7. **Boş durumları tamamla:** Kontaktör ve cyan PLA satırlarında sipariş durumu yok.
 8. **Pil/şarj uyumluluğunu doğrula:** Kimya, hücre sayısı, balans bağlantısı ve şarj gerilimi eşleşmeli.
 9. **Kaynak sınırlamasını koru:** Satıcı sayfasındaki pazarlama değerleri fiziksel kabul veya üretici veri sayfası yerine geçmez.
-10. **USB geçiş durumunu doğru yaz:** Kablo/satın alma kararı verilmiştir; CAN → USB kod ve Pico firmware dönüşümü henüz yapılmamıştır.
+10. **USB geçiş durumunu doğru yaz:** USB adapter, çerçeveleme, runtime profilleri ve Pico USB CDC taşıması uygulanmıştır; fiziksel HIL/EMI kabulü hâlâ beklemektedir.
 
 ## Agent kullanım notu
 

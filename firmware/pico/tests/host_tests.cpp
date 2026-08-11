@@ -1,5 +1,6 @@
 #include "can_protocol.hpp"
 #include "safety_state_machine.hpp"
+#include "usb_serial_protocol.hpp"
 #include <cassert>
 #include <cstring>
 #include <fstream>
@@ -61,6 +62,22 @@ int main() {
   assert(!gokkalkan::can::valid(valid));
   assert(gokkalkan::can::sequence_is_newer(0, 255));
   assert(!gokkalkan::can::sequence_is_newer(5, 5));
+
+  gokkalkan::usb::Message usb_message;
+  usb_message.id = 0x210;
+  usb_message.size = 8;
+  for (std::size_t i = 0; i < usb_message.size; ++i)
+    usb_message.payload[i] = static_cast<std::uint8_t>(i);
+  std::array<std::uint8_t, gokkalkan::usb::max_encoded_size> encoded{};
+  std::size_t encoded_size = 0;
+  assert(gokkalkan::usb::encode(usb_message, encoded, encoded_size));
+  assert(encoded[encoded_size - 1] == 0);
+  gokkalkan::usb::Message decoded;
+  assert(gokkalkan::usb::decode(encoded.data(), encoded_size - 1, decoded));
+  assert(decoded.id == usb_message.id && decoded.size == usb_message.size);
+  assert(decoded.payload[4] == 4);
+  encoded[3] ^= 1;
+  assert(!gokkalkan::usb::decode(encoded.data(), encoded_size - 1, decoded));
 
   SafetyStateMachine firing;
   Inputs safe_inputs;

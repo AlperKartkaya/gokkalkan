@@ -19,7 +19,7 @@ pytestmark = pytest.mark.safety
 def profile() -> HilProfile:
     return HilProfile(
         profile_id="TEST-HIL",
-        can_channel="vcan0",
+        mcu_port="loop://",
         safe_load="lamp",
         allows_destructive_output=False,
         config_hash="config-hash",
@@ -38,7 +38,7 @@ def test_hil_report_keeps_unrun_physical_scenarios_open(tmp_path: Path) -> None:
 def test_hil_rejects_destructive_load_and_accepts_complete_observations(
     tmp_path: Path,
 ) -> None:
-    unsafe = HilProfile("unsafe", "can0", "real-output", True, "c", "k")
+    unsafe = HilProfile("unsafe", "/dev/serial/by-id/pico", "real-output", True, "c", "k")
     with pytest.raises(ValueError):
         run_hil_plan(unsafe, output=tmp_path / "unsafe.json")
     report = run_hil_plan(

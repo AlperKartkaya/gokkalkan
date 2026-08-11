@@ -14,7 +14,7 @@ Bu klasör, gerçek operatör panelinin bağlanacağı görev çekirdeği ve don
 ```
 
 Tüm mutasyon endpoint’leri önce bounded `CommandEnvelope` kuyruğuna girer. State
-yalnız tek sahipli Mission Core reducer thread’inde değişir; HTTP/CAN/sensör
+yalnız tek sahipli Mission Core reducer thread’inde değişir; HTTP/USB-MCU/sensör
 thread’leri `OperatorService` state’ini doğrudan yazamaz.
 
 Endpoint’ler:
@@ -47,19 +47,19 @@ Mesaj şeması, idempotency, sıra ve kapanış davranışı
 
 ## Runtime profilleri
 
-- `SIM` varsayılandır ve CAN adapter oluşturmaz.
-- `HIL` yalnız `vcan*` veya python-can `virtual` hatlarını kabul eder; fiziksel
+- `SIM` varsayılandır ve fiziksel MCU adapter oluşturmaz.
+- `HIL` varsayılan olarak `loop://` USB seri taşımasını kullanır; fiziksel
   çıkış yetkisi yoktur.
 - `LIVE`, açık backend enable yanında fiziksel interlock ve readiness preflight
   ister. Genel CLI bu preflight’ı üretmediği için canlı adapter fail-closed
   kilitlidir.
 
 ```bash
-# Linux vcan HIL
+# USB seri HIL loopback
 .venv/bin/gokkalkan operator-api --config config/runtime/hil.toml
 
-# macOS aynı-process virtual HIL
-.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml --vcan
+# macOS/Linux USB loopback
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml --usb-loop
 ```
 
 Frontend’i bu API’ye bağlamak için:
@@ -86,4 +86,4 @@ VITE_GOKKALKAN_OPERATOR_API_BASE=http://127.0.0.1:8088 npm run dev
 ```
 
 Doctor yalnız config, dosya sistemi, cihaz düğümleri ve salt okunur health
-endpoint’lerini inceler; CAN/GPIO adapter oluşturmaz.
+endpoint’lerini inceler; USB MCU/GPIO adapter oluşturmaz.

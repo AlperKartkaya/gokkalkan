@@ -1,10 +1,10 @@
 # Gökkalkan İmalat Elektrik, Kablolama ve Ek Malzeme Kılavuzu
 
 > **Hedef kitle:** Elektrik/elektronik ve mekanik imalat ekibi
-> **Kaynaklar:** `Gökkalkan Malzeme Listesi - Güncel Kablolama.xlsx`, `docs/MALZEME_LISTESI.md`, `docs/can_icd_v1.md`, `docs/adr/002-mcu-can.md`, `docs/adr/003-camera-lidar-placement.md`, `docs/tech_stack.md` ve `docs/sartname_v4.txt`
+> **Kaynaklar:** `Gökkalkan Malzeme Listesi - Güncel Kablolama.xlsx`, `docs/MALZEME_LISTESI.md`, `docs/usb_serial_mcu_protocol.md`, `docs/adr/005-pi-pico-usb-serial.md`, `docs/adr/003-camera-lidar-placement.md`, `docs/tech_stack.md` ve `docs/sartname_v4.txt`
 > **Durum:** Tasarım ve masaüstü/SIM doğrulama kılavuzu. Nihai kablo kesiti, sigorta, pin numarası ve konnektör seçimi fiziksel ürün etiketi/veri sayfası ile imalat sorumlusu tarafından onaylanmadan enerji verilmez.
 
-> **11 Ağustos 2026 haberleşme kararı:** Yeni satın alma listesi Pi 5 ↔ Pico fiziksel hattını kısa, veri destekli USB-A → Micro-USB kablosu olarak belirler; CAN arabirimi, CAN kablosu ve sonlandırma direnci satın alınmayacaktır. Repo yazılımı, firmware'i, ADR-002 ve CAN ICD **henüz değiştirilmemiştir**. USB taşıma katmanı uygulanıp test edilene kadar bu dokümandaki USB bağlantısı canlı aktüatör yetkisi vermez ve mevcut CAN kodu “USB hazır” sayılmaz.
+> **11 Ağustos 2026 haberleşme kararı:** Yeni satın alma listesi Pi 5 ↔ Pico fiziksel hattını kısa, veri destekli USB-A → Micro-USB kablosu olarak belirler; CAN arabirimi, CAN kablosu ve sonlandırma direnci satın alınmayacaktır. Backend USB adapter, COBS+CRC16 taşıması, heartbeat/ACK ve Pico USB CDC firmware yolu uygulanmıştır; ADR-005 aktiftir. Bununla birlikte fiziksel USB/EMI/HIL kabulü yapılmadan kablo canlı aktüatör yetkisi vermez.
 
 ## 1. Güvenlik sınırı
 
@@ -98,8 +98,8 @@ Bağlantılar örnek tedarik/arama bağlantılarıdır. Satın almada aynı elek
 | Enkoder | Excel `Fenac F50-1024`; bağlantı Omron E6B2-CWZ6C 1000 P/R | Fiziksel etiketi fotoğraflayıp besleme, A/B/Z çıkış tipi, P/R ve pin renklerini kesinleştir |
 | Emniyet rölesi | YL-314-C-T 24 V/40 A otomotiv rölesi | Güvenlik zincirinden çıkar; sertifikalı iki kanallı güvenlik rölesi satın al |
 | Kontaktör | Eski üst tabloda LP1K1210BD | Yeni seçim LP1K1201BD; 1NK yardımcı kontak EDM için kullanılır, LA4KE1B bobine takılır |
-| Pi ↔ Pico haberleşmesi | Satın alma kararı USB; çalışan repo kodu hâlâ CAN | CAN kodunu USB seri taşıma katmanına dönüştüren ayrı iş tamamlanana kadar canlı bağlantı ve aktüatör kabulü yapılmaz |
-| Pico firmware | Güvenlik çekirdeği ve CAN protokol testleri var; USB cihaz/seri firmware'i yok | USB firmware, cihaz kimliği, yeniden bağlanma ve heartbeat kanıtı tamamlanmadan fiziksel çıktı derlenmez |
+| Pi ↔ Pico haberleşmesi | USB CDC Serial adapter ve runtime profilleri uygulandı | Fiziksel kablo, EMI, reconnect ve safe-load HIL kanıtı tamamlanana kadar LIVE açılmaz |
+| Pico firmware | USB stdio/CDC taşıması, framing, heartbeat ve status/ACK yolu uygulandı | Kart pin haritası ve fiziksel aktüatör HIL kabulü tamamlanmadan çıkışlar firmware içinde kapalıdır |
 | Airsoft tetik | APS PER701, SDU 2.0 ETU | Stok tetik kontak uçları üretici/servis tarafından tespit edilir; motor/batarya hattı baypas edilmez |
 | Batarya/şarj | 7,4 V Li-ion batarya; ürün adı LiPo şarj cihazı | Hücre kimyası, 2S balans soketi ve 4,2 V/hücre profili belgelenmeden şarj edilmez |
 | Rulman | 6205-ZZ “eksenel” yazılmış | Mekanik yük hesabına göre radyal/eksenel yatak seçimini düzelt |
@@ -119,7 +119,7 @@ Bağlantılar örnek tedarik/arama bağlantılarıdır. Satın almada aynı elek
 | 24P-5V/24N-5V | 24 V bara → F3/F4 → DC-DC girişleri | 1–1,5 mm² | Kırmızı/siyah | Pi ve Pico ayrı çıkış/dal |
 | 5P-PI/5N-PI | 5 V DC-DC → Pi 5 güç girişi | 1–1,5 mm² kısa hat | Kırmızı/siyah | Yük altında Pi ucunda gerilim ölç |
 | 5P-MCU/5N-MCU | 5 V DC-DC → Pico güç girişi | 0,5–0,75 mm² | Kırmızı/siyah | Besleme topolojisi USB ile çift besleme oluşturmayacak şekilde kesinleştirilir; Pico 3V3 pinine 5 V verilmez |
-| USB-DATA | Pi 5 USB-A → Pico Micro-USB | Kısa, veri destekli USB kablosu | Standart kablo | Şarj-only kablo kabul edilmez; USB geçiş yazılımı tamamlanana kadar canlı kontrol kullanılmaz |
+| USB-DATA | Pi 5 USB-A → Pico Micro-USB | Kısa, veri destekli USB kablosu | Standart kablo | Şarj-only kablo kabul edilmez; fiziksel USB/EMI/HIL kabulü tamamlanana kadar LIVE kullanılmaz |
 | PT-PUL/DIR/ENA | Pico sürücü kartı → DM542 #1/#2 | 0,22–0,34 mm² | Numaralı | Her sinyal dönüşüyle bükümlü |
 | ENC-A/B/Z | Enkoder → izolasyon → Pico | Ekranlı 4–6 damarlı | Numaralı | Kesin modele göre pinlenir |
 | LID-TX/RX/GND | TFA50-L → Pi UART | Kilitli 3/4 damar | Numaralı | TX↔RX çapraz; lojik seviye doğrula |
@@ -151,7 +151,7 @@ Bağlantılar örnek tedarik/arama bağlantılarıdır. Satın almada aynı elek
 2. Kablo bilgisayarda veri aygıtı olarak sınanır; Pico'nun USB cihazı/seri portu olarak numaralandığı görülmeden kablo “uygun” işaretlenmez.
 3. Pico harici 5 V DC-DC ile ayrıca besleniyorsa USB üzerinden oluşabilecek çift besleme/backfeed riski çözülmeden iki kaynak aynı anda bağlanmaz. Nihai besleme şekli revizyonlu şemada gösterilir.
 4. USB kablosu motor faz kablosundan uzak tutulur, konnektörlerde strain relief uygulanır ve hareketli eksende sert kıvrım oluşturulmaz.
-5. Mevcut backend ve Pico firmware CAN tabanlıdır. USB seri framing, cihaz seçimi, heartbeat, timeout, yeniden bağlanma ve fail-closed testleri tamamlanana kadar bu fiziksel kablo motor veya airsoft kontrolünde kullanılmaz.
+5. Backend ve Pico USB CDC taşıması uygulanmıştır. `/dev/serial/by-id/` kimliği, motor EMI testi, kablo çekme ve reconnect safe-load HIL kanıtı tamamlanana kadar fiziksel kablo motor veya airsoft kontrolünde kullanılmaz.
 
 ### 6.4 DM542 ve NEMA23 motorlar
 
@@ -259,7 +259,7 @@ T-Plug lehiminde konnektörün karşı eşini ısı emici/mekanik hizalama için
 | Kapı | Kurulum | Başarı ölçütü | Henüz kanıtlamadığı şey |
 |---|---|---|---|
 | A — Enerjisiz | Multimetre/süreklilik | Kısa devre yok, PE ve E-Stop kanalları doğru | Gerilim/akım altında davranış |
-| B — Kontrol gücü | Pi/Pico, aktüatörsüz | Bugün: yalnız mevcut CAN mock/HIL kanıtı. USB geçişinden sonra: USB enumeration, heartbeat, status/ACK, disconnect ve reconnect kanıtı | Motor/airsoft çıkışı |
+| B — Kontrol gücü | Pi/Pico, aktüatörsüz | Bugün: USB framing ve host test kanıtı. Sahada: enumeration, heartbeat, status/ACK, disconnect ve reconnect safe-load HIL kanıtı | Motor/airsoft çıkışı |
 | C — Yapay yük | Motor yerine uygun test yükü, airsoft yerine lamba | E-Stop ve watchdog çıkışı fiziksel kesiyor; 120 ms ateş üst sınırı | Gerçek mekanik hareket/atış |
 | D — Motor HIL | Düşük hız, mekanik alan boş | Limit, yön, enkoder, sapma ve E-Stop testleri | Hedefleme doğruluğu |
 | E — Airsoft boş HIL | Şarjör/BB yok, güvenli yön | Tek kuru-kontak darbesi, feedback, takılı röle fault'u | BB enerjisi/isabet |
@@ -268,11 +268,11 @@ T-Plug lehiminde konnektörün karşı eşini ısı emici/mekanik hizalama için
 
 ## 10. Yazılım/firmware eşlemesi
 
-- Mevcut backend zinciri değişmeden durur: `FireIntent → Safety Gate → CanMcuAdapter`.
-- `CanMcuAdapter`, FIRE göndermeden önce taze Pico status, `ARMED`, `fireReady`, `encoderOk`, E-Stop pasif ve fault=0 arar. Bu turda kod veya runtime profili değiştirilmemiştir.
+- Aktif backend zinciri: `FireIntent → Safety Gate → UsbSerialMcuAdapter`.
+- `UsbSerialMcuAdapter`, FIRE göndermeden önce taze Pico status, `ARMED`, `fireReady`, `encoderOk`, E-Stop pasif ve fault=0 arar; runtime profilleri `[mcu]` USB ayarlarını kullanır.
 - Pico güvenlik çekirdeği interlock açıkken ARM/FIRE'ı reddeder; ateş çıkışını 120 ms sonunda otomatik kapatır.
 - E-Stop, heartbeat kaybı, enkoder fault'u, interlock kopması veya takılı feedback çıkışı anında kapatıp `FAULT` durumuna geçirir.
-- Sonraki yazılım işi, bu Safety/ACK/heartbeat sözleşmesini koruyarak CAN taşımasını USB seri taşımasına çevirecektir. Yeni adapter, Pico USB firmware'i, framing ve disconnect testleri yeşil olmadan `CanMcuAdapter` kaldırılmaz ve LIVE fiziksel aktüatör çıkışı açılmaz.
+- USB taşıması `UsbSerialMcuAdapter`, Pico USB CDC firmware yolu ve COBS+CRC16 framing ile uygulanmıştır. Tarihsel `CanMcuAdapter` test/geriye dönük referans olarak tutulur; fiziksel disconnect/EMI/HIL testleri yeşil olmadan LIVE çıkışı açılmaz.
 
 ## 11. İmalat ekibinin dolduracağı as-built kayıt
 

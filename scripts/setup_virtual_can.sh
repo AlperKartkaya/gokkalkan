@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Gökkalkan — Sanal CAN Arayüzü Kurulum Betiği
+# Gökkalkan — Tarihsel CAN regresyonları için sanal arayüz betiği
 #
-# MCU simülatörünü ve CanMcuAdapter'ı gerçek donanım olmadan
-# test etmek için sanal bir CAN ağ arayüzü (vcan0) oluşturur.
+# Yalnız korunmuş CanMcuAdapter/dijital ikiz regresyonlarını çalıştırmak için
+# sanal bir CAN ağ arayüzü (vcan0) oluşturur. Aktif Pi–Pico runtime taşıması
+# USB CDC'dir; normal HIL için config/runtime/hil.toml içindeki loop:// kullanılır.
 #
 # Desteklenen platformlar:
 #   Linux (Raspberry Pi OS, Ubuntu) — tam destek (vcan0)
@@ -37,9 +38,8 @@ if [[ "$(uname)" == "Darwin" ]]; then
   echo "║    python backend/hardware_mock/mcu_simulator.py \\   ║"
   echo "║      --channel test --bustype virtual                ║"
   echo "║                                                      ║"
-  echo "║  Backend:                                            ║"
-  echo "║    python -m gokkalkan_backend.operator_http_server ║"
-  echo "║      --vcan                                         ║"
+  echo "║  Aktif USB HIL:                                      ║"
+  echo "║    .venv/bin/gokkalkan operator-api --usb-loop      ║"
   echo "╚══════════════════════════════════════════════════════╝"
   exit 0
 fi
@@ -86,10 +86,8 @@ echo "║  Terminal 1 — MCU Simülatörü:                               ║"
 echo "║    python backend/hardware_mock/mcu_simulator.py \\           ║"
 echo "║      --channel vcan0 --bustype socketcan                     ║"
 echo "║                                                              ║"
-echo "║  Terminal 2 — Backend API:                                   ║"
-echo "║    python -m gokkalkan_backend.operator_http_server \\        ║"
-echo "║      --runtime-mode HIL --can-channel vcan0 \\                ║"
-echo "║      --can-bustype socketcan                                  ║"
+echo "║  Terminal 2 — Tarihsel regresyon testi:                      ║"
+echo "║    .venv/bin/python -m pytest tests/test_digital_twin.py      ║"
 echo "║                                                              ║"
 echo "║  Terminal 3 — İzleme (isteğe bağlı):                        ║"
 echo "║    candump vcan0                                             ║"

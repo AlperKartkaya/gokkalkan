@@ -48,9 +48,10 @@ ssh -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 pi@<pi-adresi>
 Ardından operatör bilgisayarında `http://127.0.0.1:4173` açılır.
 
 Kurulum `config/runtime/pi-sim.toml` dosyasını hedef runtime config’i yapar.
-`LIVE` otomatik etkinleştirilmez. CAN sürücüsü/device-tree overlay’i kullanılan
-fiziksel CAN denetleyicisine bağlı olduğundan elektronik kabulünde ayrıca
-kilitlenir; manifest yalnız SocketCAN arayüz adı ve bitrate sözleşmesini sabitler.
+`LIVE` otomatik etkinleştirilmez. Pico, USB CDC (`cdc_acm`) olarak bağlanır;
+manifest kararlı `/dev/serial/by-id/...` cihaz yolu ile 115200 teşhis ayarını
+sabitler. Gerçek cihaz kimliği imalat sırasında yazılmalı; USB disconnect,
+reconnect ve EMI HIL kabulü tamamlanmadan LIVE açılmamalıdır.
 `hailortcli` çıktısında `Hailo-8` görülmeden perception sağlıklı sayılmaz.
 `Hailo-8L` 13 TOPS varyantıdır ve bu projenin 26 TOPS donanım sözleşmesini
 karşılamaz. HEF model yolu ayrıca seçilmediği sürece health, donanımı hazır ama

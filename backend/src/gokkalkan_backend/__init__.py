@@ -5,6 +5,7 @@ adapter construction is not an authorization path for physical output.
 """
 
 from .hardware_adapter import CanMcuAdapter, GpioEStopMonitor, HardwareAdapterBase
+from .usb_serial_adapter import UsbSerialMcuAdapter
 from .messages import CommandEnvelope, EventEnvelope
 from .mission_core import MissionCore, MissionState
 from .operator_api import DryRunHardwareAdapter, OperatorService
@@ -20,6 +21,7 @@ __all__ = [
     "SessionTelemetryStore",
     "HardwareAdapterBase",
     "CanMcuAdapter",
+    "UsbSerialMcuAdapter",
     "CommandEnvelope",
     "EventEnvelope",
     "GpioEStopMonitor",

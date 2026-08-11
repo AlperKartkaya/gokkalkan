@@ -5,17 +5,17 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 ## Güncel Durum
 
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü ve operatör paneli**. Aşama 1/2/3 senaryolarını görselleştirir; gerçek panel canlı kamera, 1D LiDAR menzili, manuel nişan ve Safety Gate durumunu backend’den alır.
-- `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, sanal CAN için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
+- `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, USB seri loopback için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
-- `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi ve CAN v1 codec çekirdeği.
+- `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi, USB CDC/COBS taşıması ve tarihsel CAN v1 payload codec çekirdeği.
 - `perception/` — **Tek Camera Module 3 Standard + HSV takipçi + AI HAT+ sağlık sınırı + perception bridge**. Pi'de Picamera2 ve Hailo-8 zorunlu health kontrolü, geliştirmede açıkça işaretli OpenCV fallback'i; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.
 - Faz 4–7 yazılımı; saf/fail-closed Safety Gate, canlı arm/E-Stop reset zinciri,
-  CAN v1/Pico çekirdeği, deterministik dijital ikiz ve doğrulanabilir telemetry
+  USB CDC/Pico çekirdeği, deterministik dijital ikiz ve doğrulanabilir telemetry
   session/replay zinciriyle tamamlanmıştır. Bunlar **yazılım/mock kanıtıdır**;
-  gerçek kamera, TFA50-L, Pico/CAN, E-Stop, motor ve imha hattı kabulü imalat
+  gerçek kamera, TFA50-L, Pico/USB, E-Stop, motor ve imha hattı kabulü imalat
   sonrası HIL/fiziksel kanıt olarak açık kalır. Kanonik sıra:
   `docs/imalat_oncesi_yazilim_todo.md`.
 
@@ -28,8 +28,8 @@ Backend API → bounded CommandEnvelope kuyruğu
       ↓  tek sahipli Mission Core reducer + immutable snapshot/SSE
 OperatorService + Safety Gate
       ↓  HardwareAdapterBase.execute()
-CanMcuAdapter — python-can / socketcan
-      ↓  CAN bus 500kbps (SN65HVD230 transceiver)
+UsbSerialMcuAdapter — pyserial / COBS + CRC16
+      ↓  USB CDC Serial (kısa veri kablosu)
 Pico RP2040 (MCU)
       ↓  STEP/DIR darbeleri
 DM542 → NEMA23 pan ekseni / NEMA17 tilt ekseni
@@ -37,7 +37,7 @@ DM542 → NEMA23 pan ekseni / NEMA17 tilt ekseni
 
 **E-Stop yolu (çift güvence):**
 ```
-Schneider Mantar Buton → Pico GPIO → CAN 0x201 → CanMcuAdapter → set_estop() → Safety Gate
+Gwest E-Stop → 3SK1111/kontaktör + Pico GPIO → USB 0x201 → Safety Gate
                                                                        ↑
 RPi5 GPIO header (GpioEStopMonitor, ikincil) ─────────────────────────┘
 ```
@@ -57,41 +57,24 @@ Python paketi `.venv` içine editable kurulur; `PYTHONPATH` gerekmez. Kilit
 dosyaları `requirements/`, runtime profilleri `config/runtime/`, Raspberry Pi
 kurulum sözleşmesi `deploy/pi/` altındadır.
 
-### Geliştirme — Sanal CAN (donanım olmadan)
+### Geliştirme — USB seri loopback (donanım olmadan)
 
-**Linux / RPi5:**
 ```bash
-bash scripts/setup_virtual_can.sh          # vcan0 kur
-
-# Terminal 1: Pico MCU simülatörü
-python3 backend/hardware_mock/mcu_simulator.py --channel vcan0 --bustype socketcan
-
-# Terminal 2: Backend
-.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml
-
-# Terminal 3: Operatör paneli
+.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml --usb-loop
 npm --prefix frontend run dev
 # http://127.0.0.1:5173/?operator=1
 ```
 
-**macOS (aynı process içinde python-can virtual + MCU simülatörü):**
-```bash
-.venv/bin/gokkalkan operator-api --config config/runtime/hil.toml \
-  --vcan
-npm --prefix frontend run dev
-# http://127.0.0.1:5173/?operator=1
-```
+`npm run desktop` güvenli SIM backend’ini başlatır. Fiziksel Pico HIL için
+`config/runtime/hil-physical.toml` içindeki `/dev/serial/by-id/...` yolu gerçek
+cihaz kimliğiyle değiştirilir; yalnız lamba/yapay yük kullanılır.
 
-`npm run desktop` kendi güvenli SIM backend’ini de başlatır; bu nedenle ayrı
-HIL backend’i çalışırken yalnız frontend dev server kullanılır.
+### LIVE hazırlığı (RPi5 + Pico USB CDC)
 
-### LIVE hazırlığı (RPi5 + Pico + can0)
-
-Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek CAN
-adapter’ı; `docs/adr/001-target-runtime.md` ve `docs/adr/002-mcu-can.md`
+Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek USB
+adapter’ı; `docs/adr/001-target-runtime.md` ve `docs/adr/005-pi-pico-usb-serial.md`
 gereğince fiziksel interlock, backend readiness ve ayrı arm zinciri tamamlandıktan
-sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan `can0`
-komutu dokümante edilmez.
+sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan fiziksel Pico çıkışı açılmaz.
 
 ### Simülatör
 
@@ -126,7 +109,7 @@ Kanıt paketi üretimi ve bütünlük sınırları:
 | `/state/stream?after=N` | GET | SSE üzerinden immutable state snapshot akışı |
 | `/health` | GET | Backend sağlık |
 | `/commands/{commandId}` | GET | Kuyruktaki/tamamlanan komutun izlenebilir sonucu |
-| `/hardware/health` | **GET** | CAN bağlantısı ve Pico MCU durumu |
+| `/hardware/health` | **GET** | USB bağlantısı ve Pico MCU durumu |
 | `/mode` | POST | Mod değiştir |
 | `/stage` | POST | Aşama/tur değiştir |
 | `/manual-aim` | POST | Manuel pan/tilt komutu niyeti |
@@ -177,15 +160,16 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
 - `docs/delivery_video_plan.md` — güncel takvim ve sıralı video kanıt planı.
-- `docs/adr/` — kabul edilmiş çalışma ortamı, CAN ve kamera/LiDAR kararları.
+- `docs/adr/` — kabul edilmiş çalışma ortamı, Mission Core, USB ve kamera/LiDAR kararları.
 - `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
   geriye uyumluluk politikası.
-- `docs/can_icd_v1.md` — sürümlü CAN frame, CRC, sequence ve ACK/NACK sözleşmesi.
+- `docs/usb_serial_mcu_protocol.md` — aktif USB CDC framing, CRC16, heartbeat ve ACK/NACK sözleşmesi.
+- `docs/can_icd_v1.md` — USB zarfı içinde korunan tarihsel 8 baytlık MCU payload kimlikleri.
 - `docs/digital_twin_and_evidence.md` — Faz 6/7 senaryo, session, replay ve kanıt kullanımı.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
 - `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.
-- `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, CAN protokolü ve safety gate.
+- `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, USB MCU protokolü ve Safety Gate.
 - `docs/imalat_oncesi_yazilim_todo.md` — imalat öncesi yazılım yol haritası.
 - `docs/taret_ve_asama1_operator_destegi.md` — saha taret kalibrasyonu, Aşama 1 canlı nişan, 1D LiDAR ve balistik holdover sınırları.
 - `docs/operator_panel_interfaces_roadmap.md` — gerçek operatör paneli arayüz tabloları (KTR).
@@ -205,7 +189,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 UI doğrudan motor veya imha hattı sürmez. Komut akışı zorunlu olarak şu zincirden geçer:
 
 ```
-Operatör Paneli → Backend API → Safety Gate → HardwareAdapterBase → CAN → Pico MCU → DM542
+Operatör Paneli → Backend API → Safety Gate → HardwareAdapterBase → USB CDC → Pico MCU → DM542
 ```
 
 Safety Gate; **E-Stop, hareket yasak bölge, atış yasak bölge, mod uyumu, hedef/menzil kapısı, bağlantı sağlığı ve arm durumunu** UI'dan bağımsız olarak kontrol eder.

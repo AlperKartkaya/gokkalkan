@@ -399,26 +399,25 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Config seçimi kısayolu; varsayılan SIM ve fiziksel çıkışsızdır.",
     )
-    parser.add_argument("--can-channel", default=os.environ.get("GOKKALKAN_CAN_CHANNEL"))
-    parser.add_argument("--can-bustype", default=os.environ.get("GOKKALKAN_CAN_BUSTYPE"))
+    parser.add_argument("--mcu-port", default=os.environ.get("GOKKALKAN_MCU_PORT"))
     parser.add_argument(
-        "--can-bitrate",
+        "--mcu-baudrate",
         type=int,
-        default=int(os.environ["GOKKALKAN_CAN_BITRATE"])
-        if os.environ.get("GOKKALKAN_CAN_BITRATE")
+        default=int(os.environ["GOKKALKAN_MCU_BAUDRATE"])
+        if os.environ.get("GOKKALKAN_MCU_BAUDRATE")
         else None,
     )
     parser.add_argument(
-        "--vcan",
+        "--usb-loop",
         action="store_true",
-        help="Geriye uyumlu HIL kısayolu; yalnız sanal CAN kullanır.",
+        help="HIL için fiziksel çıkışsız USB seri loopback kullanır.",
     )
     args = parser.parse_args(argv)
 
     environment_mode = os.environ.get("GOKKALKAN_RUNTIME_MODE", "").upper() or None
     selected_mode = (
         "HIL"
-        if args.vcan
+        if args.usb_loop
         else args.runtime_mode
         or (None if args.config else environment_mode)
     )
@@ -436,16 +435,14 @@ def main(argv: list[str] | None = None) -> None:
         parser.error(
             f"runtime mode {runtime_mode} does not match config profile {settings.profile}"
         )
-    if args.vcan:
-        args.can_channel = "vcan0"
-        args.can_bustype = "virtual"
+    if args.usb_loop:
+        args.mcu_port = "loop://"
     try:
         settings = settings.with_cli_overrides(
             host=args.host,
             port=args.port,
-            can_channel=args.can_channel,
-            can_bustype=args.can_bustype,
-            can_bitrate=args.can_bitrate,
+            mcu_port=args.mcu_port,
+            mcu_baudrate=args.mcu_baudrate,
             telemetry_path=args.telemetry_jsonl,
         )
     except RuntimeConfigError as exc:
@@ -454,7 +451,7 @@ def main(argv: list[str] | None = None) -> None:
     source_files: dict[str, Path] = {
         "runtimeConfig": settings.source,
         "calibration": settings.sensors.lidar_calibration_path,
-        "canIcd": Path("docs/can_icd_v1.md"),
+        "mcuProtocol": Path("docs/usb_serial_mcu_protocol.md"),
         "lidarCameraPlacement": Path("docs/adr/003-camera-lidar-placement.md"),
         "turretCalibration": Path(
             os.environ.get(
@@ -511,21 +508,6 @@ def main(argv: list[str] | None = None) -> None:
         )
     except RuntimeConfigurationError as exc:
         parser.error(str(exc))
-
-    if runtime_mode == "HIL" and args.can_bustype == "virtual":
-        # Mac OS'ta virtual bus process'ler arası çalışmadığı için simülatörü de aynı process'te başlatıyoruz
-        import sys
-        sys.path.insert(0, "backend/hardware_mock")
-        try:
-            from mcu_simulator import McuSimulator
-            sim = McuSimulator(channel="vcan0", bustype="virtual", verbose=True)
-            if sim._open():
-                sim._running = True
-                threading.Thread(target=sim._rx_loop, daemon=True, name="SIM-RX").start()
-                threading.Thread(target=sim._tx_status_loop, daemon=True, name="SIM-TX").start()
-                print("Dahili MCU Simülatörü (Mac uyumluluğu için) başlatıldı. Loglar vcan_logs.txt'ye yazılacak.")
-        except ImportError:
-            pass
 
     print(f"Config: {settings.source} (schema={settings.schema_version})")
     print(f"Runtime: {json.dumps(runtime_summary(service), ensure_ascii=False, default=str)}")

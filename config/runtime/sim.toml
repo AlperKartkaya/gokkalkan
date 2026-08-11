@@ -6,10 +6,10 @@ host = "127.0.0.1"
 port = 8088
 allowed_origins = ["http://127.0.0.1:5173", "http://127.0.0.1:4173"]
 
-[can]
-channel = "vcan0"
-bustype = "virtual"
-bitrate = 500000
+[mcu]
+transport = "usb_serial"
+port = "loop://"
+baudrate = 115200
 heartbeat_timeout_ms = 2000
 
 [safety]

@@ -108,10 +108,11 @@ REST polling kullanır. Ayrıntılar: ADR-004 ve `docs/message_contracts.md`.
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
 
 **Mevcut durum:** `mcu_simulator.py`, ortak firmware güvenlik modelini kullanarak
-E-Stop/FAULT sırasında komutları reddeder. `docs/can_icd_v1.md`,
-`can_protocol.py` ve `firmware/pico/` altında CRC, sequence, command tag,
-ACK/NACK, encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği vardır.
-Bu, fiziksel Pico flash/CAN/E-Stop/motor hattı kabulünün tamamlandığı anlamına
+E-Stop/FAULT sırasında komutları reddeder. Aktif `docs/usb_serial_mcu_protocol.md`,
+`usb_serial_protocol.py`, `usb_serial_adapter.py` ve `firmware/pico/` altında
+COBS, CRC16, sequence, ACK/NACK, encoder geri bildirimi ve host-testli Pico
+güvenlik çekirdeği vardır. Tarihsel CAN payload codec'i regresyon uyumu için
+korunur. Bu, fiziksel Pico flash/USB/E-Stop/motor hattı kabulünün tamamlandığı anlamına
 gelmez; söz konusu kanıtlar imalat sonrası HIL ve saha testinde üretilecektir.
 
 ### 4.3. `perception/` — Algı, Takip ve Sınıflandırma
@@ -193,7 +194,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | **Uygulanan:** Klasik CAN 2.0B, 500 kbit/s. **Planlanan fiziksel taşıma:** USB seri | ADR-002 + `can_icd_v1.md` mevcut kodun sözleşmesidir. USB adapter/firmware geçişi henüz uygulanmadı; fiziksel kabul bekliyor |
+| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | **Uygulanan:** USB CDC Serial + COBS + CRC16 | `UsbSerialMcuAdapter`, `usb_serial_mcu_protocol.md` ve ADR-005 aktiftir; fiziksel HIL/EMI kabulü bekliyor |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
@@ -204,8 +205,8 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | --- | --- | --- |
 | Ana güç | **Onaylandı** | Mean Well RSP-500-24: 220V AC → 24V DC, 500W, 21A. Motor sürücüler 24V; RPi5/MCU 5V reg. üzerinden |
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Pico, fan. 24V→12V reg. (×2): yardımcı hat |
-| Acil Durdur | **Zorunlu** | Schneider XB5AS8442 (Ø40, mantar, 1NK, çevir-çek). Pico GPIO izleme + emniyet rölesi (Schneider XPS) motor güç hattında. CAN 0x201 üzerinden RPi5'e anlık bildirim |
-| MCU haberleşmesi | **Geçiş kararı alındı / yazılım bekliyor** | Güncel satın alma kararı Pi 5 ↔ Pico için kısa veri destekli USB-A → Micro-USB hattıdır; CAN donanımı alınmayacaktır. Mevcut `CanMcuAdapter`, CAN frame/ACK sözleşmesi, Pico firmware ve testler bu turda değişmemiştir. USB framing, heartbeat, timeout, reconnect ve fail-closed kanıtından sonra yeni ADR ile karar yürürlüğe alınacaktır |
+| Acil Durdur | **Zorunlu** | Gwest LAY2-KSE542E + iki bağımsız 1NK kontak; Siemens 3SK1111-1AB30 ve LP1K1201BD kontaktör güç hattında. Pico durum bildirimi USB `0x201` mesajıyla backend'e iletilir |
+| MCU haberleşmesi | **Yazılım uygulandı / fiziksel kabul açık** | Pi 5 ↔ Pico kısa veri destekli USB-A → Micro-USB; USB CDC, COBS+CRC16 framing, 100 ms heartbeat, ACK/NACK ve kararlı `/dev/serial/by-id/...` seçimi. CAN donanımı alınmaz; ADR-005 aktiftir |
 | Kamera | **Onaylandı** | Tek Raspberry Pi Camera Module 3 Standard (12MP, AF, HDR, nominal 66° yatay FoV), CSI bağlantı, Picamera2 API; LiDAR merkezi 700 mm olan yaw köprüsünde, weapon pitch'ten bağımsız |
 | LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
 | AI hızlandırıcı | **Onaylandı / model açık** | Raspberry Pi AI HAT+ 26 TOPS, Hailo-8, PCIe; `hailo-all` + `hailortcli` health sözleşmesi hazır. HEF model artefaktı ve saha metrikleri bekliyor |
@@ -240,7 +241,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi
   perception heartbeat'i fail-closed sağlıksız olur; model ağırlıkları repoya
   eklenmez.
-- **Donanım haberleşmesi:** Mevcut çalışan MCU yolu python-can/SocketCAN ile klasik CAN'dır. Güncel BOM, fiziksel Pi–Pico bağlantısını USB seri olarak seçmiştir; kod dönüşümü henüz yapılmadığından USB bugün desteklenen LIVE taşıma değildir. Geçişte Safety/ACK/heartbeat sözleşmesi korunacak, yeni USB adapter ve Pico firmware test edilip ayrı ADR ile CAN kararının yerini alacaktır. TFA50-L pySerial/UART kullanmaya devam eder.
+- **Donanım haberleşmesi:** Aktif Pi–Pico yolu USB CDC Serial'dır. Backend `UsbSerialMcuAdapter`, COBS+CRC16 stream framing, sequence/ACK ve heartbeat kullanır; Pico USB stdio/CDC firmware yolu aynı sözleşmeyi uygular. LIVE yalnız kararlı `/dev/serial/by-id/...`, fiziksel interlock/readiness ve HIL kabulüyle açılır. Tarihsel CAN codec/testleri payload geriye uyumu için tutulur. TFA50-L pySerial/UART kullanmaya devam eder.
 - **Test:** pytest + frontend için Vitest/Playwright.
 - **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
   segmentli JSONL export, session manifest, ortak monotonic zaman tabanlı medya

@@ -21,7 +21,6 @@ frontend_dist_required = true
 [packages]
 apt = [
   "ca-certificates",
-  "can-utils",
   "chrony",
   "dkms",
   "git",
@@ -43,11 +42,11 @@ groups = ["dialout", "gpio", "render", "video"]
 runtime_config_mode = "0640"
 operator_token_mode = "0640"
 
-[can]
-interface = "can0"
-bitrate = 500000
-protocol = "classical-can-2.0b"
-driver_configuration = "electronics-specific"
+[mcu]
+transport = "usb-cdc-serial"
+device_path = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_PICO"
+baudrate = 115200
+kernel_driver = "cdc_acm"
 
 [camera]
 stack = "libcamera-picamera2"

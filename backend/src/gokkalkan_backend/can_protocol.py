@@ -1,9 +1,10 @@
-"""Gökkalkan classical-CAN protocol v1 codec.
+"""Gökkalkan MCU v1 payload codec (tarihsel klasik CAN yerleşimi).
 
 Every frame is exactly eight bytes and CRC-8 protected. Commands use a META
 frame followed by a payload frame carrying the same sequence. The 16-bit
 command tag is a stable correlation value; the full command id remains in
-backend telemetry.
+backend telemetry. Active physical transport wraps these payloads in the USB
+CDC/COBS/CRC16 envelope defined by ``usb_serial_protocol``.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ CAN_ID_COMMAND_META: Final = 0x10F
 CAN_ID_PANTILT_CMD_V1: Final = 0x110
 CAN_ID_FIRE_CMD_V1: Final = 0x111
 CAN_ID_SYS_CMD_V1: Final = 0x112
+CAN_ID_HEARTBEAT_V1: Final = 0x120
 CAN_ID_STATUS_V1: Final = 0x200
 CAN_ID_ESTOP_V1: Final = 0x201
 CAN_ID_FIRMWARE_V1: Final = 0x202
@@ -110,6 +112,17 @@ def pack_system(sequence: int, operation: int) -> bytes:
     """operation: 0=disarm, 1=arm, 2=soft-stop, 3=controlled-reset."""
 
     return _frame(bytes((PROTOCOL_VERSION, sequence & 0xFF, operation & 0xFF, 0, 0, 0, 0)))
+
+
+def pack_heartbeat(sequence: int) -> bytes:
+    return _frame(bytes((PROTOCOL_VERSION, sequence & 0xFF, 0, 0, 0, 0, 0)))
+
+
+def unpack_heartbeat(frame: bytes) -> dict[str, int] | None:
+    body = _body(frame)
+    if body is None or body[0] != PROTOCOL_VERSION or any(body[2:]):
+        return None
+    return {"sequence": body[1]}
 
 
 def unpack_system(frame: bytes) -> dict[str, int] | None:

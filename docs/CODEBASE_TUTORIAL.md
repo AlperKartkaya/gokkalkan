@@ -1,6 +1,6 @@
 # Gökkalkan Kod Tabanı, Mimari ve Kapsamlı Eğitim Kılavuzu (Masterclass Edition)
 
-> **Amaç:** Bu doküman, Gökkalkan yazılım sistemini; katmanlı mimarisini, kod modüllerinin detaylarını, veri akış yollarını, güvenlik kapılarını, donanım/CAN sözleşmelerini ve matematiksel alt yapısını **gerçek arayüz ekran görüntüleri, CAD çizimleri, Mermaid diyagramları ve anlaşılır matematiksel ifadelerle** en ince ayrıntısına kadar açıklayan ana eğitim rehberidir.
+> **Amaç:** Bu doküman, Gökkalkan yazılım sistemini; katmanlı mimarisini, kod modüllerinin detaylarını, veri akış yollarını, güvenlik kapılarını, USB MCU sözleşmesini ve matematiksel alt yapısını **gerçek arayüz ekran görüntüleri, CAD çizimleri, Mermaid diyagramları ve anlaşılır matematiksel ifadelerle** en ince ayrıntısına kadar açıklayan ana eğitim rehberidir.
 
 ---
 
@@ -84,7 +84,7 @@ class MissionState:
 ---
 
 ### 3. `runtime_mode.py` & `runtime_config.py` — Çalışma Modu ve Kilitler
-- **[`RuntimeMode`](../backend/src/gokkalkan_backend/runtime_mode.py)**: `SIM` (Simülatör), `HIL` (Sanal CAN), `LIVE` (Fiziksel Saha).
+- **[`RuntimeMode`](../backend/src/gokkalkan_backend/runtime_mode.py)**: `SIM` (Simülatör), `HIL` (USB seri loopback/safe-load), `LIVE` (Fiziksel Saha).
 - **Fail-Closed `LIVE` Kilidi:** `LIVE` modu konfigürasyonda varsayılan olarak `enable_live = false` olarak gelir. Fiziksel interlock ve ön kontrol kanıtı olmadan CLI bayrağıyla dahi açılamaz.
 - **`SAFE-001` İstemci Override Engelleyici:** İstemciden gelen payload içinde `dryRun: false` bayrağı gelse bile sunucu kendi güvenlik profiline göre hareket eder.
 
@@ -99,7 +99,8 @@ class MissionState:
 ### 5. `hardware_adapter.py` — Donanım Sürücü Soyutlaması
 - **[`HardwareAdapterBase`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Donanım adaptörlerinin türediği soyut taban sınıftır.
 - **[`DryRunHardwareAdapter`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Geliştirme modu adaptörü; donanım çağrılarını simüle eder.
-- **[`CanMcuAdapter`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: `python-can` kütüphanesi üzerinden SocketCAN (`vcan0` veya `can0`) ile 500kbps hızında CAN paketleri gönderir/alır.
+- **[`UsbSerialMcuAdapter`](../backend/src/gokkalkan_backend/usb_serial_adapter.py)**: Pi ile Pico arasında USB CDC Serial kullanır; COBS+CRC16 framing, heartbeat, ACK/NACK ve fail-closed reconnect uygular.
+- **[`CanMcuAdapter`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Eski CAN testleri ve tarihsel payload uyumu için korunur; aktif LIVE taşıması değildir.
 
 ---
 
@@ -129,18 +130,19 @@ Kamera (Picamera2 / USB) ──> frame_processor.py (HSV Renk Filtresi)
                          perception_bridge.py (POST /tracks/update)
 ```
 
-1. **[`camera_node.py`](../perception/camera_node.py)**: Raspberry Pi Camera Module 3 (`Picamera2`) varsa onu, yoksa varsayılan USB kamerayı (`OpenCV VideoCapture`) otomatik seçer.
-2. **[`frame_processor.py`](../perception/frame_processor.py)**: Görüntüdeki Kırmızı (Düşman) ve Mavi (Dost) hedefleri HSV renk aralığı filtresiyle ayırır, kontür alanlarını bulur.
-3. **[`centroid_tracker.py`](../perception/centroid_tracker.py)**: Kontür merkez noktalarını Öklid mesafesi matrisiyle eşleyerek hedeflere benzersiz `track_id` atar.
-4. **[`perception_bridge.py`](../perception/perception_bridge.py)**: Ayrı bir `systemd` process'i olarak çalışır. Backend'e düzenli olarak `POST /tracks/update` ve canlılık heartbeat'i gönderir. Heartbeat kesilirse backend algı hatasına geçer ve canlı arming kapatılır.
+1. **[`camera_node.py`](../perception/src/camera_node.py)**: Raspberry Pi Camera Module 3 (`Picamera2`) varsa onu, yoksa varsayılan USB kamerayı (`OpenCV VideoCapture`) otomatik seçer.
+2. **[`frame_processor.py`](../perception/src/frame_processor.py)**: Görüntüdeki Kırmızı (Düşman) ve Mavi (Dost) hedefleri HSV renk aralığı filtresiyle ayırır, kontür alanlarını bulur.
+3. **[`frame_processor.py`](../perception/src/frame_processor.py)** içindeki takipçi: Kontür merkez noktalarını eşleyerek hedeflere benzersiz `track_id` atar.
+4. **[`perception_bridge.py`](../perception/src/perception_bridge.py)**: Ayrı bir `systemd` process'i olarak çalışır. Backend'e düzenli olarak `POST /tracks/update` ve canlılık heartbeat'i gönderir. Heartbeat kesilirse backend algı hatasına geçer ve canlı arming kapatılır.
 
 ---
 
-## ⚡ 5. Bölüm: Firmware & Donanım Simülasyonu (Pico & CAN)
+## ⚡ 5. Bölüm: Firmware & Donanım Simülasyonu (Pico & USB CDC)
 
 - **[`firmware/pico/`](../firmware/pico/)**: Pico RP2040 C++ emniyet durum makinesi. Motor sürücülere STEP/DIR darbeleri üretir. Host C++ birim testleri `cmake/ctest` ile doğrulanır.
-- **[`mcu_simulator.py`](../backend/hardware_mock/mcu_simulator.py)**: Donanım olmadan masaüstü bilgisayarda `python-can` sanal kanalı üzerinden Pico kartını simüle eder.
-- **[`can_icd_v1.md`](./can_icd_v1.md)**: CAN mesaj sözleşmesi.
+- **[`mcu_simulator.py`](../backend/hardware_mock/mcu_simulator.py)**: Tarihsel CAN payload regresyonlarını sanal kanalda çalıştıran masaüstü Pico simülatörüdür; aktif runtime taşıması USB loopback'tir.
+- **[`usb_serial_mcu_protocol.md`](./usb_serial_mcu_protocol.md)**: Aktif USB CDC taşıma, framing ve heartbeat sözleşmesi.
+- **[`can_icd_v1.md`](./can_icd_v1.md)**: Tarihsel payload kimlikleri ve test sözleşmesi.
   - `0x100`: Pan/Tilt Açı Komutu (RPi $\rightarrow$ Pico)
   - `0x101`: Ateşleme İzni (RPi $\rightarrow$ Pico)
   - `0x200`: MCU Durum Bildirimi (Pico $\rightarrow$ RPi)

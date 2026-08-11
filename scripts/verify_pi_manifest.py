@@ -47,7 +47,7 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         "runtime",
         "packages",
         "permissions",
-        "can",
+        "mcu",
         "camera",
         "lidar",
         "accelerator",
@@ -64,8 +64,14 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         raise ManifestError("packages.apt must be a non-empty string list")
     if len(packages) != len(set(packages)):
         raise ManifestError("packages.apt contains duplicates")
-    if data["can"].get("bitrate") != 500000:
-        raise ManifestError("CAN bitrate must match ADR-002 (500000)")
+    mcu = data["mcu"]
+    if (
+        mcu.get("transport") != "usb-cdc-serial"
+        or not str(mcu.get("device_path", "")).startswith("/dev/serial/by-id/")
+        or mcu.get("baudrate") != 115200
+        or mcu.get("kernel_driver") != "cdc_acm"
+    ):
+        raise ManifestError("MCU transport must match ADR-005 USB CDC contract")
     if data["verification"].get("runtime_profile") != "SIM":
         raise ManifestError("clean image verification must start in SIM")
     camera = data["camera"]

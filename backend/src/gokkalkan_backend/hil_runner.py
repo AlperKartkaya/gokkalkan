@@ -16,7 +16,7 @@ HIL_SCENARIOS = (
     "boot-safe",
     "pico-reset",
     "heartbeat-loss",
-    "can-disconnect",
+    "usb-disconnect",
     "encoder-reversed",
     "encoder-disconnected",
     "camera-stale",
@@ -31,7 +31,7 @@ HIL_SCENARIOS = (
 @dataclass(frozen=True, slots=True)
 class HilProfile:
     profile_id: str
-    can_channel: str
+    mcu_port: str
     safe_load: str
     allows_destructive_output: bool
     config_hash: str

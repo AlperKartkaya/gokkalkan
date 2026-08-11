@@ -1,6 +1,6 @@
 # ADR-002 — MCU ve Saha Haberleşmesi
 
-- Durum: **v1 ile güncellendi; fiziksel HIL kabulü bekliyor**
+- Durum: **ADR-005 tarafından fiziksel taşıma açısından geçersiz kılındı; tarihsel payload sözleşmesi korunuyor**
 - Tarih: **25.07.2026**
 - İlgili işler: `ADR-002`, `FW-001`–`FW-007`, `SAFE-002`
 
@@ -12,7 +12,10 @@ yazılmıştır. Mevcut malzeme/teknik notlar SN65HVD230, 500 kbit/s ve 8 bayt
 uygun denetleyici/transceiver ve daha yüksek veri fazına ihtiyaç gösteren ölçülmüş
 bir gereksinim yoktur.
 
-## Karar
+## Tarihsel karar
+
+> 11.08.2026 itibarıyla fiziksel CAN kararı [`ADR-005`](005-pi-pico-usb-serial.md) ile USB CDC Serial olarak değiştirilmiştir. Aşağıdaki içerik CAN dönemi ve korunmuş v1 payload kimlikleri için tutulur.
+
 
 ### MCU
 
@@ -22,7 +25,7 @@ bir gereksinim yoktur.
 - Pico; pan/tilt darbesi, enkoder, watchdog, Acil Durdur girişi ve ateş hattı
   izninin düşük seviye sahibidir.
 
-### Fiziksel hat
+### Tarihsel fiziksel hat
 
 - **Klasik CAN 2.0B**, ISO 11898-2, 11-bit standard ID.
 - Bitrate: **500 kbit/s**.
@@ -57,10 +60,8 @@ release için yeterli kabul edilmez ve yeni LIVE adapter yolu v1 ACK bekler.
 - Bus-off, heartbeat kaybı, Pico reset, E-Stop veya encoder fault; hareket ve ateş
   iznini düşürür ve güvenli stop üretir.
 - Reconnect fiziksel çıkışı kendiliğinden arm etmez.
-- `SIM` fiziksel adapter yüklemez. `HIL` varsayılan olarak sanal CAN kullanır;
-  ayrıca gözden geçirilmiş `hil-physical.toml` ile gerçek CAN hattını
-  **monitor-only ve fiziksel imha çıkışı kapalı** açabilir. `LIVE` config +
-  fiziksel interlock + readiness preflight olmadan adapter oluşturmaz.
+- Bu bölüm yalnız tarihsel CAN davranışını kaydeder. Aktif SIM/HIL/LIVE taşıma
+  kuralları ve fail-closed kapıları ADR-005 ile `config/runtime/` profillerindedir.
 
 ## Reddedilen seçenekler
 

@@ -1,7 +1,7 @@
 # Gökkalkan Pico firmware
 
-Bu dizin güvenlik durum makinesinin ve CAN v1 codec'inin donanımdan bağımsız
-çekirdeğini içerir.
+Bu dizin güvenlik durum makinesini, tarihsel CAN v1 payload codec'ini ve aktif
+USB CDC Serial taşımasını içerir. USB byte stream'i COBS+CRC16 ile çerçevelenir.
 
 ## Host testi
 
@@ -27,7 +27,7 @@ ve saha kabulünde ayrıca doğrulanacaktır.
 Güvenlik çekirdeği FIRE için kapalı fiziksel interlock ve serbest tetik geri
 bildirimi ister; kuru-kontak çıkışını 120 ms ile sınırlar. Interlock kopması,
 takılı tetik geri bildirimi, E-Stop, heartbeat veya enkoder fault'u ateş
-çıkışını fail-closed kapatır. Gerçek CAN controller sürücüsü, kart pin haritası
-ve GPIO çıkış katı kart revizyonu onaylanana kadar `pico_main.cpp` içinde
-bilerek etkin değildir. İmalat ayrıntıları için
+çıkışını fail-closed kapatır. USB CDC alıcı/verici, 100 ms host heartbeat ve status/ACK yolu uygulanmıştır.
+Kart pin haritası ve GPIO çıkış katı onaylanana kadar `pico_main.cpp` aktüatör
+çıkışlarını bilerek etkinleştirmez. İmalat ayrıntıları için
 `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` dosyasına bakın.

@@ -232,7 +232,8 @@ class HardwareAdapterBase(ABC):
 
     Alt sınıflar:
       DryRunHardwareAdapter  — fiziksel çıkış yok, geliştirme/test
-      CanMcuAdapter          — CAN bus üzerinden gerçek Pico MCU
+      UsbSerialMcuAdapter    — aktif USB CDC Pico taşıması (ayrı modül)
+      CanMcuAdapter          — tarihsel CAN test uyumluluğu
     """
 
     @abstractmethod
@@ -256,7 +257,7 @@ class HardwareAdapterBase(ABC):
 
 
 # ---------------------------------------------------------------------------
-# CAN MCU Adaptörü (Gerçek Donanım)
+# CAN MCU Adaptörü (Tarihsel test/geriye uyumluluk)
 # ---------------------------------------------------------------------------
 
 class CanMcuAdapter(HardwareAdapterBase):
@@ -508,9 +509,7 @@ class CanMcuAdapter(HardwareAdapterBase):
                     threading.Thread(
                         target=self._estop_cb, args=(active,), daemon=True
                     ).start()
-                logger.warning(
-                    "CAN E-Stop acil olayı alındı: aktif=%s", active
-                )
+                logger.warning("MCU E-Stop acil olayı alındı: aktif=%s", active)
 
         elif arb_id == CAN_ID_FAULT_V1:
             parsed = unpack_fault_v1(data)
@@ -831,7 +830,7 @@ class CanMcuAdapter(HardwareAdapterBase):
 class GpioEStopMonitor:
     """RPi5 GPIO pinini doğrudan izleyen E-Stop monitörü.
 
-    Birincil E-Stop yolu: Pico → CAN → CanMcuAdapter.on_can_estop()
+    Birincil durum yolu: Pico → MCU taşıması → on_can_estop()
     İkincil yol (yedek): RPi5 GPIO pin interrupt → bu sınıf.
 
     Avantaj: CAN bus arızasında bile fiziksel kesme çalışır.
@@ -861,17 +860,17 @@ class GpioEStopMonitor:
         self._gpio_active  = False
 
     def on_can_estop(self, active: bool) -> None:
-        """CanMcuAdapter'dan gelen E-Stop olayını ilet.
+        """MCU adapter'ından gelen E-Stop olayını ilet.
 
-        Bu yöntem CanMcuAdapter'ın estop_callback'i olarak atanmalıdır.
+        Ad tarihsel uyumluluk için korunur; USB ve CAN adapter callback'i olabilir.
         """
-        logger.warning("E-Stop CAN olayı alındı: aktif=%s", active)
+        logger.warning("E-Stop MCU olayı alındı: aktif=%s", active)
         self._callback(active)
 
     def start(self) -> None:
         """GPIO interrupt'ı kur (RPi5 üzerinde ikincil güvence)."""
         if self._gpio_pin is None:
-            logger.info("GpioEStopMonitor: gpio_pin belirtilmedi; sadece CAN yolu aktif.")
+            logger.info("GpioEStopMonitor: gpio_pin belirtilmedi; yalnız MCU durum yolu aktif.")
             return
         try:
             import RPi.GPIO as GPIO  # type: ignore[import]
@@ -893,7 +892,7 @@ class GpioEStopMonitor:
         except ImportError:
             logger.warning(
                 "RPi.GPIO bulunamadı; GPIO E-Stop devre dışı. "
-                "CAN üzerinden E-Stop hâlâ aktif."
+                "MCU durum kanalı üzerinden E-Stop bildirimi hâlâ aktif."
             )
         except Exception as exc:
             logger.error("GpioEStopMonitor başlatma hatası: %s", exc)

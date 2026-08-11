@@ -54,10 +54,10 @@ class ApiSettings:
 
 
 @dataclass(frozen=True, slots=True)
-class CanSettings:
-    channel: str
-    bustype: str
-    bitrate: int
+class McuSettings:
+    transport: str
+    port: str
+    baudrate: int
     heartbeat_timeout_ms: int
 
 
@@ -111,7 +111,7 @@ class LiveSettings:
 @dataclass(frozen=True, slots=True)
 class HilSettings:
     safe_load: str
-    physical_can_enabled: bool
+    physical_mcu_enabled: bool
     destructive_output_enabled: bool
 
 
@@ -120,7 +120,7 @@ class RuntimeSettings:
     schema_version: int
     profile: RuntimeMode
     api: ApiSettings
-    can: CanSettings
+    mcu: McuSettings
     safety: SafetySettings
     telemetry: TelemetrySettings
     sensors: SensorSettings
@@ -131,12 +131,12 @@ class RuntimeSettings:
     def launch_config(self) -> RuntimeLaunchConfig:
         return RuntimeLaunchConfig(
             mode=self.profile,
-            can_channel=self.can.channel,
-            can_bustype=self.can.bustype,
-            can_bitrate=self.can.bitrate,
-            heartbeat_timeout_sec=self.can.heartbeat_timeout_ms / 1000.0,
+            mcu_transport=self.mcu.transport,
+            mcu_port=self.mcu.port,
+            mcu_baudrate=self.mcu.baudrate,
+            heartbeat_timeout_sec=self.mcu.heartbeat_timeout_ms / 1000.0,
             live_output_enabled=self.safety.live_output_enabled,
-            hil_physical_can_enabled=self.hil.physical_can_enabled,
+            hil_physical_mcu_enabled=self.hil.physical_mcu_enabled,
         )
 
     def with_cli_overrides(
@@ -144,9 +144,8 @@ class RuntimeSettings:
         *,
         host: str | None = None,
         port: int | None = None,
-        can_channel: str | None = None,
-        can_bustype: str | None = None,
-        can_bitrate: int | None = None,
+        mcu_port: str | None = None,
+        mcu_baudrate: int | None = None,
         telemetry_path: str | None = None,
     ) -> "RuntimeSettings":
         """Apply non-authority CLI overrides and revalidate the result."""
@@ -158,11 +157,10 @@ class RuntimeSettings:
                 host=host if host is not None else self.api.host,
                 port=port if port is not None else self.api.port,
             ),
-            can=replace(
-                self.can,
-                channel=can_channel if can_channel is not None else self.can.channel,
-                bustype=can_bustype if can_bustype is not None else self.can.bustype,
-                bitrate=can_bitrate if can_bitrate is not None else self.can.bitrate,
+            mcu=replace(
+                self.mcu,
+                port=mcu_port if mcu_port is not None else self.mcu.port,
+                baudrate=mcu_baudrate if mcu_baudrate is not None else self.mcu.baudrate,
             ),
             telemetry=replace(
                 self.telemetry,
@@ -216,11 +214,14 @@ def _validate_settings(settings: RuntimeSettings) -> None:
     if not settings.api.host.strip():
         raise RuntimeConfigError("api.host must not be empty")
     _bounded("api.port", settings.api.port, 1, 65535)
-    if settings.can.bitrate not in {125_000, 250_000, 500_000, 1_000_000}:
-        raise RuntimeConfigError("can.bitrate is not an approved classical CAN bitrate")
+    if settings.mcu.transport != "usb_serial":
+        raise RuntimeConfigError("mcu.transport must be usb_serial")
+    if not settings.mcu.port.strip():
+        raise RuntimeConfigError("mcu.port must not be empty")
+    _bounded("mcu.baudrate", settings.mcu.baudrate, 9_600, 3_000_000)
     _bounded(
-        "can.heartbeat_timeout_ms",
-        settings.can.heartbeat_timeout_ms,
+        "mcu.heartbeat_timeout_ms",
+        settings.mcu.heartbeat_timeout_ms,
         100,
         10_000,
     )
@@ -274,10 +275,7 @@ def _validate_settings(settings: RuntimeSettings) -> None:
         1.0,
     )
 
-    virtual_can = (
-        settings.can.bustype == "virtual"
-        or settings.can.channel.startswith("vcan")
-    )
+    virtual_mcu = settings.mcu.port.startswith("loop://")
     if settings.profile != "LIVE" and settings.safety.live_output_enabled:
         raise RuntimeConfigError(
             "SIM/HIL profiles cannot enable physical LIVE output"
@@ -287,16 +285,18 @@ def _validate_settings(settings: RuntimeSettings) -> None:
             raise RuntimeConfigError("HIL requires an approved safe load")
         if settings.hil.destructive_output_enabled:
             raise RuntimeConfigError("HIL cannot enable the real destruction output")
-        if not virtual_can and not settings.hil.physical_can_enabled:
+        if not virtual_mcu and not settings.hil.physical_mcu_enabled:
             raise RuntimeConfigError(
-                "HIL profile requires virtual CAN unless "
-                "hil.physical_can_enabled=true"
+                "HIL profile requires loop:// USB simulation unless "
+                "hil.physical_mcu_enabled=true"
             )
     if settings.profile == "LIVE":
         if "*" in settings.api.allowed_origins:
             raise RuntimeConfigError("LIVE profile cannot use wildcard CORS origin")
-        if virtual_can:
-            raise RuntimeConfigError("LIVE profile requires a physical CAN channel")
+        if virtual_mcu:
+            raise RuntimeConfigError("LIVE profile requires a physical USB serial device")
+        if "/dev/serial/by-id/" not in settings.mcu.port:
+            raise RuntimeConfigError("LIVE profile requires a stable /dev/serial/by-id/ MCU path")
         try:
             loopback = (
                 settings.api.host == "localhost"
@@ -328,7 +328,7 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
         raise RuntimeConfigError(f"invalid TOML in {source}: {exc}") from exc
 
     api = _table(raw, "api")
-    can = _table(raw, "can")
+    mcu = _table(raw, "mcu")
     safety = _table(raw, "safety")
     telemetry = _table(raw, "telemetry")
     sensors = _table(raw, "sensors")
@@ -348,11 +348,11 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
             port=_required(api, "port", int),
             allowed_origins=_parse_origins(api),
         ),
-        can=CanSettings(
-            channel=_required(can, "channel", str),
-            bustype=_required(can, "bustype", str),
-            bitrate=_required(can, "bitrate", int),
-            heartbeat_timeout_ms=_required(can, "heartbeat_timeout_ms", int),
+        mcu=McuSettings(
+            transport=_required(mcu, "transport", str),
+            port=_required(mcu, "port", str),
+            baudrate=_required(mcu, "baudrate", int),
+            heartbeat_timeout_ms=_required(mcu, "heartbeat_timeout_ms", int),
         ),
         safety=SafetySettings(
             pan_min_deg=_required(safety, "pan_min_deg", float),
@@ -399,7 +399,7 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
         ),
         hil=HilSettings(
             safe_load=str(hil.get("safe_load", "lamp")),
-            physical_can_enabled=bool(hil.get("physical_can_enabled", False)),
+            physical_mcu_enabled=bool(hil.get("physical_mcu_enabled", False)),
             destructive_output_enabled=bool(
                 hil.get("destructive_output_enabled", False)
             ),

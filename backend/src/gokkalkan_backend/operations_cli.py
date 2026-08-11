@@ -69,7 +69,7 @@ def hil_main(argv: list[str]) -> int:
         parser.error("--config must select a HIL profile")
     profile = HilProfile(
         profile_id="HIL-SAFE-LOAD-V1",
-        can_channel=runtime.can.channel,
+        mcu_port=runtime.mcu.port,
         safe_load=runtime.hil.safe_load,
         allows_destructive_output=runtime.hil.destructive_output_enabled,
         config_hash=_hash(args.config),

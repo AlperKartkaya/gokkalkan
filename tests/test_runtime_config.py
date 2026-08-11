@@ -31,20 +31,20 @@ class RuntimeConfigTest(unittest.TestCase):
         launch = settings.launch_config()
 
         self.assertEqual(launch.mode, "HIL")
-        self.assertEqual(launch.can_bitrate, 500_000)
+        self.assertEqual(launch.mcu_baudrate, 115_200)
+        self.assertEqual(launch.mcu_transport, "usb_serial")
         self.assertEqual(launch.heartbeat_timeout_sec, 2.0)
         self.assertLess(
             settings.safety.pan_min_deg,
             settings.safety.pan_max_deg,
         )
 
-    def test_hil_cli_override_cannot_select_physical_can(self) -> None:
+    def test_hil_cli_override_cannot_select_physical_usb(self) -> None:
         settings = load_runtime_config("config/runtime/hil.toml")
 
-        with self.assertRaisesRegex(RuntimeConfigError, "virtual CAN"):
+        with self.assertRaisesRegex(RuntimeConfigError, "loop://"):
             settings.with_cli_overrides(
-                can_channel="can0",
-                can_bustype="socketcan",
+                mcu_port="/dev/serial/by-id/pico",
             )
 
     def test_live_missing_interlock_provider_is_rejected(self) -> None:
@@ -68,7 +68,7 @@ class RuntimeConfigTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(RuntimeConfigError, r"\[can\]"):
+            with self.assertRaisesRegex(RuntimeConfigError, r"\[mcu\]"):
                 load_runtime_config(path)
 
 

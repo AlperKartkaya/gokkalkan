@@ -58,7 +58,7 @@ Bir kutu ancak aşağıdakiler sağlandığında tamamlanır:
 - [x] **SAFE-002 — Fiziksel adapter’ı varsayılan kapalı yap** `[WP-04]`
   - Açıkça seçilmiş backend live config, fiziksel interlock ve readiness olmadan gerçek adapter yüklenmemeli.
   - Başlangıç logu çalışma modunu `SIM`, `HIL` veya `LIVE` olarak açıkça yazmalı.
-  - Kanıt: `gokkalkan_backend.runtime_mode`; `CanMcuAdapter` varsayılanı çıkışsızdır, HIL fiziksel CAN kanalını reddeder, genel CLI preflight olmadığı için LIVE’ı fail-closed reddeder.
+  - Kanıt: `gokkalkan_backend.runtime_mode`; `UsbSerialMcuAdapter` varsayılanı çıkışsızdır, HIL varsayılan olarak `loop://` kullanır, genel CLI preflight olmadığı için LIVE’ı fail-closed reddeder.
 
 - [x] **SAFE-003 — Kritik bypass regresyon testlerini ekle** `[WP-04]`
   - UI/config/payload kombinasyonları denenmeli.
@@ -287,15 +287,13 @@ kapanışını doğrular. Sözleşme ve karar kayıtları
 - [x] **FW-007 — Encoder ve limit geri bildirimlerini bağla**
   - Yön, sıfır, overflow, kopukluk ve beklenen/gerçek açı farkı fault’a dönüşmeli.
 
-- [ ] **FW-008 — Pi–Pico taşımasını CAN'dan USB seriye geçir** `[WP-04]`
-  - **Durum (11.08.2026):** Yalnız satın alma/kablolama kararı verilmiştir; kod, firmware ve runtime profilleri henüz değiştirilmemiştir.
-  - Mevcut komut/status/fault semantiği, sequence, checksum, ACK/NACK, heartbeat ve timeout sözleşmesi taşıma katmanından bağımsız korunmalı.
-  - Backend'e USB seri hardware adapter eklenmeli; cihaz kimliği/port seçimi, framing, kısmi paket, reconnect, duplicate/out-of-order ve bağlantı kopması fail-closed test edilmelidir.
-  - Pico firmware USB cihaz/seri endpoint'i sağlamalı; boot/reset sırasında çıkışlar güvenli kalmalı ve host bağlantısı kaybolduğunda watchdog çıkışları kapatmalıdır.
-  - SIM/HIL/LIVE profilleri ile readiness/telemetri alanları CAN varsayımından ayrılmalı; geçiş tamamlanmadan LIVE fiziksel çıktı açılmamalıdır.
-  - Yeni USB kararı ayrı ADR ile kaydedildikten ve testler yeşil olduktan sonra ADR-002/CAN ICD tarihsel belge olarak işaretlenmelidir; önceden silinmez.
+- [x] **FW-008 — Pi–Pico taşımasını CAN'dan USB seriye geçir** `[WP-04]`
+  - **Yazılım kanıtı (11.08.2026):** `UsbSerialMcuAdapter`, COBS+CRC16 framing, kısmi/çoklu paket decoder'ı, 100 ms heartbeat, ACK/sequence korunumu ve `/dev/serial/by-id/...` LIVE kapısı uygulandı.
+  - Pico firmware USB stdio/CDC endpoint'i, stream decoder, status/ACK üretimi ve 250 ms fail-closed heartbeat watchdog'u içerir.
+  - SIM/HIL/LIVE profilleri `[mcu]` USB ayarlarına geçirildi; ADR-005 aktiftir, ADR-002 tarihsel olarak işaretlendi.
+  - **Açık fiziksel kapı:** Pico flash, motor/kontaktör EMI testi, kablo çekme, disconnect/reconnect ve safe-load HIL kanıtı tamamlanmadan LIVE açılmaz.
 
-**Faz 5 yazılım/host kanıtı (25.07.2026):** CAN v1 ICD ve Python/C++ codec'leri, Pico güvenlik çekirdeği, backend ACK-timeout yolu ve ortak geçiş vektörleri uygulanmıştır. Python testleri ile CMake/CTest host testi reset, heartbeat kaybı, bozuk CRC/sequence ve encoder fault'larının çıkışları kapattığını doğrular. Bu kanıt yeni USB taşımasını doğrulamaz. Pico flash, USB firmware/adapter, kablolu E-Stop ve motor/imha hattı kesme kabulü imalat sonrası HIL/fiziksel kanıt olarak açık kalır.
+**Faz 5 yazılım/host kanıtı (11.08.2026):** CAN v1 payload semantiği USB CDC üzerinde COBS+CRC16 çerçevesiyle korunmuştur. Python transport/adapter testleri ile CMake/CTest firmware host testi geçer. Bu kanıt fiziksel Pico flash, USB EMI, E-Stop, motor veya imha hattı kabulü değildir; bunlar imalat sonrası HIL kapısı olarak açıktır.
 
 ---
 
@@ -365,7 +363,7 @@ gerçek motor/enkoder/sensör kabulü imalat sonrası kalır.
 SQLite WAL index, segmentli JSONL, manifest ve monotonic medya index’i üretir.
 `gokkalkan replay verify|run` ile `gokkalkan evidence build|verify` fiziksel
 adapter yüklemeden çalışır. `tests/test_telemetry_session.py` kamera karesi,
-LiDAR paketi, Safety kararı, CAN ACK’i, komut sonucu ve video aralığını aynı
+LiDAR paketi, Safety kararı, MCU ACK’i, komut sonucu ve video aralığını aynı
 `commandId`/zaman tabanında paketleyip hash doğrulamasından geçirir. Düşük disk,
 retention, eksik medya ve tamper session’ı `invalid evidence` yapar. Bu kanıt,
 şartnamenin §2.4.4 fiziksel video/yetenek gösteriminin yerine geçmez.

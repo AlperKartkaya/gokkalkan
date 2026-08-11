@@ -33,7 +33,7 @@ class DoctorTest(unittest.TestCase):
             for item in report["checks"]  # type: ignore[union-attr]
         }
         self.assertEqual(statuses["config"], "PASS")
-        self.assertEqual(statuses["can"], "PASS")
+        self.assertEqual(statuses["mcu"], "PASS")
         self.assertEqual(statuses["api"], "WARN")
 
     def test_invalid_config_fails_without_hardware_attempt(self) -> None:

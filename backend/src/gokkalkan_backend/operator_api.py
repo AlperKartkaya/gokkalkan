@@ -6,7 +6,8 @@ seviyeli niyet olarak gelir; Safety Gate değerlendirmesi burada yapılır.
 
 HardwareAdapterBase:
   DryRunHardwareAdapter  — geliştirme/test, fiziksel çıkış yok
-  CanMcuAdapter          — CAN bus üzerinden Pico RP2040 (bkz. hardware_adapter.py)
+  UsbSerialMcuAdapter    — USB CDC Serial üzerinden Pico RP2040
+  CanMcuAdapter          — yalnız tarihsel CAN test uyumluluğu
 """
 
 from __future__ import annotations
@@ -910,8 +911,8 @@ class OperatorService:
                 "Hardware Adapter",
                 "partial",
                 "Backend + Elektronik",
-                "CAN v1 CRC/sequence/command-tag/ACK codec'i, firmware sağlık/encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği hazır.",
-                "Pico'yu flashla; gerçek CAN controller/transceiver, E-Stop ve imha hattı interlock'unu HIL'de doğrula.",
+                "USB CDC/COBS/CRC16 taşıması, sequence/ACK, firmware sağlık/encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği hazır.",
+                "Pico'yu flashla; gerçek USB disconnect/reconnect, EMI, E-Stop ve imha hattı interlock'unu güvenli yükle HIL'de doğrula.",
                 "HardwareCommand, HardwareResult",
             ),
             self._readiness_item(

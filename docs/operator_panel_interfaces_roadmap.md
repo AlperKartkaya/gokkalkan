@@ -246,7 +246,7 @@ backend/API servisleriyle uygulanmıştır. Bu seçim korunmalıdır; çünkü:
 Canlı saha testi başlamadan önce şu fiziksel kabuller hâlâ kapatılmalıdır:
 
 - TFA50-L güç/UART/hizalama ve 5/10/15 m kabulü,
-- CAN v1 protokolünün gerçek Pico/controller/transceiver HIL kabulü,
+- USB CDC protokolünün gerçek Pico ile disconnect/reconnect, ACK ve EMI HIL kabulü,
 - gerçek panelin dry-run/live geçiş prosedürü,
 - Acil Durdur’un fiziksel kesme hattı ve backend state bildirimi,
 - SQLite WAL + segmentli JSONL session/replay yolu uygulanmıştır; saha quota,

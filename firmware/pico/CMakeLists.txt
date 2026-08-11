@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(gokkalkan_firmware_core
   src/safety_state_machine.cpp
   src/can_protocol.cpp
+  src/usb_serial_protocol.cpp
 )
 target_include_directories(gokkalkan_firmware_core PUBLIC include)
 target_compile_options(gokkalkan_firmware_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -32,5 +33,7 @@ if(GOKKALKAN_BUILD_PICO)
   target_link_libraries(gokkalkan_pico PRIVATE
     gokkalkan_firmware_core pico_stdlib hardware_watchdog hardware_gpio
   )
+  pico_enable_stdio_usb(gokkalkan_pico 1)
+  pico_enable_stdio_uart(gokkalkan_pico 0)
   pico_add_extra_outputs(gokkalkan_pico)
 endif()
