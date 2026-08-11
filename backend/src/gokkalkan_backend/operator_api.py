@@ -1403,7 +1403,16 @@ class OperatorService:
         if accepted:
             hardware_result = self.hardware.execute({"commandId": result["commandId"], "kind": "FireIntent", "target": target_dict, "payload": payload})
             self.telemetry.append("hardware_result", hardware_result)
-            self.mission_flow.record_engagement(str(payload.get("targetId", "")))
+            hardware_accepted = bool(hardware_result.get("accepted", False))
+            hardware_completed = bool(hardware_result.get("completed", False))
+            if hardware_accepted and hardware_completed:
+                self.mission_flow.record_engagement(str(payload.get("targetId", "")))
+            else:
+                result["accepted"] = False
+                result["message"] = "Hardware FIRE komutunu tamamlamadı."
+                result["blockReason"] = str(
+                    hardware_result.get("resultCode", "HARDWARE_FIRE_INCOMPLETE")
+                )
         self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 

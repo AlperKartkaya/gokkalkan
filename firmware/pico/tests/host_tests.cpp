@@ -1,6 +1,10 @@
 #include "can_protocol.hpp"
 #include "board_config.hpp"
 #include "io_hal.hpp"
+#include "encoder_monitor.hpp"
+#include "fire_output.hpp"
+#include "motion_controller.hpp"
+#include "telemetry_frames.hpp"
 #include "safety_state_machine.hpp"
 #include "usb_serial_protocol.hpp"
 #include <cassert>
@@ -13,6 +17,22 @@
 using gokkalkan::Command;
 using gokkalkan::Inputs;
 using gokkalkan::SafetyStateMachine;
+
+class TestStepOutput final : public gokkalkan::StepOutput {
+ public:
+  void set_enabled(bool value) override { enabled = value; }
+  void set_direction(bool value) override { positive = value; }
+  void pulse() override { ++pulses; }
+  bool enabled{false};
+  bool positive{false};
+  int pulses{0};
+};
+
+class TestDigitalOutput final : public gokkalkan::DigitalOutput {
+ public:
+  void write(bool value) override { active = value; }
+  bool active{false};
+};
 
 static Command command(const std::string& value) {
   if (value == "BOOT_COMPLETE") return Command::BOOT_COMPLETE;
@@ -126,4 +146,56 @@ int main() {
   const Inputs disconnected_inputs = disconnected.safety_inputs();
   assert(disconnected_inputs.estop);
   assert(!disconnected_inputs.encoder_connected);
+
+  TestStepOutput step_output;
+  gokkalkan::AxisController axis({100.0, -10.0, 10.0, 1000.0, 2000.0, 0.01},
+                                 step_output);
+  assert(!axis.command_target(1.0));
+  axis.set_referenced(0.0);
+  assert(axis.command_target(1.0));
+  assert(step_output.enabled && step_output.positive);
+  for (std::uint64_t now_us = 1000; now_us < 300000; now_us += 1000)
+    axis.tick(now_us, axis.expected_angle_deg(), true, true);
+  assert(step_output.pulses > 0);
+  axis.tick(301000, 1.0, true, true);
+  assert(axis.state() == gokkalkan::AxisState::IDLE);
+  assert(!step_output.enabled);
+  assert(!axis.command_target(11.0));
+  assert(axis.command_target(-1.0));
+  axis.tick(302000, 0.9, false, true);
+  assert(axis.state() == gokkalkan::AxisState::FAULT);
+
+  gokkalkan::EncoderMonitor encoder({100.0, 0.5, 100000});
+  encoder.set_connected(true);
+  encoder.reference(1000);
+  auto encoder_status = encoder.update(1100, 1, 1.0);
+  assert(encoder_status.angle_deg == 1.0);
+  assert(encoder_status.direction_ok && encoder_status.deviation_ok);
+  encoder_status = encoder.update(1090, 1, 1.0);
+  assert(!encoder_status.direction_ok);
+
+  TestDigitalOutput fire_pin;
+  gokkalkan::FireOutput fire_output(fire_pin);
+  assert(!fire_pin.active);
+  assert(!fire_output.start(0, 121));
+  assert(fire_output.start(10, 120));
+  assert(fire_pin.active && fire_output.active());
+  assert(!fire_output.tick(129));
+  assert(fire_output.tick(130));
+  assert(!fire_pin.active && !fire_output.active());
+
+  const auto status_frame = gokkalkan::telemetry::status(
+      7, {gokkalkan::State::ARMED, false, true, true, true, 0, 0x07, 1});
+  assert(gokkalkan::can::valid(status_frame));
+  assert(status_frame[1] == 7 && status_frame[2] == 3);
+  assert(status_frame[3] == 0x0E);
+  const auto estop_frame = gokkalkan::telemetry::estop(8, true, 1);
+  assert(gokkalkan::can::valid(estop_frame) && estop_frame[2] == 1);
+  const auto firmware_frame = gokkalkan::telemetry::firmware(9, 1, 2, 3);
+  assert(gokkalkan::can::valid(firmware_frame) && firmware_frame[4] == 3);
+  const auto encoder_frame = gokkalkan::telemetry::encoder(10, 100, -200, 0x07);
+  assert(gokkalkan::can::valid(encoder_frame));
+  assert(encoder_frame[2] == 0 && encoder_frame[3] == 100);
+  const auto fault_frame = gokkalkan::telemetry::fault(11, 8);
+  assert(gokkalkan::can::valid(fault_frame) && fault_frame[2] == 8);
 }

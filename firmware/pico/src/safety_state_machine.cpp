@@ -10,6 +10,15 @@ const char* state_name(State state) {
   return "FAULT";
 }
 const char* SafetyStateMachine::fault(const char* reason) {
+  if (std::string_view(reason) == "ESTOP_ACTIVE") fault_code_ = FaultCode::ESTOP_ACTIVE;
+  else if (std::string_view(reason) == "FIRE_INTERLOCK_OPEN") fault_code_ = FaultCode::FIRE_INTERLOCK_OPEN;
+  else if (std::string_view(reason) == "TRIGGER_FEEDBACK_STUCK") fault_code_ = FaultCode::TRIGGER_FEEDBACK_STUCK;
+  else if (std::string_view(reason) == "ENCODER_DISCONNECTED") fault_code_ = FaultCode::ENCODER_DISCONNECTED;
+  else if (std::string_view(reason) == "ENCODER_OVERFLOW") fault_code_ = FaultCode::ENCODER_OVERFLOW;
+  else if (std::string_view(reason) == "ENCODER_DIRECTION") fault_code_ = FaultCode::ENCODER_DIRECTION;
+  else if (std::string_view(reason) == "ENCODER_DEVIATION") fault_code_ = FaultCode::ENCODER_DEVIATION;
+  else if (std::string_view(reason) == "HEARTBEAT_TIMEOUT") fault_code_ = FaultCode::HEARTBEAT_TIMEOUT;
+  else fault_code_ = FaultCode::INTERNAL;
   state_ = State::FAULT; outputs_enabled_ = false; fire_output_enabled_ = false; return reason;
 }
 const char* SafetyStateMachine::tick(std::uint32_t now_ms, Inputs inputs) {
@@ -37,7 +46,7 @@ const char* SafetyStateMachine::apply(Command command, std::uint32_t now_ms, Inp
   if (state_ == State::FAULT && command != Command::RESET) return health;
   switch (command) {
     case Command::BOOT_COMPLETE:
-      state_ = State::SAFE; outputs_enabled_ = false; fire_output_enabled_ = false; return "BOOT_COMPLETE";
+      state_ = State::SAFE; outputs_enabled_ = false; fire_output_enabled_ = false; fault_code_ = FaultCode::NONE; return "BOOT_COMPLETE";
     case Command::HEARTBEAT:
       last_heartbeat_ms_ = now_ms;
       if (state_ == State::SAFE) state_ = State::READY;
@@ -59,7 +68,7 @@ const char* SafetyStateMachine::apply(Command command, std::uint32_t now_ms, Inp
       state_ = State::SAFE; outputs_enabled_ = false; fire_output_enabled_ = false; return "SAFE_STOP";
     case Command::RESET:
       if (inputs.estop) return "RESET_REJECTED_ESTOP";
-      state_ = State::SAFE; outputs_enabled_ = false; fire_output_enabled_ = false; return "RESET_ACCEPTED";
+      state_ = State::SAFE; outputs_enabled_ = false; fire_output_enabled_ = false; fault_code_ = FaultCode::NONE; return "RESET_ACCEPTED";
   }
   return "REJECTED_STATE";
 }

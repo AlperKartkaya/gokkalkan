@@ -110,6 +110,42 @@ class MissionFlowUnitTest(unittest.TestCase):
         self.assertEqual(flow.status, "ACTIVE")
 
 
+class RejectingFireAdapter(DryRunHardwareAdapter):
+    def execute(self, command: dict) -> dict:
+        result = super().execute(command)
+        if command.get("kind") == "FireIntent":
+            result.update(
+                accepted=False,
+                completed=False,
+                resultCode="FIRE_PREFLIGHT_INTERLOCK_OPEN",
+            )
+        return result
+
+
+class HardwareFireCompletionTest(unittest.TestCase):
+    def test_hardware_rejection_does_not_advance_mission(self) -> None:
+        service = OperatorService(hardware=RejectingFireAdapter())
+        service.handle_stage_request({"stage": 1, "round": 1, "reason": "TEST"})
+        selected = service.mission_flow.selected_target_id
+        assert selected
+
+        response = service.handle_fire_intent(
+            {
+                "targetId": selected,
+                "stage": 1,
+                "round": 1,
+                "operatorConfirm": True,
+            }
+        )
+
+        self.assertFalse(response["result"]["accepted"])
+        self.assertEqual(
+            response["result"]["blockReason"],
+            "FIRE_PREFLIGHT_INTERLOCK_OPEN",
+        )
+        self.assertNotIn(selected, service.mission_flow.completed_target_ids)
+
+
 class Phase8RealHttpFlowTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
