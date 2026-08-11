@@ -1,10 +1,16 @@
 # Gökkalkan İmalat Öncesi Yazılım TODO
 
 > Amaç: Mekanik imalat tamamlandığında yazılımı ilk kez bir araya getirmek yerine; görev mantığı, güvenlik, firmware, donanım haberleşmesi, algı, telemetri, operatör arayüzü ve hata senaryolarını imalat öncesinde simülasyon ve düşük güçlü HIL masasında doğrulamak.
+>
+> **Durum notu (11 Ağustos 2026):** Bu dosya tamamlanan imalat öncesi
+> fazların tarihsel kanıtı olarak korunur. Fiziksel imalat sonrası eksikler,
+> yeni USB/Pico kararı, motor–enkoder–airsoft firmware'i, LIVE bootstrap ve
+> Aşama 2/3 kabul sırası için kanonik takip belgesi
+> `docs/YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md` dosyasıdır.
 
 ## Kullanım
 
-- Bu dosya imalat öncesi yazılım işlerinin kanonik takip listesidir.
+- Bu dosya tamamlanan imalat öncesi yazılım işlerinin tarihsel takip listesidir.
 - İşler yukarıdan aşağıya bağımlılık sırasıyla ele alınmalıdır.
 - Bir görev tamamlandığında kutusu işaretlenmeli ve altına PR/commit/test kanıtı eklenmelidir.
 - Donanım üzerinde doğrulanmayan davranış için “tamamlandı” değil, “mock/HIL üzerinde doğrulandı” ifadesi kullanılmalıdır.

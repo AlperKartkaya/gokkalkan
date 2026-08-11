@@ -156,6 +156,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/MALZEME_LISTESI.md` — güncel malzeme, teslimat durumu, ürün bağlantıları ve doğrulama notları.
 - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` — imalat ekibi için bağlantı, ek BOM, lehimleme ve aşamalı kabul kılavuzu.
 - `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` — imalat ekibine iletilecek görsel, yazdırılabilir ve kapsamlı komponent bağlantı rehberi.
+- `docs/YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md` — Pico I/O'dan Aşama 2/3 saha kabulüne kadar kanonik, adım adım yazılım–donanım entegrasyon ve ilerleme planı.
 - `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
@@ -170,7 +171,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `deploy/pi/` ve `deploy/systemd/` — temiz Pi kurulumu ve servis sözleşmeleri.
 - `requirements/` — backend, test ve perception bağımlılık kilitleri.
 - `docs/tech_stack.md` — teknik yönelim, donanım mimarisi, USB MCU protokolü ve Safety Gate.
-- `docs/imalat_oncesi_yazilim_todo.md` — imalat öncesi yazılım yol haritası.
+- `docs/imalat_oncesi_yazilim_todo.md` — tamamlanan imalat öncesi yazılım fazlarının tarihsel takip kaydı.
 - `docs/taret_ve_asama1_operator_destegi.md` — saha taret kalibrasyonu, Aşama 1 canlı nişan, 1D LiDAR ve balistik holdover sınırları.
 - `docs/operator_panel_interfaces_roadmap.md` — gerçek operatör paneli arayüz tabloları (KTR).
 - `reports/diyagramlar/mermaid_kodu/ktr_mermaid_diagrams.md` — KTR Mermaid diyagramları.

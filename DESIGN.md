@@ -3,11 +3,12 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-25
+- Last refreshed: 2026-08-11
 - Primary product surfaces:
   1. `frontend/` yarışma eğitim simülatörü.
   2. Planlanan gerçek operatör paneli.
   3. KTR/rapor arayüz ve mimari kanıtları.
+  4. `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` imalat bağlantı handbook'u.
 - Evidence reviewed:
   - `docs/sartname_v4.txt:720-755` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
   - `docs/sartname_v4.txt:701-718` — kırmızı/mavi hedef ve kırmızı imha balonu kuralları.
@@ -15,6 +16,7 @@
   - `docs/sartname_v4.txt:862-907` — Aşama 3’ün otonom doğru hedef ve doğru menzil yükümlülüğü.
   - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi için güncel çizim kaynağı.
   - `frontend/src/App.tsx`, `frontend/src/competitionSimulation.ts`, `frontend/src/competitionCourse.ts`, `frontend/src/safetyGate.ts` — mevcut React/Vite simülatör uygulaması.
+  - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md`, `docs/usb_serial_mcu_protocol.md` ve `docs/adr/ADR-005-pi-pico-usb-cdc.md` — imalat bağlantıları, kablo kimlikleri ve Pi↔Pico USB CDC kararı.
 
 ## Brand
 
@@ -43,6 +45,16 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 - Acil Durdur, yasak alan, bağlantı sağlığı ve hakem/operatör kilitleri UI’dan bağımsız güvenlik katmanında uygulanır.
 - Simülasyon ve gerçek panel aynı tasarım dilini paylaşabilir; canlı panelde simülasyon varsayımı veya eğitim puanı gerçek durumla karıştırılmamalıdır.
 
+### İmalat bağlantı handbook'u
+
+Amaç, imalat ekibinin şema aramak yerine sistem haritasından bir bağlantıyı seçip kabloyu, uç eşlemesini, sonlandırma yöntemini ve enerji vermeden önce kontrolü tek ekranda görmesidir.
+
+- Açılışta tüm güç, emniyet, kontrol, hareket, sensör ve airsoft alt sistemleri tek sistem haritasında görünür.
+- Haritadaki her bağlantı, URL hash'i ile doğrudan ilgili açılır bağlantı kartına gider.
+- Komponentler tedarik durumu olarak değil, sahadaki montaj elemanları olarak gösterilir; teknik doğrulama gerektiren pin/etiketler ayrıca belirtilir.
+- Arama, alt sistem filtresi, kablo kimliği lejandı, yerel montaj ilerlemesi, odak modu ve yazdır/kopyala araçları bağımlılıksız tek HTML içinde çalışır.
+- Emniyet rölesi, kontaktör, airsoft tetik arayüzü ve 230 VAC bağlantılarında kesin olmayan terminal numarası uydurulmaz; üretici ön şeması, fiziksel etiket ve onaylı as-built şema birlikte aranır.
+
 ## Goals / non-goals
 
 ### Goals
@@ -57,7 +69,8 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 
 - Şartnamede verilmeyen hedef hızı, parkur koordinatı, fiziksel hedef ölçüsü veya radar/LiDAR modelini resmi değer gibi göstermek.
 - Simülatörden gerçek motor veya imha hattı komutu göndermek.
-- UI’yı Safety Gate yerine geçirmek.
+- UI'yı Safety Gate yerine geçirmek.
+- Handbook'u onaylı elektrik şeması, yetkin elektrikçi ölçümü veya fiziksel kabul testi yerine geçirmek.
 
 ## Information architecture
 
@@ -76,6 +89,13 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
   3. Finale Hazırlık göstergesi: `/readiness` raporu, hazır/kısmi/TBD/kilitli arayüz kartları ve sıradaki kritik entegrasyon adımı. Bu yüzde resmi yarışma uygunluk skoru olarak sunulmamalıdır.
   4. Komut paneli: mod geçişi, manuel pan/tilt, güvenli arming, FireIntent.
   5. Olay kayıtları ve kanıt çekmecesi: command_result, safety_block, track_update, hardware_fault, JSONL export/replay kanıtı.
+- İmalat handbook'u:
+  1. Yapışkan üst araç çubuğu: arama, alt sistem filtresi, ilerleme, yazdırma.
+  2. İçindekiler ve montaj sırası.
+  3. Tıklanabilir, yakınlaştırılabilir sistem bağlantı haritası.
+  4. Komponent galerisi ve kablo/tel kimliği lejandı.
+  5. Her biri bağımsız açılıp kapanan bağlantı kartları.
+  6. Enerji verme kapıları ve üretici kaynakları.
 
 ## Visual language
 
@@ -109,6 +129,7 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 - Renkler ikon/etiket/metinle desteklenmelidir.
 - FIRE veya canlı panel arming durumu tek bir renge değil metin + durum + blok gerekçesine dayanmalıdır.
 - Ana yarışma ekranı 1366×768 ve 1920×1080 çözünürlüklerde yatay taşma üretmemelidir.
+- İmalat handbook'u 1024 px atölye dizüstü, tablet ve yazdırılmış A4 kullanımında okunabilir olmalı; `details/summary`, klavye odağı ve metin etiketleri JavaScript olmadan da temel içeriği erişilebilir tutmalıdır.
 
 ## Implementation constraints
 
@@ -117,10 +138,11 @@ Amaç, final fazında backend/perception/hardware katmanlarına bağlanan güven
 - Safety Gate backend ownership altındadır; UI güvenlik kararının kaynağı değildir.
 - Simülasyon parametreleri `.env` ve config değerleriyle değiştirilebilir; resmi değer gibi belgelenmez.
 - Gerçek operatör panelinde canlı donanım entegrasyonu dry-run/sim/live modlarıyla kademeli açılmalıdır.
+- Handbook tek, statik ve bağımlılıksız HTML olmalı; ürün görselleri repo içinden yüklenmeli, montaj ilerlemesi yalnız tarayıcı `localStorage` alanında tutulmalı ve resmi kabul kaydı sayılmamalıdır.
 
 ## Open questions
 
 - [ ] TFA50-L güç/UART/hizalama ve 5/10/15 m fiziksel kabulü tamamlanacak / owner: elektronik + backend / impact: sensor adapter.
-- [ ] MCU arayüzü UART, RS422, CAN veya Ethernet seçeneklerinden hangisi olacak netleşecek / owner: elektronik + backend / impact: Hardware Adapter.
+- [ ] Pi↔Pico USB CDC hattının gerçek Pico üzerinde build/flash, reconnect ve watchdog HIL kabulü tamamlanacak / owner: elektronik + backend / impact: Hardware Adapter.
 - [ ] Gerçek operatör paneli React/Vite içinde yeni route olarak mı kalacak, yoksa native kiosk/PySide6 alternatifi mi istenecek / owner: yazılım / impact: UI runtime.
 - [ ] Şartname veya hakem açıklaması kesin parkur ölçüsü/hız verirse simülasyon config’i güncellenecek / owner: UI + backend / impact: eğitim doğruluğu.
