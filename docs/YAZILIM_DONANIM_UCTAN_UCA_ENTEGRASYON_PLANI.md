@@ -1,6 +1,6 @@
 # Gökkalkan Yazılım–Donanım Uçtan Uca Entegrasyon Planı
 
-> **Durum:** Uygulanacak ana çalışma planı — nihai BOM ve tek kanallı mühürleme devresiyle hizalı
+> **Durum:** Uygulama yarı noktasında durduruldu — FAZ 0–6 yazılım temelleri tamamlandı; fiziksel kabul kapıları açık tutuluyor
 >
 > **Son güncelleme:** 11 Ağustos 2026
 >
@@ -139,11 +139,11 @@ Aktif Pi–Pico taşıması USB CDC Serial'dır. CAN fiziksel katmanı satın al
 
 ```text
 .venv/bin/python -m pytest
-→ 263 passed, 4 skipped
+→ 274 passed, 4 skipped
 
 .venv-perception/bin/python -m pytest \
   tests/test_phase9_sensor_fusion.py tests/test_dataset_pipeline.py
-→ 23 passed
+→ 25 passed
 
 cmake -S firmware/pico -B build/firmware-host -G Ninja
 cmake --build build/firmware-host
@@ -157,11 +157,33 @@ python3 scripts/verify_pi_manifest.py --manifest-only
 → PASS
 ```
 
-Ana `.venv` koşusundaki dört skip, `numpy` bulunmayan perception testleridir; aynı hedefler `.venv-perception` içinde 23/23 geçmiştir. İki `python-can` deprecation uyarısı tarihsel vCAN test yolundadır ve fiziksel taşımanın USB olduğu kararını değiştirmez.
+Ana `.venv` koşusundaki dört skip, `numpy` bulunmayan perception testleridir; aynı hedefler `.venv-perception` içinde 25/25 geçmiştir. İki `python-can` deprecation uyarısı tarihsel vCAN test yolundadır ve fiziksel taşımanın USB olduğu kararını değiştirmez.
 
 ### Bu kanıtın sınırı
 
-Yukarıdaki sonuçlar fiziksel motor, enkoder, limit, E-Stop, LiDAR, USB EMI, PhotoMOS veya airsoft kabulü değildir. `firmware/pico/src/pico_main.cpp:62-64` fiziksel aktüatör GPIO'larını bilerek kapatır ve `firmware/pico/src/pico_main.cpp:112-114` PAN/TILT komutunu NACK eder.
+Yukarıdaki sonuçlar fiziksel motor, enkoder, limit, E-Stop, LiDAR, USB EMI, PhotoMOS veya airsoft kabulü değildir. Aktüatör build'i gerçek ve çift-kontrollü pin haritası girilene kadar compile-time kapalıdır. PAN/TILT yazılım çekirdeği mevcuttur; fiziksel Pico GPIO/timer bağlantısı ve gerçek enkoder kalibrasyonu henüz kabul edilmemiştir.
+
+### Yarı-yol uygulama kaydı (FAZ 0–6)
+
+Bu tablo fazların **yazılım teslimini** ve ayrı tutulan **fiziksel kabul kapısını** gösterir. Fiziksel sütun `AÇIK` iken ilgili fazın saha çıkışı hazır kabul edilmez.
+
+| Faz | Yazılım durumu | Uygulanan sonuç | Fiziksel kabul |
+|---|---|---|---|
+| FAZ 0 | Kısmi / fail-closed | `board_config.hpp`, pin çakışma/eksik pin kontrolleri ve `GKK-IO-REV-A_PIN_MAP.md` oluşturuldu. Gerçek pinler bilerek `UNVERIFIED`. | **AÇIK:** as-built pin/polarite/backfeed ölçümü |
+| FAZ 1 | Tamamlandı | Debounce, NC limitler, PC817 güvenli-hat anlamı ve encoder-health girişleri fail-closed HAL'e alındı. | **AÇIK:** gerçek kablo kopukluğu ve polarite ölçümü |
+| FAZ 2 | Çekirdek tamamlandı | İvme/rate limitli eksen denetleyicisi, referans zorunluluğu, limit ve encoder sapma fault'ları eklendi. | **AÇIK:** gerçek STEP/DIR/ENA GPIO/timer ve motor HIL |
+| FAZ 3 | Çekirdek tamamlandı | Süresi sınırlı FIRE çıkışı ve başarısız hardware sonucunda hedefi tamamlandı saymayan backend akışı eklendi. | **AÇIK:** PhotoMOS/kuru kontak, tetik feedback ve safe-load HIL |
+| FAZ 4 | Çekirdek tamamlandı | USB içinde status, E-Stop edge, firmware, encoder ve fault telemetrisi ile CRC/sequence testleri eklendi. | **AÇIK:** gerçek RP2040 build, USB kopma/EMI ve Pico round-trip |
+| FAZ 5 | Tamamlandı / kapalı varsayılan | Server-owned `HardwareBootstrap`; monitor-only Pico kontrolü; firmware/protokol/status/interlock/encoder/fault doğrulaması; BOM, pin map, kalibrasyon ve fiziksel kabul SHA-256 manifesti eklendi. | **AÇIK:** onaylı evidence dosyaları ve gerçek `/dev/serial/by-id` cihazı |
+| FAZ 6 | Tamamlandı / production yolu bağlı | TFA50-L worker runtime config'ten kuruluyor; identity/mount kontrolü yapıyor; fusion kararları yalnız bounded Mission Core kuyruğundan uygulanıyor. | **AÇIK:** gerçek seri cihaz, 5/10/15 m seti ve disconnect/reconnect HIL |
+
+Uygulama commitleri:
+
+- `6b92215` — fail-closed board ve giriş temeli
+- `d79ccab` — hareket, FIRE ve MCU telemetri temelleri
+- `bab0d05` — LIVE bootstrap ve TFA50-L production runtime
+
+Bu noktada 14 fazın ilk 7'si ele alınmıştır; kullanıcı talebi gereği **FAZ 7'ye geçilmeden durulmuştur**.
 
 ---
 
