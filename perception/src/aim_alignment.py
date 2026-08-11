@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+from pathlib import Path
+import tomllib
 from typing import Any
 
 
@@ -17,6 +19,37 @@ class AimCalibration:
     pitch_deg_per_px: float
     yaw_offset_deg: float = 0.0
     pitch_offset_deg: float = 0.0
+    status: str = "UNVERIFIED"
+    evidence_sha256: str = ""
+    distortion: tuple[float, ...] = ()
+
+    @property
+    def active(self) -> bool:
+        return (
+            self.status == "ACTIVE"
+            and bool(self.calibration_id.strip())
+            and self.calibration_id != "UNVERIFIED"
+            and len(self.evidence_sha256) == 64
+            and self.yaw_deg_per_px > 0
+            and self.pitch_deg_per_px > 0
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> "AimCalibration":
+        raw = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+        table = raw["calibration"]
+        return cls(
+            calibration_id=str(table["id"]),
+            principal_x_px=float(table["principal_x_px"]),
+            principal_y_px=float(table["principal_y_px"]),
+            yaw_deg_per_px=float(table["yaw_deg_per_px"]),
+            pitch_deg_per_px=float(table["pitch_deg_per_px"]),
+            yaw_offset_deg=float(table.get("yaw_offset_deg", 0.0)),
+            pitch_offset_deg=float(table.get("pitch_offset_deg", 0.0)),
+            status=str(table.get("status", "UNVERIFIED")),
+            evidence_sha256=str(table.get("evidence_sha256", "")),
+            distortion=tuple(float(value) for value in table.get("distortion", [])),
+        )
 
     def digest(self) -> str:
         payload = json.dumps(
@@ -28,6 +61,9 @@ class AimCalibration:
                 "pitchDegPerPx": self.pitch_deg_per_px,
                 "yawOffsetDeg": self.yaw_offset_deg,
                 "pitchOffsetDeg": self.pitch_offset_deg,
+                "status": self.status,
+                "evidenceSha256": self.evidence_sha256,
+                "distortion": self.distortion,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -46,6 +82,14 @@ def calibrated_aim_error(
 
     track_ns = int(getattr(track, "receive_monotonic_ns", 0))
     age_ms = max(0.0, (now_monotonic_ns - track_ns) / 1_000_000)
+    if not calibration.active:
+        return {
+            "valid": False,
+            "reason": "CALIBRATION_INACTIVE",
+            "ageMs": age_ms,
+            "calibrationId": calibration.calibration_id,
+            "calibrationHash": calibration.digest(),
+        }
     if track_ns <= 0 or age_ms > max_age_ms:
         return {
             "valid": False,

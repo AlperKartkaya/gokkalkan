@@ -49,6 +49,9 @@ def run_hil_plan(
     *,
     output: str | Path,
     physical_evidence: dict[str, bool] | None = None,
+    evidence_class: str = "SOFTWARE_FIXTURE",
+    firmware_hash: str = "UNVERIFIED",
+    model_hash: str = "UNVERIFIED",
 ) -> dict[str, Any]:
     """Write a report; absent physical observations stay explicitly unverified."""
 
@@ -79,9 +82,15 @@ def run_hil_plan(
         "allowsDestructiveOutput": False,
         "configHash": profile.config_hash,
         "calibrationHash": profile.calibration_hash,
+        "firmwareHash": firmware_hash,
+        "modelHash": model_hash,
+        "evidenceClass": evidence_class,
         "softwareHarness": software_faults,
         "scenarios": results,
-        "physicalGatePassed": bool(results)
+        "physicalGatePassed": evidence_class == "PHYSICAL_HIL"
+        and firmware_hash != "UNVERIFIED"
+        and model_hash != "UNVERIFIED"
+        and bool(results)
         and all(item["status"] == "PASS" for item in results),
     }
     target = Path(output)

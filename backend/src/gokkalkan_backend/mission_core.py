@@ -22,6 +22,7 @@ from .messages import (
 )
 from .operator_api import OperatorService
 from .range_fusion import FusedRangeDecision
+from .autonomous_controller import AutonomousController
 
 
 class MissionCoreError(RuntimeError):
@@ -135,6 +136,8 @@ class MissionCore:
         self._mission_state: MissionState | None = None
         self._snapshot: Mapping[str, Any] = deep_freeze({})
         self._last_snapshot_publish_ns = 0
+        self.autonomous_controller = AutonomousController()
+        self._last_autonomous_tick_ns = 0
         self._publish_snapshot()
 
     @property
@@ -358,6 +361,7 @@ class MissionCore:
                 except queue.Empty:
                     self.service.refresh_hardware_health()
                     self._check_perception_timeout()
+                    self._tick_autonomous_controller()
                     self._publish_timed_snapshot_if_needed()
                     continue
                 try:
@@ -473,6 +477,10 @@ class MissionCore:
                 return self.service.handle_stage_request(payload)
             if envelope.kind == "ManualAimCommand":
                 return self.service.handle_manual_aim(payload)
+            if envelope.kind == "AutonomousAimCommand":
+                if envelope.source != "mission-core-autonomous":
+                    raise MessageContractError("autonomous aim requires Mission Core source")
+                return self.service.handle_autonomous_aim(payload)
             if envelope.kind == "FireIntent":
                 return self.service.handle_fire_intent(payload)
             if envelope.kind == "MaintenanceStart":
@@ -561,6 +569,26 @@ class MissionCore:
             self.service.set_command_context(None)
         raise MessageContractError(f"unsupported command kind: {envelope.kind}")
 
+    def _tick_autonomous_controller(self) -> None:
+        now = time.monotonic_ns()
+        if now - self._last_autonomous_tick_ns < 100_000_000:
+            return
+        self._last_autonomous_tick_ns = now
+        action = self.autonomous_controller.tick(self.service.snapshot(), now_monotonic_ns=now)
+        if action is None:
+            return
+        envelope = CommandEnvelope.create(
+            run_id=self.run_id,
+            sequence=self._next_command_sequence(),
+            source="mission-core-autonomous",
+            kind=action.kind,
+            payload=action.payload,
+            causation_id=action.correlation_id,
+            target_id=action.payload.get("targetId"),
+            track_id=action.payload.get("targetId"),
+        )
+        self._process_envelope(envelope)
+
     def _mark_perception_heartbeat(self) -> None:
         self._last_perception_heartbeat_ns = time.monotonic_ns()
         self._perception_was_healthy = True
@@ -590,6 +618,7 @@ class MissionCore:
         with self._snapshot_condition:
             self._state_version += 1
             domain = self.service.snapshot()
+            domain["autonomousController"] = self.autonomous_controller.snapshot()
             safety = domain.get("safety", {})
             mission_state = MissionState(
                 schema_version=1,

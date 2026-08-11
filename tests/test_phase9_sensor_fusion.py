@@ -260,7 +260,10 @@ class AimTrack:
 
 
 def test_aim_alignment_is_calibrated_and_rejects_stale_track() -> None:
-    calibration = AimCalibration("AIM-CAL-1", 640, 360, 0.05, 0.04)
+    calibration = AimCalibration(
+        "AIM-CAL-1", 640, 360, 0.05, 0.04,
+        status="ACTIVE", evidence_sha256="a" * 64,
+    )
     fresh = calibrated_aim_error(
         AimTrack(650, 350, 1_000_000_000),
         calibration,

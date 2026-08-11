@@ -8,6 +8,9 @@ import sys
 sys.path.insert(0, str(Path("perception/src").resolve()))
 
 from accelerator import Hailo8Accelerator  # noqa: E402
+from detector import LatestWinsDetector  # noqa: E402
+from hailo_detector import HailoDetector  # noqa: E402
+import time
 
 
 def _result(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -65,3 +68,37 @@ def test_missing_hailortcli_reports_fail_closed_status() -> None:
 
     assert health["hardwareReady"] is False
     assert health["status"] == "CLI_MISSING"
+
+
+def test_hailo_detector_hashes_model_and_filters_contract(tmp_path: Path) -> None:
+    model = tmp_path / "model.hef"
+    model.write_bytes(b"fixture")
+    detector = HailoDetector(
+        model,
+        lambda _frame: [
+            {"label": "F16", "confidence": 0.9, "bbox": [0, 0, 10, 10]},
+            {"label": "UNKNOWN", "confidence": 0.99, "bbox": [0, 0, 1, 1]},
+        ],
+        allowed_labels={"F16"},
+    )
+    assert [item.label for item in detector.detect(object())] == ["F16"]
+    assert len(detector.health()["modelSha256"]) == 64
+
+
+def test_latest_wins_detector_reports_inference_failure_fail_closed() -> None:
+    class Broken:
+        def detect(self, _frame):
+            raise RuntimeError("boom")
+        def health(self):
+            return {"inferenceReady": True}
+
+    worker = LatestWinsDetector(Broken())
+    worker.start()
+    worker.submit(object(), time.monotonic_ns())
+    for _ in range(100):
+        if worker.health()["lastError"]:
+            break
+        time.sleep(0.001)
+    assert worker.latest() == []
+    assert "RuntimeError" in worker.health()["lastError"]
+    worker.stop()

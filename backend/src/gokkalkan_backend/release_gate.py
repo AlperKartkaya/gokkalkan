@@ -25,6 +25,7 @@ def build_release_manifest(
     software_gate: bool,
     sensor_evidence: str | Path | None = None,
     hil_evidence: str | Path | None = None,
+    firmware_version: str | None = None,
 ) -> dict[str, Any]:
     base = Path(root).resolve()
     components = []
@@ -68,6 +69,7 @@ def build_release_manifest(
     manifest = {
         "schemaVersion": 1,
         "version": version,
+        "firmwareVersion": firmware_version,
         "components": components,
         "evidence": {"sensorSha256": sensor_hash, "hilSha256": hil_hash},
         "gates": gates,
@@ -99,6 +101,8 @@ def verify_release_manifest(
         elif _sha256(path) != component.get("sha256"):
             errors.append(f"COMPONENT_HASH_MISMATCH:{component.get('path')}")
     gates = manifest.get("gates", {})
+    if not str(manifest.get("firmwareVersion") or "").strip():
+        errors.append("FIRMWARE_VERSION_MISSING")
     if manifest.get("readyForPhysicalManufacturingClaim") is not all(
         gates.get(name) is True for name in ("software", "sensor", "hil")
     ):

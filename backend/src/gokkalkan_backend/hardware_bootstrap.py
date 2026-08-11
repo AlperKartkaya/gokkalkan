@@ -77,7 +77,11 @@ class HardwareBootstrap:
 
     @staticmethod
     def _verify_evidence(files: Mapping[str, Path]) -> dict[str, str]:
-        required = {"runtimeConfig", "bom", "pinMap", "physicalAcceptance", "lidarCalibration"}
+        required = {
+            "runtimeConfig", "bom", "pinMap", "physicalAcceptance",
+            "lidarCalibration", "cameraCalibration", "turretCalibration",
+            "airsoftCalibration", "detectorModel",
+        }
         missing_labels = sorted(required - set(files))
         if missing_labels:
             raise RuntimeConfigurationError(
@@ -91,7 +95,10 @@ class HardwareBootstrap:
             except OSError as exc:
                 raise RuntimeConfigurationError(f"LIVE evidence cannot be read: {label}={path}") from exc
             text = content.decode("utf-8", errors="ignore").upper()
-            if label in {"pinMap", "physicalAcceptance", "lidarCalibration"} and (
+            if label in {
+                "pinMap", "physicalAcceptance", "lidarCalibration",
+                "cameraCalibration", "turretCalibration", "airsoftCalibration",
+            } and (
                 "UNVERIFIED" in text or "TODO" in text or not content.strip()
             ):
                 raise RuntimeConfigurationError(f"LIVE evidence is not approved: {label}={path}")

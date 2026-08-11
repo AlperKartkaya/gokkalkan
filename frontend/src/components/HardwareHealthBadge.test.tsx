@@ -60,8 +60,8 @@ describe('HardwareHealthBadge', () => {
       expect(screen.getByText('test-adapter')).toBeInTheDocument();
     });
 
-    // CAN BUS should be rendered
-    const canBus = screen.getByText(/CAN Veriyolu/);
-    expect(canBus).toBeInTheDocument();
+    // Active Pi-Pico transport is USB CDC.
+    const usb = screen.getByText(/USB CDC/);
+    expect(usb).toBeInTheDocument();
   });
 });

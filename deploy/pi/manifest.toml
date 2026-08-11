@@ -47,6 +47,7 @@ transport = "usb-cdc-serial"
 device_path = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_PICO"
 baudrate = 115200
 kernel_driver = "cdc_acm"
+firmware_version = "UNVERIFIED"
 
 [camera]
 stack = "libcamera-picamera2"
@@ -76,3 +77,9 @@ runtime_profile = "SIM"
 runtime_config = "/etc/gokkalkan/runtime.toml"
 api_health = "http://127.0.0.1:8088/health"
 ui_health = "http://127.0.0.1:4173/healthz"
+
+[release]
+requires_software_gate = true
+requires_sensor_physical_gate = true
+requires_hil_physical_gate = true
+rollback_document = "docs/operations/ROLLBACK.md"

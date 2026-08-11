@@ -2,7 +2,7 @@
  * HardwareHealthBadge — Adım 4b
  *
  * GET /hardware/health endpoint'ini 3 saniyede bir polling yaparak
- * CAN bağlantısı, Pico MCU erişilebilirlik ve physicalOutput durumunu gösterir.
+ * USB CDC bağlantısı, Pico MCU erişilebilirlik ve physicalOutput durumunu gösterir.
  *
  * Güvenlik notu: Yazılım katmanı ikincil izleme aracıdır.
  * Fiziksel mantar E-Stop birincil güvencedir.
@@ -86,7 +86,7 @@ export function HardwareHealthBadge({
 
       {health ? (
         <div className="grid grid-cols-2 gap-2">
-          <StatusDot ok={health.busConnected} label="CAN Veriyolu" />
+          <StatusDot ok={health.serialConnected ?? health.busConnected} label="USB CDC" />
           <StatusDot ok={health.picoReachable} label="Pico MCU" />
           <StatusDot ok={health.dryRun} label="Dry-Run Modu" />
           <StatusDot ok={!health.physicalOutputEnabled} label="Fiziksel Çıkış Kapalı" />
@@ -94,12 +94,26 @@ export function HardwareHealthBadge({
           <StatusDot ok={Boolean(snapshot?.sensorHealth?.perceptionConnected)} label="Kamera/Perception" />
           <StatusDot ok={Boolean(snapshot?.sensorHealth?.adapterConnected)} label="LiDAR Adapter" />
           <StatusDot ok={Boolean(snapshot?.telemetry?.exists)} label="Kayıt/Telemetri" />
+          <StatusDot ok={Boolean(health.encoderOk)} label="Enkoder" />
+          <span className="col-span-2 text-xs text-[#91a6b7]">
+            Pico: <b className="text-[#c8d8e2]">{health.serialPort ?? 'cihaz yolu yok'}</b>
+            {' · '}FW: <b className="text-[#c8d8e2]">{health.firmwareVersion ?? 'bilinmiyor'}</b>
+            {' · '}Protokol: <b className="text-[#c8d8e2]">v{health.protocolVersion ?? 0}</b>
+          </span>
+          <span className="col-span-2 text-xs text-[#91a6b7]">
+            Status yaşı: <b className="text-[#c8d8e2]">{health.lastStatusAgeSec == null ? 'yok' : `${(health.lastStatusAgeSec * 1000).toFixed(0)} ms`}</b>
+            {' · '}Reddedilen frame: <b className="text-[#c8d8e2]">{(health.rejectedRxCount ?? 0) + (health.transportRejectedFrameCount ?? 0)}</b>
+          </span>
           <span className="col-span-2 text-xs text-[#c8d8e2]">
             Çalışma profili: <b>{snapshot?.runtimeMode ?? (snapshot?.dryRun ? 'SIM' : 'BİLİNMİYOR')}</b>
             {' · '}Arm: <b>{snapshot?.liveArmEnabled ? 'AÇIK' : 'KAPALI'}</b>
           </span>
           <span className="col-span-2 text-xs text-[#c8d8e2]">
             Safety kararı: <b>{snapshot?.safety.blockReason ?? 'BACKEND SNAPSHOT YOK'}</b>
+          </span>
+          <span className="col-span-2 text-xs text-[#c8d8e2]">
+            Otonom: <b>{snapshot?.autonomousController?.state ?? 'IDLE'}</b>
+            {' · '}Neden: <b>{snapshot?.autonomousController?.reason ?? 'veri yok'}</b>
           </span>
           {health.commandCount !== undefined && (
             <span className="col-span-2 text-xs text-[#91a6b7]">

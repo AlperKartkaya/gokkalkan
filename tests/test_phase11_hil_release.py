@@ -45,6 +45,9 @@ def test_hil_rejects_destructive_load_and_accepts_complete_observations(
         profile(),
         output=tmp_path / "complete.json",
         physical_evidence={name: True for name in HIL_SCENARIOS},
+        evidence_class="PHYSICAL_HIL",
+        firmware_hash="f" * 64,
+        model_hash="m" * 64,
     )
     assert report["physicalGatePassed"] is True
 
@@ -64,6 +67,7 @@ def test_release_manifest_hashes_components_and_requires_all_three_gates(
         software_gate=True,
         sensor_evidence=sensor,
         hil_evidence=hil,
+        firmware_version="1.0.0",
     )
     assert manifest["gates"] == {"software": True, "sensor": True, "hil": False}
     assert manifest["readyForPhysicalManufacturingClaim"] is False

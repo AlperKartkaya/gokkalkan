@@ -11,7 +11,7 @@ Group=gokkalkan
 SupplementaryGroups=video render
 WorkingDirectory=/opt/gokkalkan
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/gokkalkan/.venv/bin/python /opt/gokkalkan/perception/src/perception_bridge.py --url http://127.0.0.1:8088 --stage 2 --poll-hz 10 --backend picamera2 --require-accelerator
+ExecStart=/opt/gokkalkan/.venv/bin/python /opt/gokkalkan/perception/src/perception_bridge.py --url http://127.0.0.1:8088 --poll-hz 10 --backend picamera2 --require-accelerator --require-detector --hailo-model /opt/gokkalkan/perception/models/target_detector.hef --camera-calibration /etc/gokkalkan/calibration/camera.toml
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=8

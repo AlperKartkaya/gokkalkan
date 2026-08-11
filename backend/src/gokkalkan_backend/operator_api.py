@@ -49,7 +49,7 @@ TargetType = Literal[
     "Bilinmeyen",
 ]
 FriendFoe = Literal["Dost", "Düşman", "Bilinmeyen"]
-CommandKind = Literal["ModeRequest", "StageRequest", "ManualAimCommand", "FireIntent"]
+CommandKind = Literal["ModeRequest", "StageRequest", "ManualAimCommand", "AutonomousAimCommand", "FireIntent"]
 SensorSource = Literal["radar", "lidar", "camera", "fusion", "dry-run"]
 ReadinessStatus = Literal["ready", "partial", "tbd", "blocked"]
 BlockReason = Literal[
@@ -205,6 +205,11 @@ class DryRunTrack:
     source: Literal["perception", "radar-lidar", "fused", "dry-run"] = "dry-run"
     updatedAt: str = field(default_factory=utc_now)
     receiveMonotonicNs: int = field(default_factory=_time.monotonic_ns)
+    yawErrorDeg: float | None = None
+    pitchErrorDeg: float | None = None
+    aimCalibrationId: str | None = None
+    aimCalibrationHash: str | None = None
+    aimValid: bool = False
     courseState: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -220,6 +225,11 @@ class DryRunTrack:
             "source": self.source,
             "updatedAt": self.updatedAt,
             "receiveMonotonicNs": self.receiveMonotonicNs,
+            "yawErrorDeg": self.yawErrorDeg,
+            "pitchErrorDeg": self.pitchErrorDeg,
+            "aimCalibrationId": self.aimCalibrationId,
+            "aimCalibrationHash": self.aimCalibrationHash,
+            "aimValid": self.aimValid,
             "courseState": self.courseState,
         }
 
@@ -340,6 +350,7 @@ class DryRunHardwareAdapter(HardwareAdapterBase):
             "adapter": "hardware_mock.dry_run",
             "busConnected": False,
             "picoReachable": False,
+            "encoderOk": True,
             "dryRun": True,
             "physicalOutputEnabled": False,
             "commandCount": len(self.commands),
@@ -380,6 +391,7 @@ class OperatorService:
         target_speed_prior_mps: float = 0.4,
         turret_calibration: TurretCalibration | None = None,
         ballistic_compensation: BallisticCompensation | None = None,
+        camera_calibration_hash: str | None = None,
     ) -> None:
         self._clock = clock
         self._ids = count(1)
@@ -432,6 +444,7 @@ class OperatorService:
         self.ballistic_compensation = (
             ballistic_compensation or BallisticCompensation.unverified()
         )
+        self.camera_calibration_hash = camera_calibration_hash
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
@@ -816,10 +829,24 @@ class OperatorService:
                 selected.rangeM if selected else None
             ),
             "lidarReading": self.latest_lidar_reading,
+            "hardwareHealth": self._hardware_health_snapshot(),
         }
         result.update(self._mission_timer())
         result.update(self._maintenance_state())
         return result
+
+    def _hardware_health_snapshot(self) -> dict[str, Any]:
+        try:
+            return self.hardware.health_check()
+        except Exception as exc:
+            return {
+                "adapter": type(self.hardware).__name__,
+                "busConnected": False,
+                "picoReachable": False,
+                "encoderOk": False,
+                "physicalOutputEnabled": False,
+                "healthError": f"{type(exc).__name__}:{exc}",
+            }
 
     def sensor_frames_snapshot(self) -> dict[str, Any]:
         return {
@@ -1081,12 +1108,14 @@ class OperatorService:
                     == self.mission_flow.selected_target_id
                 )
             )
-        elif kind == "ManualAimCommand":
+        elif kind in {"ManualAimCommand", "AutonomousAimCommand"}:
             mode_ok = (
                 self.mission_flow.status == "ACTIVE"
-                and self.stage == 1
-                and self.mode == "manual"
-                and bool(payload.get("deadmanActive"))
+                and (
+                    self.stage == 1 and self.mode == "manual" and bool(payload.get("deadmanActive"))
+                    if kind == "ManualAimCommand"
+                    else self.stage in {2, 3} and self.mode == "autonomous"
+                )
             )
             command_payload_ok = manual_aim_payload_ok(payload)
         elif kind == "ModeRequest":
@@ -1097,7 +1126,7 @@ class OperatorService:
         current_pan, current_tilt, position_valid = self._current_position()
         target_pan = current_pan
         target_tilt = current_tilt
-        if kind == "ManualAimCommand":
+        if kind in {"ManualAimCommand", "AutonomousAimCommand"}:
             try:
                 target_pan += float(payload.get("panDeltaDeg", 0.0))
                 target_tilt += float(payload.get("tiltDeltaDeg", 0.0))
@@ -1109,7 +1138,7 @@ class OperatorService:
             except (TypeError, ValueError):
                 position_valid = False
 
-        action = "motion" if kind == "ManualAimCommand" else "fire" if kind == "FireIntent" else "other"
+        action = "motion" if kind in {"ManualAimCommand", "AutonomousAimCommand"} else "fire" if kind == "FireIntent" else "other"
         soft_limits_ok = (
             self._position_within_soft_limits(target_pan, target_tilt)
             if action == "motion"
@@ -1351,11 +1380,18 @@ class OperatorService:
         return {"result": result, "safety": safety.to_dict(), "state": self.snapshot()}
 
     def handle_manual_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._handle_aim(payload, autonomous=False)
+
+    def handle_autonomous_aim(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._handle_aim(payload, autonomous=True)
+
+    def _handle_aim(self, payload: dict[str, Any], *, autonomous: bool) -> dict[str, Any]:
         self._require_owner()
         self.expire_stage_timer_if_needed()
-        safety = self.evaluate_safety("ManualAimCommand", payload=payload)
+        command_kind = "AutonomousAimCommand" if autonomous else "ManualAimCommand"
+        safety = self.evaluate_safety(command_kind, payload=payload)
         accepted = safety.blockReason == "ALLOWED"
-        result = self._command_result("ManualAimCommand", accepted, safety.blockReason)
+        result = self._command_result(command_kind, accepted, safety.blockReason)
         hardware_result = None
         if accepted:
             current_pan, current_tilt, position_ok = self._current_position()
@@ -1390,7 +1426,7 @@ class OperatorService:
             )
             hardware_result["turretCalibration"] = correction
             self.telemetry.append("hardware_result", hardware_result)
-        self._append_event("command", "ManualAimCommand", result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
+        self._append_event("command", command_kind, result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
     def handle_fire_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1699,6 +1735,11 @@ class OperatorService:
                 float,
                 Literal["perception", "radar-lidar", "fused"],
                 int,
+                float | None,
+                float | None,
+                str | None,
+                str | None,
+                bool,
             ]
         ] = []
         for raw in tracks_data:
@@ -1738,6 +1779,15 @@ class OperatorService:
                         confidence,
                         track_source,
                         int(raw.get("receiveMonotonicNs", _time.monotonic_ns())),
+                        None if raw.get("yawErrorDeg") is None else float(raw["yawErrorDeg"]),
+                        None if raw.get("pitchErrorDeg") is None else float(raw["pitchErrorDeg"]),
+                        None if raw.get("aimCalibrationId") is None else str(raw["aimCalibrationId"]),
+                        None if raw.get("aimCalibrationHash") is None else str(raw["aimCalibrationHash"]),
+                        bool(raw.get("aimValid", False))
+                        and (
+                            self.camera_calibration_hash is None
+                            or str(raw.get("aimCalibrationHash", "")) == self.camera_calibration_hash
+                        ),
                     )
                 )
             except (TypeError, ValueError) as exc:
@@ -1754,6 +1804,11 @@ class OperatorService:
             confidence,
             track_source,
             receive_monotonic_ns,
+            yaw_error_deg,
+            pitch_error_deg,
+            aim_calibration_id,
+            aim_calibration_hash,
+            aim_valid,
         ) in normalized:
             course_state = self.course_estimator.update(
                 track_id,
@@ -1773,6 +1828,11 @@ class OperatorService:
                 source=track_source,
                 updatedAt=now,
                 receiveMonotonicNs=receive_monotonic_ns,
+                yawErrorDeg=yaw_error_deg,
+                pitchErrorDeg=pitch_error_deg,
+                aimCalibrationId=aim_calibration_id,
+                aimCalibrationHash=aim_calibration_hash,
+                aimValid=aim_valid,
                 courseState=course_state.to_dict(),
             )
             updated.append(track)

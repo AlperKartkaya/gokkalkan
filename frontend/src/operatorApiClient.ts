@@ -117,6 +117,11 @@ export interface OperatorApiSnapshot {
     updatedAtUtc: string;
     updatedAtMonotonicNs: number;
   };
+  autonomousController?: {
+    state: string;
+    reason: string;
+    attempts: Record<string, number>;
+  };
   missionFlow?: {
     schemaVersion: number;
     status: 'IDLE' | 'ACTIVE' | 'PAUSED' | 'MAINTENANCE' | 'ESTOP_LATCHED' | 'ROUND_COMPLETE';
@@ -297,7 +302,16 @@ export interface HardwareHealthResponse {
   dryRun: boolean;
   physicalOutputEnabled: boolean;
   commandCount?: number;
-  // CanMcuAdapter'dan gelen ek alanlar
+  transport?: 'usb_serial';
+  serialPort?: string;
+  serialConnected?: boolean;
+  baudrate?: number;
+  protocolVersion?: number;
+  firmwareVersion?: string | null;
+  encoderOk?: boolean;
+  rejectedRxCount?: number;
+  transportRejectedFrameCount?: number;
+  lastStatusAgeSec?: number | null;
   mcuStatus?: Record<string, unknown>;
   lastHeartbeatAt?: string;
 }
@@ -327,7 +341,7 @@ export async function sendOperatorEStop(baseUrl: string, payload: { active: bool
   return requestJson<OperatorEStopResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/estop`, payload);
 }
 
-/** GET /hardware/health — CAN bağlantısı ve Pico MCU durumu. */
+/** GET /hardware/health — USB CDC bağlantısı ve Pico MCU durumu. */
 export async function fetchHardwareHealth(baseUrl: string): Promise<HardwareHealthResponse> {
   return requestJson<HardwareHealthResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/hardware/health`);
 }

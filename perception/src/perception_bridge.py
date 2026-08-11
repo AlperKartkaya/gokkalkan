@@ -33,6 +33,7 @@ import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 import json
+import importlib
 from typing import Any
 
 # Proje kökünden içe aktar
@@ -42,6 +43,9 @@ from camera_node import CameraNode
 from frame_processor import FrameProcessor
 from camera_stream_server import CameraStreamService
 from accelerator import AcceleratorProbe, Hailo8Accelerator
+from aim_alignment import AimCalibration
+from detector import LatestWinsDetector
+from hailo_detector import HailoDetector
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +80,8 @@ class PerceptionBridge:
         camera_stream_port: int | None = None,
         accelerator: AcceleratorProbe | None = None,
         accelerator_required: bool = False,
+        detector: LatestWinsDetector | None = None,
+        detector_required: bool = False,
     ) -> None:
         self.backend_url = backend_url.rstrip("/")
         self.stage       = stage
@@ -94,6 +100,8 @@ class PerceptionBridge:
         self.processor = FrameProcessor(**(processor_kw or {}))
         self.accelerator = accelerator or Hailo8Accelerator()
         self.accelerator_required = accelerator_required
+        self.detector = detector
+        self.detector_required = detector_required
         self.camera_stream = (
             CameraStreamService(camera_stream_host, camera_stream_port)
             if camera_stream_port is not None
@@ -115,6 +123,8 @@ class PerceptionBridge:
     def start(self) -> None:
         """Kamerayı ve bridge döngüsünü başlat."""
         self.camera.start()
+        if self.detector is not None:
+            self.detector.start()
         if self.camera_stream is not None:
             self.camera_stream.start()
         self._running = True
@@ -145,6 +155,8 @@ class PerceptionBridge:
             self._sender_thread.join(timeout=3.0)
         self._post_heartbeat(healthy=False, reason="graceful_shutdown")
         self.camera.stop()
+        if self.detector is not None:
+            self.detector.stop()
         if self.camera_stream is not None:
             self.camera_stream.stop()
         logger.info("PerceptionBridge durduruldu.")
@@ -182,6 +194,21 @@ class PerceptionBridge:
             # Backward-compatible test/plugin surface.
             candidates = self.processor.process(frame, stage=self.stage)
         tracks = [c.to_api_dict() for c in candidates]
+        if self.detector is not None and sample is not None:
+            self.detector.submit(frame, sample.receive_monotonic_ns)
+            detections = self.detector.latest(now_monotonic_ns=sample.receive_monotonic_ns)
+            for track in tracks:
+                cx, cy, _width, _height = track.get("bboxPx", [0, 0, 0, 0])
+                matches = [
+                    detection for detection in detections
+                    if detection.bbox_xyxy[0] <= cx <= detection.bbox_xyxy[2]
+                    and detection.bbox_xyxy[1] <= cy <= detection.bbox_xyxy[3]
+                ]
+                if matches:
+                    best = max(matches, key=lambda item: item.confidence)
+                    track["targetType"] = best.label
+                    track["confidence"] = best.confidence
+                    track["modelSha256"] = self.detector.health().get("modelSha256")
         self._enqueue_tracks(tracks)
 
     def _enqueue_tracks(self, tracks: list[dict[str, Any]]) -> None:
@@ -218,6 +245,7 @@ class PerceptionBridge:
                 finally:
                     self._outbound.task_done()
             if time.monotonic() >= next_heartbeat:
+                self._sync_stage()
                 healthy, reason = self._pipeline_health()
                 self._post_heartbeat(healthy=healthy, reason=reason)
                 next_heartbeat = time.monotonic() + self._heartbeat_interval_sec
@@ -287,6 +315,16 @@ class PerceptionBridge:
             logger.warning("Backend %s erişilemiyor: %s", path, exc)
             return False
 
+    def _sync_stage(self) -> None:
+        try:
+            with urllib.request.urlopen(f"{self.backend_url}/state", timeout=self.CONNECT_TIMEOUT) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            stage = int(payload["stage"])
+            if stage in {1, 2, 3}:
+                self.stage = stage
+        except (urllib.error.URLError, OSError, ValueError, KeyError, json.JSONDecodeError):
+            return
+
     # ------------------------------------------------------------------
     # Sağlık bilgisi
     # ------------------------------------------------------------------
@@ -301,8 +339,14 @@ class PerceptionBridge:
                 camera_health.get("status", "camera_unhealthy")
             ).lower()
         accelerator_health = self.accelerator.health()
-        if self.accelerator_required and not accelerator_health["hardwareReady"]:
+        if self.accelerator_required and not accelerator_health["inferenceReady"]:
             return False, "accelerator_unhealthy"
+        if self.detector_required:
+            if self.detector is None:
+                return False, "detector_unbound"
+            detector_health = self.detector.health()
+            if not detector_health.get("inferenceReady") or detector_health.get("lastError"):
+                return False, "detector_unhealthy"
         reason = (
             "camera_and_accelerator_ready"
             if self.accelerator_required
@@ -329,6 +373,8 @@ class PerceptionBridge:
             "camera":        self.camera.health(),
             "acceleratorRequired": self.accelerator_required,
             "accelerator":   self.accelerator.health(),
+            "detectorRequired": self.detector_required,
+            "detector": None if self.detector is None else self.detector.health(),
             "processor":     self.processor.stats(),
         }
 
@@ -363,6 +409,11 @@ def main() -> None:
         help="AI HAT+ Hailo-8 görünmüyorsa perception heartbeat'ini sağlıksız yap",
     )
     parser.add_argument(
+        "--require-detector",
+        action="store_true",
+        help="Doğrulanmış detector worker bağlı değilse heartbeat'i sağlıksız yap",
+    )
+    parser.add_argument(
         "--hailo-model",
         default=None,
         help="İsteğe bağlı derlenmiş HEF model yolu; model hazır oluşu health'e yansır",
@@ -378,18 +429,55 @@ def main() -> None:
         default=8090,
         help="Ham kamera MJPEG servis portu",
     )
+    parser.add_argument(
+        "--camera-calibration",
+        default="config/calibration/camera.toml",
+        help="Versioned camera intrinsics/boresight calibration TOML",
+    )
     args = parser.parse_args()
+
+    detector_worker = None
+    runner_spec = os.environ.get("GOKKALKAN_HAILO_RUNNER_FACTORY", "").strip()
+    if runner_spec and args.hailo_model:
+        module_name, separator, attribute = runner_spec.partition(":")
+        if not separator:
+            parser.error("GOKKALKAN_HAILO_RUNNER_FACTORY module:function biçiminde olmalı")
+        factory = getattr(importlib.import_module(module_name), attribute)
+        detector_worker = LatestWinsDetector(
+            HailoDetector(
+                args.hailo_model,
+                factory(args.hailo_model),
+                allowed_labels={
+                    "dusman_drone_kirmizi", "dusman_helikopter_kirmizi",
+                    "dusman_f16_kirmizi", "dusman_fuze_kirmizi",
+                    "dost_helikopter_camgobegi", "dost_f16_camgobegi",
+                },
+                label_map={
+                    "dusman_drone_kirmizi": "Mini/Micro İHA",
+                    "dusman_helikopter_kirmizi": "Helikopter",
+                    "dusman_f16_kirmizi": "F16",
+                    "dusman_fuze_kirmizi": "Balistik Füze",
+                    "dost_helikopter_camgobegi": "Helikopter",
+                    "dost_f16_camgobegi": "F16",
+                },
+            )
+        )
 
     bridge = PerceptionBridge(
         backend_url  = args.url,
         stage        = args.stage,
         poll_hz      = args.poll_hz,
         camera_kw    = {"device": args.device, "backend": args.backend},
-        processor_kw = {"classify_colors": not args.no_classify},
+        processor_kw = {
+            "classify_colors": not args.no_classify,
+            "aim_calibration": AimCalibration.load(args.camera_calibration),
+        },
         camera_stream_host=args.camera_stream_host,
         camera_stream_port=args.camera_stream_port,
         accelerator=Hailo8Accelerator(args.hailo_model),
         accelerator_required=args.require_accelerator,
+        detector_required=args.require_detector,
+        detector=detector_worker,
     )
 
     bridge.start()

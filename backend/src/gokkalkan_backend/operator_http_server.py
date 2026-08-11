@@ -38,6 +38,7 @@ from .telemetry_log import JsonlTelemetryStore
 from .telemetry_session import SessionTelemetryStore
 from .turret_calibration import TurretCalibration
 from .sensor_runtime import TFA50LSensorRuntime, build_tfa50l_sensor_runtime
+from .camera_calibration import camera_calibration_digest
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
@@ -354,6 +355,15 @@ def build_http_server(
         daemon_threads = True
 
         def shutdown(self) -> None:
+            try:
+                BoundHandler.core.submit(
+                    "Disarm",
+                    {"reason": "SERVICE_SHUTDOWN"},
+                    source="runtime-shutdown",
+                    timeout=1.0,
+                )
+            except (MissionCoreStopped, MissionCommandTimeout):
+                pass
             super().shutdown()
             BoundHandler.core.stop()
 
@@ -485,6 +495,13 @@ def main(argv: list[str] | None = None) -> None:
         )
     )
     source_files["lidarCalibration"] = settings.sensors.lidar_calibration_path
+    source_files["cameraCalibration"] = Path(
+        os.environ.get("GOKKALKAN_CAMERA_CALIBRATION_FILE", "config/calibration/camera.toml")
+    )
+    source_files["detectorModel"] = Path(
+        os.environ.get("GOKKALKAN_DETECTOR_MODEL", "perception/models/target_detector.hef")
+    )
+    source_files["airsoftCalibration"] = source_files["ballisticCalibration"]
     telemetry = SessionTelemetryStore.from_output_path(
         settings.telemetry.path,
         max_bytes=settings.telemetry.max_bytes,
@@ -524,6 +541,9 @@ def main(argv: list[str] | None = None) -> None:
                 ),
                 "ballistic_compensation": BallisticCompensation.from_toml(
                     source_files["ballisticCalibration"]
+                ),
+                "camera_calibration_hash": camera_calibration_digest(
+                    source_files["cameraCalibration"]
                 ),
             },
         )

@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from aim_alignment import AimCalibration, calibrated_aim_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,11 @@ class TrackCandidate:
     state: str = "TRACKED"
     receive_monotonic_ns: int = field(default_factory=time.monotonic_ns)
     detected_at: float = field(default_factory=time.time)
+    yaw_error_deg: float | None = None
+    pitch_error_deg: float | None = None
+    aim_calibration_id: str | None = None
+    aim_calibration_hash: str | None = None
+    aim_valid: bool = False
 
     def to_api_dict(self) -> dict[str, Any]:
         """Backend /tracks/update sözleşmesiyle uyumlu dict."""
@@ -90,6 +97,11 @@ class TrackCandidate:
             "freshnessMs": round(self.freshness_ms, 2),
             "trackState": self.state,
             "receiveMonotonicNs": self.receive_monotonic_ns,
+            "yawErrorDeg": self.yaw_error_deg,
+            "pitchErrorDeg": self.pitch_error_deg,
+            "aimCalibrationId": self.aim_calibration_id,
+            "aimCalibrationHash": self.aim_calibration_hash,
+            "aimValid": self.aim_valid,
         }
 
 
@@ -267,6 +279,7 @@ class FrameProcessor:
         tracker_max_disappeared: int = 10,
         tracker_max_dist_px:     float = 80.0,
         classify_colors: bool = True,
+        aim_calibration: AimCalibration | None = None,
     ) -> None:
         self.image_width   = image_width
         self.image_height  = image_height
@@ -274,6 +287,7 @@ class FrameProcessor:
         self.hfov_deg      = hfov_deg
         self.range_area_k  = range_area_k
         self.classify_colors = classify_colors
+        self.aim_calibration = aim_calibration
         self._tracker = CentroidTracker(
             max_disappeared=tracker_max_disappeared,
             max_distance_px=tracker_max_dist_px,
@@ -415,8 +429,7 @@ class FrameProcessor:
                 (tr["cx"] - self.image_width / 2) / self.image_width * self.hfov_deg
             )
 
-            candidates.append(
-                TrackCandidate(
+            candidate = TrackCandidate(
                     track_id    = tid,
                     cx          = tr["cx"],
                     cy          = tr["cy"],
@@ -437,7 +450,19 @@ class FrameProcessor:
                     ),
                     receive_monotonic_ns=timestamp_ns,
                 )
-            )
+            if self.aim_calibration is not None:
+                aim = calibrated_aim_error(
+                    candidate,
+                    self.aim_calibration,
+                    now_monotonic_ns=timestamp_ns,
+                )
+                candidate.aim_valid = bool(aim["valid"])
+                candidate.aim_calibration_id = str(aim["calibrationId"])
+                candidate.aim_calibration_hash = str(aim["calibrationHash"])
+                if candidate.aim_valid:
+                    candidate.yaw_error_deg = float(aim["yawErrorDeg"])
+                    candidate.pitch_error_deg = float(aim["pitchErrorDeg"])
+            candidates.append(candidate)
         return candidates
 
     def stats(self) -> dict[str, Any]:

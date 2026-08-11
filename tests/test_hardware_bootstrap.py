@@ -35,7 +35,10 @@ def _settings(tmp_path: Path):
 
 def _evidence(tmp_path: Path) -> dict[str, Path]:
     result = {}
-    for label in ("runtimeConfig", "bom", "pinMap", "physicalAcceptance", "lidarCalibration"):
+    for label in (
+        "runtimeConfig", "bom", "pinMap", "physicalAcceptance", "lidarCalibration",
+        "cameraCalibration", "turretCalibration", "airsoftCalibration", "detectorModel",
+    ):
         path = tmp_path / f"{label}.txt"
         path.write_text(f"APPROVED {label}\n", encoding="utf-8")
         result[label] = path
@@ -75,7 +78,7 @@ def test_live_bootstrap_is_monitor_only_and_hashes_evidence(tmp_path: Path) -> N
     assert result.physical_interlock_ready is True
     assert result.backend_readiness_ok is True
     assert result.source.startswith("hardware-bootstrap:")
-    assert len(result.snapshot["evidenceSha256"]) == 5  # type: ignore[index]
+    assert len(result.snapshot["evidenceSha256"]) == 9  # type: ignore[index]
     assert instances[0].options["physical_output_capable"] is False
     assert instances[0].closed is True
 
