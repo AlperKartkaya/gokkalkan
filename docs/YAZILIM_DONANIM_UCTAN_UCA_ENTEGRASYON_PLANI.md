@@ -1,6 +1,6 @@
 # Gökkalkan Yazılım–Donanım Uçtan Uca Entegrasyon Planı
 
-> **Durum:** Uygulama yarı noktasında durduruldu — FAZ 0–6 yazılım temelleri tamamlandı; fiziksel kabul kapıları açık tutuluyor
+> **Durum:** FAZ 0–13 yazılım uygulaması tamamlandı — fiziksel kalibrasyon, HIL ve saha kabul kapıları bilinçli olarak açık
 >
 > **Son güncelleme:** 11 Ağustos 2026
 >
@@ -139,7 +139,7 @@ Aktif Pi–Pico taşıması USB CDC Serial'dır. CAN fiziksel katmanı satın al
 
 ```text
 .venv/bin/python -m pytest
-→ 274 passed, 4 skipped
+→ 280 passed, 4 skipped
 
 .venv-perception/bin/python -m pytest \
   tests/test_phase9_sensor_fusion.py tests/test_dataset_pipeline.py
@@ -183,7 +183,19 @@ Uygulama commitleri:
 - `d79ccab` — hareket, FIRE ve MCU telemetri temelleri
 - `bab0d05` — LIVE bootstrap ve TFA50-L production runtime
 
-Bu noktada 14 fazın ilk 7'si ele alınmıştır; kullanıcı talebi gereği **FAZ 7'ye geçilmeden durulmuştur**.
+### Kalan fazların uygulama kaydı (FAZ 7–13)
+
+| Faz | Yazılım durumu | Uygulanan sonuç | Fiziksel kabul |
+|---|---|---|---|
+| FAZ 7 | Tamamlandı / kalibrasyon kapalı | Versioned kamera TOML sözleşmesi, calibration digest eşleştirmesi, yaw/pitch aim metadata’sı, freshness ve inactive calibration reddi eklendi. | **AÇIK:** checkerboard, distortion ve boresight fiziksel ölçümü |
+| FAZ 8 | Tamamlandı | Bounded aim, settle, cooldown ve deneme sınırları olan `AutonomousController` Mission Core owner loop’una bağlandı. Aşama 2 dijital testinde operatör aim/fire komutu olmadan angajman tamamlanıyor. | **AÇIK:** gerçek encoder settling ve otonom saha turu |
+| FAZ 9 | Runtime sözleşmesi tamamlandı / model kapalı | Detector protokolü, Hailo HEF hash/label sözleşmesi, bounded latest-wins worker, crash/stale fail-closed health ve backend stage senkronizasyonu eklendi. | **AÇIK:** gerçek veri modeli, HEF, HailoRT runner factory ve Pi 5 latency/equivalence |
+| FAZ 10 | Doğrulama kapıları tamamlandı | Kamera/taret/LiDAR/airsoft/model dosyaları LIVE bootstrap’ın zorunlu hash/evidence girdileri oldu; `UNVERIFIED` içerik LIVE’ı açamıyor. | **AÇIK:** gerçek ölçüm ve evidence hash’leri |
+| FAZ 11 | Tamamlandı | USB yolu, firmware/protokol, status yaşı, rejected frame, encoder ve otonom state/reason operatör sağlık görünümüne eklendi. | **AÇIK:** gerçek operatör kullanılabilirlik kabulü |
+| FAZ 12 | Yazılım harness tamamlandı | HIL raporu evidence class ile ayrıldı; yalnız `PHYSICAL_HIL`, gerçek firmware/model hash’i ve tüm senaryolar PASS ise fiziksel kapı geçiyor. | **AÇIK:** monitor-only, safe-load, motor ve airsoft fiziksel HIL |
+| FAZ 13 | Yazılım/release kapısı tamamlandı | Firmware sürümü release manifestinde zorunlu, shutdown disarm eklendi, perception servisi dinamik stage/kalibrasyon/model/detector kapılarıyla güncellendi ve rollback prosedürü yazıldı. | **AÇIK:** Pi soak, gerçek rollback tatbikatı ve imzalı release |
+
+**Sonuç:** Planın yazılımla gerçekleştirilebilen maddeleri uygulanmıştır. Fiziksel cihaz, gerçek hedef datası veya güvenli test sahası gerektiren maddeler tamamlanmış gibi işaretlenmemiştir; bu girdiler sağlanmadan LIVE bootstrap ve release gate fail-closed kalır.
 
 ---
 
