@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Mapping
 
 from .hardware_adapter import HardwareAdapterBase
 from .operator_api import DryRunHardwareAdapter, OperatorService
@@ -42,6 +42,7 @@ class LivePreflight:
     physical_interlock_ready: bool
     backend_readiness_ok: bool
     source: str
+    snapshot: Mapping[str, Any] | None = None
 
 
 def _is_virtual_mcu_port(port: str) -> bool:

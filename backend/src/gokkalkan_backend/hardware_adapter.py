@@ -442,6 +442,7 @@ class CanMcuAdapter(HardwareAdapterBase):
                     self._rejected_rx_count += 1
                     return
                 parsed["receivedAt"] = _utc_now()
+                parsed["receivedMonotonicNs"] = time.monotonic_ns()
                 with self._lock:
                     prev_estop = self._status.get("estopActive", False)
                     self._status.update(parsed)

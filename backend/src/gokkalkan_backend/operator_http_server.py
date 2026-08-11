@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .operator_api import OperatorService
+from .hardware_bootstrap import HardwareBootstrap
 from .ballistic_compensation import BallisticCompensation
 from .mission_core import (
     MissionCommandTimeout,
@@ -36,6 +37,7 @@ from .runtime_config import (
 from .telemetry_log import JsonlTelemetryStore
 from .telemetry_session import SessionTelemetryStore
 from .turret_calibration import TurretCalibration
+from .sensor_runtime import TFA50LSensorRuntime, build_tfa50l_sensor_runtime
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
@@ -473,6 +475,16 @@ def main(argv: list[str] | None = None) -> None:
         configured = os.environ.get(environment_name)
         if configured:
             source_files[label] = Path(configured)
+    source_files["pinMap"] = Path(
+        os.environ.get("GOKKALKAN_PIN_MAP_FILE", "docs/hardware/GKK-IO-REV-A_PIN_MAP.md")
+    )
+    source_files["physicalAcceptance"] = Path(
+        os.environ.get(
+            "GOKKALKAN_PHYSICAL_ACCEPTANCE_FILE",
+            "evidence/live/hardware_acceptance.json",
+        )
+    )
+    source_files["lidarCalibration"] = settings.sensors.lidar_calibration_path
     telemetry = SessionTelemetryStore.from_output_path(
         settings.telemetry.path,
         max_bytes=settings.telemetry.max_bytes,
@@ -482,11 +494,20 @@ def main(argv: list[str] | None = None) -> None:
     )
     config = settings.launch_config()
     try:
-        # CLI bilinçli olarak fiziksel preflight üretmez. LIVE, gerçek interlock
-        # entegrasyonu ayrı bootstrap tarafından sağlanana kadar fail-closed kalır.
+        live_preflight = None
+        if runtime_mode == "LIVE":
+            live_preflight = HardwareBootstrap().run(
+                settings,
+                evidence_files=source_files,
+            )
+            telemetry.append("live_preflight", {
+                "source": live_preflight.source,
+                "snapshot": dict(live_preflight.snapshot or {}),
+            })
         service = build_runtime_service(
             config,
             telemetry=telemetry,
+            live_preflight=live_preflight,
             operator_options={
                 "pan_min_deg": settings.safety.pan_min_deg,
                 "pan_max_deg": settings.safety.pan_max_deg,
@@ -511,6 +532,7 @@ def main(argv: list[str] | None = None) -> None:
 
     print(f"Config: {settings.source} (schema={settings.schema_version})")
     print(f"Runtime: {json.dumps(runtime_summary(service), ensure_ascii=False, default=str)}")
+    core = MissionCore(service)
     server = build_http_server(
         settings.api.host,
         settings.api.port,
@@ -521,7 +543,22 @@ def main(argv: list[str] | None = None) -> None:
             if runtime_mode == "LIVE" and settings.live.operator_token_file
             else None
         ),
+        core=core,
     )
+    sensor_runtime: TFA50LSensorRuntime | None = None
+    if runtime_mode == "LIVE":
+        try:
+            sensor_runtime = build_tfa50l_sensor_runtime(
+                core,
+                settings,
+                telemetry=lambda kind, payload: telemetry.append(kind, payload),
+            )
+            sensor_runtime.start()
+        except (OSError, ValueError) as exc:
+            server.server_close()
+            service.hardware.close()
+            telemetry.close()
+            parser.error(f"TFA50-L production runtime başlatılamadı: {exc}")
     print(
         "Gökkalkan operator API listening on "
         f"http://{settings.api.host}:{settings.api.port}"
@@ -537,6 +574,8 @@ def main(argv: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         print("\nOperator API stopped.")
     finally:
+        if sensor_runtime is not None:
+            sensor_runtime.stop()
         server.server_close()
         service.hardware.close()
         telemetry.close()

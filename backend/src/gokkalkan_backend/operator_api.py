@@ -204,6 +204,7 @@ class DryRunTrack:
     confidence: float
     source: Literal["perception", "radar-lidar", "fused", "dry-run"] = "dry-run"
     updatedAt: str = field(default_factory=utc_now)
+    receiveMonotonicNs: int = field(default_factory=_time.monotonic_ns)
     courseState: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -218,6 +219,7 @@ class DryRunTrack:
             "confidence": self.confidence,
             "source": self.source,
             "updatedAt": self.updatedAt,
+            "receiveMonotonicNs": self.receiveMonotonicNs,
             "courseState": self.courseState,
         }
 
@@ -1696,6 +1698,7 @@ class OperatorService:
                 float,
                 float,
                 Literal["perception", "radar-lidar", "fused"],
+                int,
             ]
         ] = []
         for raw in tracks_data:
@@ -1734,6 +1737,7 @@ class OperatorService:
                         bearing_deg,
                         confidence,
                         track_source,
+                        int(raw.get("receiveMonotonicNs", _time.monotonic_ns())),
                     )
                 )
             except (TypeError, ValueError) as exc:
@@ -1749,6 +1753,7 @@ class OperatorService:
             bearing_deg,
             confidence,
             track_source,
+            receive_monotonic_ns,
         ) in normalized:
             course_state = self.course_estimator.update(
                 track_id,
@@ -1767,6 +1772,7 @@ class OperatorService:
                 confidence=confidence,
                 source=track_source,
                 updatedAt=now,
+                receiveMonotonicNs=receive_monotonic_ns,
                 courseState=course_state.to_dict(),
             )
             updated.append(track)

@@ -25,6 +25,7 @@ from gokkalkan_backend.range_fusion import (
 from gokkalkan_backend.operator_api import OperatorService
 from gokkalkan_backend.mission_core import MissionCore
 from gokkalkan_backend.sensor_pipeline import TFA50LFusionPipeline
+from gokkalkan_backend.sensor_runtime import SensorRuntimeIdentity, TFA50LSensorRuntime
 
 pytestmark = [pytest.mark.safety, pytest.mark.replay]
 
@@ -386,3 +387,100 @@ def test_sensor_pipeline_forwards_each_decision_to_mission_callback() -> None:
     )
     assert pipeline.tick()[-1].accepted is True
     assert len(decisions) == 3
+
+
+def test_production_sensor_runtime_queues_fusion_instead_of_mutating_service() -> None:
+    now = 1_000_000_000
+
+    class Hardware:
+        def health_check(self):
+            return {"lastStatusAgeSec": 0.01, "mcuStatus": {"panDeg": 10.0}}
+
+    class Service:
+        hardware = Hardware()
+
+    class Core:
+        service = Service()
+
+        def __init__(self):
+            self.published = []
+
+        def snapshot(self):
+            return {
+                "missionFlow": {"selectedTargetId": "TRACK-1"},
+                "tracks": [{
+                    "trackId": "TRACK-1",
+                    "bearingDeg": 10.5,
+                    "receiveMonotonicNs": now,
+                }],
+            }
+
+        def publish_threadsafe(self, kind, payload, **options):
+            self.published.append((kind, payload, options))
+            return "queued"
+
+    class Adapter:
+        config = TFA50LSerialConfig("/dev/fake", 460800, 1000, stale_ms=200)
+
+        def __init__(self):
+            self.samples = [TimedRange(10.0, now, "5C", True, "VALID")]
+
+        def poll(self):
+            return self.samples
+
+        def health(self):
+            return {
+                "connected": True,
+                "serialNumber": "S001",
+                "firmwareVersion": "V1.0",
+            }
+
+        def close(self):
+            pass
+
+    core = Core()
+    runtime = TFA50LSensorRuntime(
+        core,  # type: ignore[arg-type]
+        Adapter(),  # type: ignore[arg-type]
+        YawRangeAssociator(valid_calibration(), current_mount_revision="BRIDGE-R1", required_consecutive=1),
+        SensorRuntimeIdentity("S001", "V1.0", "BRIDGE-R1"),
+        monotonic_ns=lambda: now,
+    )
+
+    assert runtime.tick()[0].accepted is True
+    assert core.published[0][0] == "FusedRangeUpdate"
+    assert core.published[0][2]["source"] == "sensor-tfa50-l-runtime"
+    assert runtime.health()["identityAllowed"] is True
+
+
+def test_production_sensor_runtime_rejects_stale_yaw_and_wrong_identity() -> None:
+    class Core:
+        class Service:
+            class Hardware:
+                def health_check(self):
+                    return {"lastStatusAgeSec": 1.0, "mcuStatus": {"panDeg": 0.0}}
+            hardware = Hardware()
+        service = Service()
+
+        def snapshot(self):
+            return {"missionFlow": {"selectedTargetId": None}, "tracks": []}
+
+    class Adapter:
+        config = TFA50LSerialConfig("/dev/fake", 460800, 1000, stale_ms=100)
+        def health(self):
+            return {"connected": True, "serialNumber": "WRONG", "firmwareVersion": "V1.0"}
+        def poll(self):
+            return []
+        def close(self):
+            pass
+
+    runtime = TFA50LSensorRuntime(
+        Core(),  # type: ignore[arg-type]
+        Adapter(),  # type: ignore[arg-type]
+        YawRangeAssociator(valid_calibration(), current_mount_revision="BRIDGE-R1"),
+        SensorRuntimeIdentity("S001", "V1.0", "BRIDGE-R1"),
+    )
+    with pytest.raises(ValueError, match="identity"):
+        runtime.tick()
+    with pytest.raises(ValueError, match="yaw is stale"):
+        runtime._turret_yaw()
