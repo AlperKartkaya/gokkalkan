@@ -1,4 +1,6 @@
 #include "can_protocol.hpp"
+#include "board_config.hpp"
+#include "io_hal.hpp"
 #include "safety_state_machine.hpp"
 #include "usb_serial_protocol.hpp"
 #include <cassert>
@@ -96,4 +98,32 @@ int main() {
   rejected.apply(Command::HEARTBEAT, 1);
   assert(std::string(rejected.apply(Command::ARM, 2)) == "REJECTED_INTERLOCK");
   assert(!rejected.outputs_enabled());
+
+  assert(!gokkalkan::board::pins_verified(gokkalkan::board::kPins));
+
+  gokkalkan::PicoIo io({true, true, true, true}, 20);
+  gokkalkan::RawDigitalInputs safe_levels;
+  safe_levels.estop_safe_sense_level = false;
+  safe_levels.fire_interlock_level = false;
+  safe_levels.trigger_feedback_level = false;
+  safe_levels.pan_limit_nc_level = false;
+  safe_levels.tilt_limit_nc_level = false;
+  io.set_encoder_health(true, false, true, true);
+  io.update(safe_levels, 0);
+  assert(io.safety_inputs().estop);  // Safe transitions are debounced.
+  io.update(safe_levels, 20);
+  Inputs io_safe = io.safety_inputs();
+  assert(!io_safe.estop && io_safe.fire_interlock_closed);
+  assert(io_safe.trigger_released && io_safe.encoder_connected);
+  assert(io_safe.pan_limit_clear && io_safe.tilt_limit_clear);
+
+  safe_levels.estop_safe_sense_level = true;
+  io.update(safe_levels, 21);
+  assert(io.safety_inputs().estop);  // Unsafe transitions are immediate.
+
+  gokkalkan::PicoIo disconnected({true, true, true, true}, 20);
+  disconnected.update({}, 100);
+  const Inputs disconnected_inputs = disconnected.safety_inputs();
+  assert(disconnected_inputs.estop);
+  assert(!disconnected_inputs.encoder_connected);
 }

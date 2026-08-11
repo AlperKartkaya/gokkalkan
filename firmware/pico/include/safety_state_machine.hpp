@@ -14,6 +14,8 @@ struct Inputs {
   bool encoder_overflow{false};
   bool direction_ok{true};
   bool deviation_ok{true};
+  bool pan_limit_clear{true};
+  bool tilt_limit_clear{true};
 };
 
 class SafetyStateMachine {

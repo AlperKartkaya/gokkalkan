@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(gokkalkan_firmware_core
   src/safety_state_machine.cpp
+  src/io_hal.cpp
   src/can_protocol.cpp
   src/usb_serial_protocol.cpp
 )
