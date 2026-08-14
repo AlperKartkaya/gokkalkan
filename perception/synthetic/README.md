@@ -6,6 +6,8 @@ kamera benzeri çıktılar üretme araçlarını barındırır.
 
 Uygulama planı:
 [`docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](../../docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md).
+Kamera/ROI kararı:
+[`docs/KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md`](../../docs/KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md).
 
 ## Geometri sözleşmesi
 
@@ -18,6 +20,11 @@ Uygulama planı:
 - Burun eğimi `4/6/8/10/12/14/16/18/20/24/28°`, jitter `±0.5°`'dir.
 - Nominal, hafif soluk, hafif karanlık ve hafif aydınlık görünüm profilleri pozlara
   `%40/%20/%20/%20` oranıyla deterministik atanır; veri hacmini dört katına çıkarmaz.
+- Arama yolu tam-FoV `1280×720`; runtime ROI yolu aynı capture request'in
+  `2304×1296` main akışından `high_res_roi` crop'tur. Her ikisi stretch yapılmadan
+  `640×640` letterbox edilir.
+- `scaler_crop` ve düşük çözünürlüklü `application_crop` varsayılan runtime değil,
+  yalnız araştırma/ablation yollarıdır.
 
 Kesin eğim bilgisi sonradan gelirse ham renderlar silinmeden seçim manifesti üretilir:
 

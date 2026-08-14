@@ -108,6 +108,17 @@ def test_camera_and_scene_profiles_lock_same_height_and_pose_buckets() -> None:
     assert camera["cameraHeightM"] == camera["targetReferenceHeightM"] == 1.30
     assert camera["runtimeResolution"] == [1280, 720]
     assert camera["modelInputResolution"] == [640, 640]
+    assert camera["nativeSensorResolution"] == [4608, 2592]
+    assert camera["highResolutionMainStream"] == [2304, 1296]
+    assert camera["runtimeAcquisitionPath"] == (
+        "DUAL_STREAM_FULL_FOV_WITH_HIGH_RES_SOFTWARE_ROI"
+    )
+    assert camera["runtimeZoomModes"] == ["none", "high_res_roi"]
+    assert camera["researchOnlyZoomModes"] == [
+        "scaler_crop",
+        "application_crop",
+    ]
+    assert camera["codecInInferencePath"] == "none"
     assert scene["longitudinalDistanceBucketsM"] == [
         float(value) for value in range(3, 18)
     ]

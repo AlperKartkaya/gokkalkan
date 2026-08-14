@@ -142,6 +142,8 @@
           "enum": [
             "none",
             "sensor_roi",
+            "high_res_roi",
+            "scaler_crop",
             "application_crop"
           ]
         },
@@ -189,6 +191,90 @@
           "maxItems": 2,
           "items": {
             "type": "number"
+          }
+        },
+        "acquisitionPath": {
+          "enum": [
+            "FULL_FOV_LORES",
+            "FULL_FOV_HIGH_RES_MAIN_SOFTWARE_CROP",
+            "PICAMERA2_SCALER_CROP_PROXY",
+            "LOW_RESOLUTION_APPLICATION_BASELINE"
+          ]
+        },
+        "modelContentRectPx": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "modelScale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "modelPaddingPx": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "upsampledBeforeModel": {
+          "type": "boolean"
+        },
+        "cameraDegradation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileStatus",
+            "blurKernel",
+            "noiseStd",
+            "codec",
+            "jpegQuality",
+            "seed"
+          ],
+          "properties": {
+            "profileStatus": {
+              "enum": [
+                "IDEAL_NO_MEASURED_CAMERA_DEGRADATION",
+                "PROVISIONAL_RESEARCH_SWEEP",
+                "VERIFIED_PHYSICAL_PROFILE"
+              ]
+            },
+            "blurKernel": {
+              "enum": [
+                0,
+                3,
+                5
+              ]
+            },
+            "noiseStd": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "codec": {
+              "enum": [
+                "none",
+                "jpeg"
+              ]
+            },
+            "jpegQuality": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 40,
+              "maximum": 100
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         }
       }

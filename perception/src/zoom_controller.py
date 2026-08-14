@@ -24,7 +24,7 @@ class ZoomObservation:
     track_id: str | None
     confidence: float
     freshness_ms: float
-    target_pixels: int
+    target_pixels: int  # 640×640 letterbox model uzayındaki hedef alanı
     center_px: tuple[float, float] | None
 
 

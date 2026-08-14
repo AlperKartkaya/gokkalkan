@@ -3,6 +3,7 @@
 > **Durum:** Uygulamaya hazır teknik plan
 > **Tarih:** 14 Ağustos 2026
 > **Ana roadmap:** [`CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md`](CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md)
+> **Kamera/ROI kararı:** [`KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md`](KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md)
 > **Kapsam:** `Modeller.3mf` → gerçekçi sentetik görüntü → zoom/degradasyon → araştırma modeli → gerçek veriyle sim-to-real → ONNX/HEF
 > **Güvenlik sınırı:** Sentetik başarı fiziksel kabul veya atış yetkisi değildir. Backend Safety Gate bütün aşamalarda nihai yetki kapısıdır.
 
@@ -93,13 +94,17 @@ oranlı ve deterministik atanır. Böylece gereksiz dört kat render artışı �
 
 ### 1.4. Zoom ve çözünürlük kaybı
 
-Camera Module 3 üzerinde optik zoom yoktur. Bu nedenle iki ayrı dijital zoom yolu
-modellenip karşılaştırılacak:
+Camera Module 3 üzerinde optik zoom yoktur. Varsayılan yol aynı capture request'ten
+tam-FoV `1280×720 lores` ve `2304×1296 main` alıp, kararlı track sonrası yüksek
+çözünürlüklü main üzerinde software ROI üretmektir:
 
-1. **`sensor_roi`** — yüksek çözünürlüklü sensör alanı önce kırpılır, sonra
-   `1280×720` çıkışa ölçeklenir. Picamera2 `ScalerCrop` davranışına yakın adaydır.
-2. **`application_crop`** — mevcut `1280×720` kare kırpılır ve tekrar
-   `1280×720` boyutuna büyütülür. Detay kaybı daha yüksektir.
+1. **`none`** — tam görüş lores arama görüntüsü.
+2. **`high_res_roi`** — `2304×1296 main` üzerinde 16:9 crop; doğrudan model
+   letterbox aşamasına gider. Runtime varsayılanıdır.
+3. **`scaler_crop`** — Picamera2 `ScalerCrop` araştırma proxy'si; fiziksel
+   benchmark olmadan varsayılan olmaz.
+4. **`application_crop`** — `1280×720` üzerinde crop+büyütme; yalnız düşük
+   çözünürlüklü negatif baseline'dır.
 
 Kesin zoom bucket'ları:
 
@@ -111,11 +116,14 @@ Kesin zoom bucket'ları:
 
 ```text
 sahne renderı
-→ sensör/uygulama crop'u
-→ 1280×720 runtime karesi
-→ blur + noise + sıkıştırma + sharpening profili
-→ 640×640 model letterbox
+→ optik/sensör/ISP profili
+→ full-frame lores VEYA high-res main ROI
+→ en-boy oranı korunmuş 640×640 model letterbox
 ```
+
+RGB888 inference yolunda JPEG/H.264 codec yoktur; codec artefaktı varsayılan
+olarak eklenmez. Blur/noise Camera Module 3'e ait ölçüm gibi rastgele uygulanmaz;
+profil kimliğiyle izlenen araştırma sweep'i olarak kalır.
 
 Her zoom örneğinde şu metadata zorunlu olacak:
 
@@ -419,14 +427,17 @@ filtrelenir; yalnız aralık dışında eksik bucket kalırsa ek render üretili
 ### Yapılacaklar
 
 - [x] `perception/synthetic/tools/apply_camera_pipeline.py` oluştur.
-- [x] `sensor_roi` ve `application_crop` yollarını işlem sırası farklı ayrı fonksiyonlar yap.
+- [x] `high_res_roi`, `scaler_crop` ve `application_crop` yollarını işlem sırası
+  farklı ayrı fonksiyonlar yap.
 - [x] `1.0×`, `1.5×`, `2.0×`; hard-case için `3.0×` sözleşmesini uygula.
-- [ ] PoC/pilot renderı `2304×1296`, kamera-doğruluk alt kümesini daha sonra
-  `4608×2592` üret.
-- [x] Runtime ara karesini `1280×720`, model girdisi metadata'sını `640×640` yap.
+- [x] PoC/pilot renderer'ı `2304×1296` üretip `high_res_roi` → `640×640`
+  letterbox zincirinde upsample olmadığını doğrula; kamera-doğruluk alt kümesini
+  daha sonra `4608×2592` üret.
+- [x] Arama ara karesini `1280×720`; yüksek çözünürlüklü main'i `2304×1296`;
+  model girdisini en-boy oranı korunmuş `640×640` letterbox yap.
 - [x] Crop merkezi hatası, bir kare gecikmeli merkez ve kısmi target crop desteği ekle.
-- [x] Blur, deterministik noise ve JPEG sıkıştırmasını zoom işleminden sonra uygula;
-  H.264/sharpening sonraki araştırma varyantıdır.
+- [x] Codec'i RGB888 runtime yolundan çıkar; blur/noise'u kamera gerçeği değil,
+  açık kimlikli araştırma profili olarak tut. H.264/JPEG yalnız gerçek yol kullanırsa eklenir.
 - [x] Her base world ve zoom türevini aynı `worldId/groupId/split` içinde tut.
 - [x] Zoomsuz arama + kararlı track sonrası ROI zoom + kayıpta fail-back state machine'ini uygula.
 
