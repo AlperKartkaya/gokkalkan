@@ -12,7 +12,11 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'PYTHONPATH=../backend/src python3 -m gokkalkan_backend.operator_http_server --config ../config/runtime/sim.toml --port 8088',
+      // Backend kaynakları ve kalibrasyon dosyaları depo köküne göre tanımlıdır.
+      // Playwright varsayılan olarak komutu frontend/ altında çalıştırdığı için
+      // çalışma dizinini açıkça köke sabitle.
+      cwd: '..',
+      command: 'PYTHONPATH=backend/src python3 -m gokkalkan_backend.operator_http_server --config config/runtime/sim.toml --port 8088',
       url: 'http://127.0.0.1:8088/health',
       reuseExistingServer: true,
     },
