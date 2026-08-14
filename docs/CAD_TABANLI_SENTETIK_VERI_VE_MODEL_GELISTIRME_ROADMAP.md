@@ -235,10 +235,11 @@ Balon CAD dosyasında yoktur. Parametrik bir balon nesnesi oluşturulmalı:
 - Kamera optik merkezi ile hedef referans merkezi aynı dünya yüksekliğinde,
   başlangıçta `1.30 m`, tutulur. Ana veri setinde aşağıdan/yukarıdan geniş kamera
   açıları üretilmez; yalnız montaj toleransı için `±1°` dikey sapma bulunur.
-- Komitenin bildirdiği burun eğik yerleşim, hedefin üst yüzeyini kameraya
-  gösterecek semantik `topSurfaceViewDeg` alanıyla modellenir. İlk araştırma
-  profili `8°`, `12°`, `18°`; nominal değer `12°`dür. Bu aralık fiziksel ölçüm
-  gelene kadar provisional kalır.
+- Bambu Studio `Front` görünüşü `0°` kabul edilir. Burun aşağı eğildikçe Front
+  görünüşe Top katkısı ekleyen semantik `topSurfaceViewDeg` artar. Belirsizlik
+  `0/4/8/12/16/20/24/28°` bucket'larıyla kapsanır; her kayıt bucket ve jitter
+  sonrası gerçek açıyı ayrı taşır. Komite daha sonra aralık verirse mevcut
+  renderlar gerçek açı alanına göre tahribatsız filtrelenir.
 - Hedefin sağdan/soldan görünümü `viewYawDeg` bucket'larıyla simetrik üretilir:
   `-25°`, `-15°`, `-5°`, `0°`, `+5°`, `+15°`, `+25°`.
 - Kabul mesafeleri ayrı bucket olarak `5 m`, `10 m`, `15 m` tutulur. Renderların

@@ -33,8 +33,9 @@ Kaynak görseller:
 - Maketler kamera kesitini büyütmek için burunları hafif aşağı eğimli
   yerleştirilecektir. Kamera ve hedef referans merkezi aynı yükseklikte kabul
   edilir; üst yüzey görünümü kamera yüksekliğinden değil bu burun eğiminden gelir.
-  Kesin açı bildirilmediğinden araştırma veri seti `8°/12°/18°` provisional
-  bucket'larını kullanır; üretim profili fiziksel/komite ölçümüyle kilitlenir.
+  Kesin açı bildirilmediğinden araştırma veri seti `0/4/8/12/16/20/24/28°`
+  bucket'larını kullanır. Bucket ve jitter sonrası gerçek açı ayrı tutulduğu için
+  komitenin daha sonra bildireceği aralık mevcut veriden tahribatsız seçilebilir.
 - Hedef yaw görünümü simetrik sağ/sol açıları kapsamalıdır; yalnız tam karşıdan
   görünüşe eğitim yapılmamalıdır.
 

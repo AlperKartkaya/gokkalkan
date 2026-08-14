@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "setup": "bash scripts/setup_dev.sh",
+    "setup:synthetic:blender": "bash scripts/setup_blender_macos.sh",
     "doctor": ".venv/bin/gokkalkan doctor --config config/runtime/sim.toml",
     "test:python": ".venv/bin/python -m pytest",
     "test:safety": ".venv/bin/python -m pytest -m safety",
@@ -26,6 +27,12 @@
     "dataset:pull": ".venv-perception/bin/python perception/tools/dataset_pipeline.py pull-captures",
     "dataset:prepare": ".venv-perception/bin/python perception/tools/dataset_pipeline.py prepare",
     "dataset:cad:inspect": ".venv-synthetic/bin/python perception/synthetic/tools/inspect_3mf.py",
+    "dataset:cad:convert": ".venv-synthetic/bin/python perception/synthetic/tools/convert_cad_assets.py",
+    "dataset:cad:lod": ".tools/blender-4.2.1/Blender.app/Contents/MacOS/Blender --background --python perception/synthetic/tools/generate_lods_blender.py --",
+    "dataset:cad:validate": ".venv-synthetic/bin/python perception/synthetic/tools/validate_lods.py",
+    "dataset:cad:plan": ".venv-synthetic/bin/python perception/synthetic/tools/generate_scene_matrix.py",
+    "dataset:cad:filter": ".venv-synthetic/bin/python perception/synthetic/tools/filter_render_plan.py",
+    "dataset:cad:render:smoke": ".venv-synthetic/bin/blenderproc run --custom-blender-path .tools/blender-4.2.1/Blender.app perception/synthetic/tools/render_smoke.py",
     "model:train:smoke": ".venv-training/bin/python perception/tools/train_yolo.py --allow-unverified --epochs 1 --name target-smoke"
   }
 }

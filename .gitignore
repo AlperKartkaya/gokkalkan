@@ -106,3 +106,5 @@ pnpm-debug.log*
 reports/test_report.html
 reports/assets/
 .pytest_cache/
+# Local heavyweight development tools (for example Blender).
+.tools/

@@ -35,7 +35,7 @@
   },
   "$defs": {
     "axis": {
-      "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z", "PENDING"]
+      "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
     },
     "asset": {
       "type": "object",
@@ -87,11 +87,31 @@
         "orientation": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "noseAxis", "upAxis"],
+          "required": [
+            "status",
+            "frontViewCameraAxisSource",
+            "screenRightAxisSource",
+            "screenUpAxisSource",
+            "longitudinalNoseAxisSource",
+            "sourceToPresentationRotation3x3"
+          ],
           "properties": {
-            "status": {"enum": ["PENDING_USER_CONFIRMATION", "VERIFIED"]},
-            "noseAxis": {"$ref": "#/$defs/axis"},
-            "upAxis": {"$ref": "#/$defs/axis"}
+            "status": {"const": "VERIFIED_BAMBU_FRONT_CONVENTION"},
+            "frontViewCameraAxisSource": {"const": "-Y"},
+            "screenRightAxisSource": {"const": "+X"},
+            "screenUpAxisSource": {"const": "+Z"},
+            "longitudinalNoseAxisSource": {"$ref": "#/$defs/axis"},
+            "sourceToPresentationRotation3x3": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {"type": "number"}
+              }
+            }
           }
         },
         "scale": {

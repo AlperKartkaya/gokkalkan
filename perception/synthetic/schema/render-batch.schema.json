@@ -17,7 +17,11 @@
     "schemaVersion": {"const": 1},
     "batchId": {"type": "string", "minLength": 1},
     "status": {
-      "enum": ["SYNTHETIC_RESEARCH_ONLY", "CAMERA_CALIBRATED_RESEARCH"]
+      "enum": [
+        "SYNTHETIC_RENDER_PLAN",
+        "SYNTHETIC_RESEARCH_ONLY",
+        "CAMERA_CALIBRATED_RESEARCH"
+      ]
     },
     "sourceCadSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "assetManifestSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},

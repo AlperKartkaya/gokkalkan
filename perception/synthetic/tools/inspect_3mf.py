@@ -1,8 +1,8 @@
 """Deterministic 3MF inspection and source-axis contact sheets.
 
-Geometry and build structure are read through the official lib3mf binding.  The
-contact sheets intentionally keep the source coordinate frame unchanged so that
-AR-02 can confirm the nose and top axes before any normalization is performed.
+Geometry and build structure are read through the official lib3mf binding. The
+contact sheets keep the source frame unchanged and document how Bambu Studio's
+Front/Right/Top convention maps to source axes.
 """
 
 from __future__ import annotations
@@ -356,8 +356,6 @@ def inspect_3mf(
             + ", ".join(invalid_meshes)
             + ". FAZ 2 otomatik geometri tanısı ve kontrollü onarım gerektirir."
         )
-    if any(item["orientationStatus"] != "VERIFIED" for item in meshes):
-        warnings.append("AR-02 burun/üst yön onayı bekleniyor.")
 
     version = wrapper.GetLibraryVersion()
     report = {
@@ -551,7 +549,7 @@ def write_contact_sheet(
     )
     draw.text(
         (gap + 18, footer_top + 14),
-        "AR-02: BURUN hangi ±X/±Y/±Z yönüne, ÜST hangi yöne bakıyor?",
+        "Sözleşme: Bambu Front = kamera -Y, ekran sağı = +X, ekran yukarısı = +Z",
         fill="#ffd166",
         font=body_font,
     )
@@ -587,7 +585,7 @@ def write_contact_sheets(
         "schemaVersion": 1,
         "toolVersion": TOOL_VERSION,
         "sourceSha256": source_sha256,
-        "status": "AR_02_PENDING_USER_CONFIRMATION",
+        "status": "BAMBU_FRONT_FRAME_DOCUMENTED",
         "sheets": records,
     }
     write_json(output_dir / "index.json", index)
@@ -597,7 +595,7 @@ def write_contact_sheets(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "3MF kaynağını lib3mf ile doğrular ve AR-02 kaynak-eksen "
+            "3MF kaynağını lib3mf ile doğrular ve Bambu kaynak-eksen "
             "contact sheet'lerini üretir."
         )
     )
@@ -643,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "status": "INSPECTED_AR_01_AR_02_PENDING",
+                "status": "INSPECTED_FRONT_FRAME_VERIFIED",
                 "report": str(args.report),
                 "meshCount": report["source"]["meshCount"],
                 "sourceSha256": report["source"]["sha256"],

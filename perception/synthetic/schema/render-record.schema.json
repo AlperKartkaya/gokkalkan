@@ -12,10 +12,15 @@
     "sourceKind",
     "split",
     "assetKey",
+    "presentationClass",
     "cameraProfileId",
     "distanceM",
+    "targetPositionM",
+    "viewYawBucketDeg",
     "viewYawDeg",
+    "topSurfaceViewBucketDeg",
     "topSurfaceViewDeg",
+    "targetRotationWorld3x3",
     "cameraElevationOffsetDeg",
     "zoom"
   ],
@@ -36,10 +41,30 @@
     },
     "split": {"enum": ["train", "val", "test"]},
     "assetKey": {"type": "string", "minLength": 1},
+    "presentationClass": {"type": "string", "minLength": 1},
     "cameraProfileId": {"type": "string", "minLength": 1},
     "distanceM": {"type": "number", "minimum": 5, "maximum": 15},
+    "targetPositionM": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "viewYawBucketDeg": {"type": "number", "minimum": -25, "maximum": 25},
     "viewYawDeg": {"type": "number", "minimum": -27, "maximum": 27},
-    "topSurfaceViewDeg": {"type": "number", "minimum": 6.5, "maximum": 19.5},
+    "topSurfaceViewBucketDeg": {"type": "number", "minimum": 0, "maximum": 28},
+    "topSurfaceViewDeg": {"type": "number", "minimum": 0, "maximum": 29},
+    "targetRotationWorld3x3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {"type": "number"}
+      }
+    },
     "cameraElevationOffsetDeg": {"type": "number", "minimum": -1, "maximum": 1},
     "zoom": {
       "type": "object",

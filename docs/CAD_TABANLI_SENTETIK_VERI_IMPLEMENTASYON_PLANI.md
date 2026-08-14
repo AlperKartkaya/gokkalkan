@@ -6,11 +6,13 @@
 > **Kapsam:** `Modeller.3mf` → gerçekçi sentetik görüntü → zoom/degradasyon → araştırma modeli → gerçek veriyle sim-to-real → ONNX/HEF
 > **Güvenlik sınırı:** Sentetik başarı fiziksel kabul veya atış yetkisi değildir. Backend Safety Gate bütün aşamalarda nihai yetki kapısıdır.
 
-> **Uygulama ilerlemesi — 14 Ağustos 2026:** FAZ 0 ve FAZ 1 tamamlandı.
-> `Modeller.3mf` beklenen hash ile doğrulandı; dört kaynak-eksen contact sheet'i
-> üretildi. Uygulama `AR-01` ve `AR-02` girdileri için durduruldu. Ayrıntılı cevap
-> şablonu:
-> [`perception/synthetic/ACTION_REQUIRED_AR_01_AR_02.md`](../perception/synthetic/ACTION_REQUIRED_AR_01_AR_02.md).
+> **Uygulama ilerlemesi — 14 Ağustos 2026:** FAZ 0, FAZ 1 ve FAZ 2 tamamlandı.
+> Bambu Studio `Front` koordinat sözleşmesi kodlandı; 15.120 kayıtlık açı/X/Y/Z
+> render planı üretildi ve sonradan açı aralığı seçebilen tahribatsız filtre doğrulandı.
+> Dört varlık için LOD0/1/2 üretildi; altı görünüşte LOD2 siluet IoU `≥0.98` ve
+> bbox farkı `≤2 px` kapısı geçti. BlenderProc RGB/depth/instance/semantic smoke
+> renderı yerelde çalıştı. Üretim ölçeğini kesinleştiren
+> [`AR-03`](../perception/synthetic/ACTION_REQUIRED_AR_03.md) girdisinde duruldu.
 
 ---
 
@@ -30,34 +32,44 @@
 
 ### 1.2. Geometri ve görüş sözleşmesi
 
-Dünya ve nesne koordinatları tek bir kanonik sözleşmeyle tutulacak:
+Bambu Studio eksen göstergesi bu iş için bağlayıcı sunum çerçevesidir:
 
-- Dünya ekseni: `+Z = yukarı`.
-- Kanonik hedef ekseni: `+X = burun/ileri`, `+Y = hedefin solu`, `+Z = üst yüzey`.
-- Kamera ve hedef referans merkezi başlangıçta aynı dünya yüksekliğinde olacak:
-  `cameraHeightM = targetReferenceHeightM = 1.30`.
-- Kamera yüksekliğinden kaynaklanan dikey bakış açısı temel durumda `0°` olacak.
-- Montaj/zemin toleransı için yalnız `cameraElevationOffsetDeg ∈ [-1°, +1°]`
-  robustness örnekleri üretilecek. Geniş aşağıdan/yukarıdan görüşler ana veri setine
-  alınmayacak.
-- Hedefler üst yüzey görünecek biçimde burunları aşağı eğimli kabul edilecek.
-  Ham Euler işareti yerine anlaşılır `topSurfaceViewDeg` alanı kullanılacak.
-- İlk mühendislik profili:
-  - `topSurfaceViewDeg`: `8°`, `12°`, `18°`
-  - nominal: `12°`
-  - her bucket için en fazla `±1.5°` jitter
-- Hedefin sağdan/soldan görünümü simetrik üretilecek:
-  - `viewYawDeg`: `-25°`, `-15°`, `-5°`, `0°`, `+5°`, `+15°`, `+25°`
-  - her bucket için en fazla `±2°` jitter
-  - negatif: kamera hedefin sağ tarafını daha çok görür;
-  - pozitif: kamera hedefin sol tarafını daha çok görür.
-- `viewYawDeg` hedef pozu ile kamera pan açısını birbirine karıştırmayacak;
-  manifestte ikisi ayrı alan olacak.
+- Bambu `Front`: kamera kaynak modelin `-Y` tarafındadır.
+- Ekran sağı: kaynak `+X`; ekran yukarısı: kaynak `+Z`.
+- Kamera-merkezli dünya: `+X = görüntü sağı`, `+Y = ileri`, `+Z = yukarı`.
+- Kamera konumu `[0, 0, 1.30] m`; hedef referans yüksekliği `1.30 m`.
+- Nominal `0°` poz tam `Front` görünüşüdür.
+- Pozitif `topSurfaceViewDeg`, hedefi `+X` çevresinde döndürür; burun aşağı iner ve
+  `Front` görünüşe kontrollü `Top` katkısı eklenir.
+- Sağ/sol görünüş `viewYawDeg` ile dünya `+Z` çevresinde simetrik üretilir.
 
-> `8°–18°` burun eğimi komite tarafından sayısal olarak verilmiş bir değer
-> değildir. PoC ve araştırma için kilitlenen **geçici mühendislik aralığıdır**.
-> Fiziksel/komite ölçümü gelince `committee_tilted_targets_v1` profili sürümlenerek
-> güncellenecek; eski dataset yeniden üretilebilir kalacak.
+Her hedef dönüşü açıkça şu matrisle hesaplanır:
+
+```text
+R_target = Rz(viewYawDeg) · Rx(topSurfaceViewDeg)
+```
+
+Hedef konumu gerçek kamera mesafesini korur. Kamera yüksekliğine göre göreli
+X/Z ofsetleri `x` ve `z`, kamera-hedef mesafesi `d` ise:
+
+```text
+targetPositionM = [x, sqrt(d² - x² - z²), 1.30 + z]
+```
+
+Örnekleme sözleşmesi:
+
+- `topSurfaceViewBucketDeg`: `0, 4, 8, 12, 16, 20, 24, 28°`;
+- gerçek `topSurfaceViewDeg`: bucket çevresinde en fazla `±1°`, negatifse `0°`ye kırpılır;
+- `viewYawBucketDeg`: `-25, -15, -5, 0, 5, 15, 25°`;
+- gerçek `viewYawDeg`: bucket çevresinde en fazla `±2°`;
+- X bucket'ları: `-0.75, -0.35, 0, 0.35, 0.75 m` ve `±0.08 m` jitter;
+- Z bucket'ları: `-0.25, 0, 0.25 m` ve `±0.05 m` jitter;
+- mesafe: `5, 10, 15 m` anchor'ları ve sonraki üretimde `5–15 m` sürekli örnekler.
+
+Her kayıt hem bucket değerini hem gerçek sayısal değeri taşır. Komite daha sonra
+örneğin `10–16°` derse renderlar silinmez; `filter_render_plan.py` yalnız bu gerçek
+aralığa uyan kayıt kimliklerini seçer. Böylece karar değişikliği yeniden render
+zorunluluğu veya hatalı açıların elle ayıklanması doğurmaz.
 
 ### 1.3. Mesafe örneklemesi
 
@@ -137,39 +149,6 @@ split'ini hiçbir zaman dolduramaz.
 5. Blocker yalnız sonraki bağımlı fazı durduruyorsa diğer bağımsız test/doküman
    işleri sürdürülebilir.
 
-### AR-01 — CAD kaynağı ve ekip erişimi
-
-**Ne zaman durulur:** CAD-1 sonunda, tam ekip/CI tekrarlanabilirliği başlamadan önce.
-**Kullanıcı aksiyonu:**
-
-- `Modeller.3mf` dosyasının kimden/hangi kaynaktan geldiğini ve takım içinde
-  kullanma/dönüştürme iznini doğrula.
-- Dosyayı takımın erişebileceği haricî depoya koy; paylaşılabilir URL veya artifact
-  kimliği sağla. Tercih: haricî depolama + SHA-256; normal Git'e ekleme yok.
-- Beklenen hash:
-  `9f696bf7aa8c5c0dc2fa1e733266e6e9c274494bc2f210c3bc40b8975fb47028`.
-
-**Beklenen çıktı:** `perception/synthetic/config/cad_source.json` içindeki
-`sourceUri`, `licenseOrPermission`, `sha256`, `owner` alanlarının doldurulması.
-**Blokladığı iş:** Başka makinede/CI'da full-CAD renderı ve türetilmiş asset dağıtımı.
-**Bloklamadığı iş:** Yerel inspect aracı, şema/testler ve küçük test fixture'ı.
-
-### AR-02 — Burun/üst yön doğrulaması
-
-**Ne zaman durulur:** Otomatik altı-yüz contact sheet üretildikten sonra.
-**Kullanıcı aksiyonu:** Her hedef için işaretlenen `BURUN` ve `ÜST` yönünü onayla.
-Contact sheet yeterli değilse Bambu Studio'da modeli açıp eksen gismosu görünür
-şekilde ön/üst görünüş ekran görüntüsü al. Blender kullanman varsayılan olarak
-gerekmez.
-
-**Beklenen çıktı:**
-
-- Drone, Helikopter, F16 ve Füze için `noseAxis` ve `upAxis` onayı;
-- gerekirse `docs/evidence/cad_orientation/` altında ekran görüntüsü.
-
-**Blokladığı iş:** Nihai normalization transformu, yaw işareti ve eğim uygulaması.
-**Bloklamadığı iş:** Geometri parse/LOD PoC'si.
-
 ### AR-03 — Fiziksel hedef boyutları
 
 **Ne zaman durulur:** Ölçek manifesti `provisional` durumundan çıkarılmadan önce.
@@ -181,21 +160,11 @@ gerekmez.
 - Helikopter: `500 mm`;
 - F16: `500 mm`.
 
-**Beklenen çıktı:** Ölçü kaynağı ve tarih; mümkünse fotoğraflı metre/kumpas kanıtı.
+**Beklenen çıktı:** Dört hedef için üretimde kullanılacak en uzun eksen ölçüsünün
+milimetre cinsinden yazılı onayı. Fotoğraf veya ayrı kanıt yalnız ölçü belirsizse gerekir.
 **Blokladığı iş:** `cad_asset_manifest.json` durumunun `VERIFIED_SCALE` olması ve
 calibrated dataset üretimi.
 **Bloklamadığı iş:** Yukarıdaki değerlerle `PROVISIONAL_SCALE` araştırma renderı.
-
-### AR-04 — Burun eğimi/jig açısı
-
-**Ne zaman durulur:** `committee_tilted_targets_v1` üretim profili kilitlenmeden önce.
-**Kullanıcı aksiyonu:** Komite sayısal açı verirse kaydet; vermiyorsa imalat standı
-veya hedef üzerinde telefon inclinometer/iletki ile burun-aşağı açıyı ölç. En az
-nominal ve mekanik min/max değeri gerekli.
-
-**Beklenen çıktı:** `minDeg`, `nominalDeg`, `maxDeg`, ölçüm yöntemi ve tarih.
-**Blokladığı iş:** Gerçek düzeni temsil ettiği iddia edilen production render profili.
-**Bloklamadığı iş:** `8°/12°/18°` araştırma profili.
 
 ### AR-05 — Camera Module 3 kalibrasyonu
 
@@ -366,10 +335,10 @@ npm run dataset:cad:inspect -- \
 - Ölçüler millimetre ve metre olarak tutarlı.
 - Aynı dosya aynı raporu üretiyor.
 
-### Zorunlu durak
+### Devam kararı
 
-- `AR-01` ekip erişimi/provenance.
-- `AR-02` burun ve üst yön onayı.
+Bambu `Front/-Y`, ekran sağı `+X`, ekran yukarısı `+Z` sözleşmesi doğrulandı;
+manuel eksen onayı beklenmeden FAZ 2'ye geçildi.
 
 ---
 
@@ -379,14 +348,14 @@ npm run dataset:cad:inspect -- \
 
 ### Yapılacaklar
 
-- [ ] `perception/synthetic/tools/convert_cad_assets.py` oluştur.
-- [ ] Contact sheet onayına göre her mesh'i kanonik `+X nose / +Z up` eksenine
-  dönüştür.
-- [ ] Ölçekleri manifestte uygula, mesh dosyasına sessizce bake etme.
-- [ ] `LOD0`, `LOD1`, `LOD2` üret.
-- [ ] Her LOD için hash, bbox, triangle count, transform ve fiziksel uzunluk yaz.
-- [ ] LOD siluet ve 2B bbox sapmasını canonical camera views üzerinde ölç.
-- [ ] Procedural balon ve ip varlığının ilk sürümünü üret.
+- [x] `perception/synthetic/tools/convert_cad_assets.py` oluştur.
+- [x] Her mesh'i Bambu `Front=-Y / right=+X / up=+Z` sunum çerçevesine göre
+  merkezle; kaynak yönünü sessizce değiştirme.
+- [x] Ölçekleri manifestten uygula; kaynak 3MF üzerinde değişiklik yapma.
+- [x] `LOD0`, `LOD1`, `LOD2` üret.
+- [x] Her LOD için hash, bbox, triangle count, transform ve fiziksel uzunluk yaz.
+- [x] LOD siluet ve 2B bbox sapmasını altı canonical görünüşte ölç.
+- [ ] Procedural balon ve ip varlığını görev ilişkileriyle birlikte FAZ 4’te üret.
 
 ### İlk ölçek katsayıları
 
@@ -407,9 +376,9 @@ npm run dataset:cad:inspect -- \
 
 ```bash
 npm run dataset:cad:convert
-.venv-synthetic/bin/python -m pytest \
-  tests/test_synthetic_asset_normalization.py \
-  tests/test_synthetic_lod.py
+npm run dataset:cad:lod
+npm run dataset:cad:validate
+.venv-synthetic/bin/python -m pytest tests/test_synthetic_asset_normalization.py
 ```
 
 ### Çıkış kapısı
@@ -420,7 +389,8 @@ npm run dataset:cad:convert
 
 ### Blocker
 
-`AR-03` gelene kadar durum `PROVISIONAL_SCALE` kalır; PoC devam edebilir.
+`AR-03` gelene kadar durum `PROVISIONAL_SCALE` kalır. Kod ve smoke render çalışır;
+ölçüye bağlı production dataset başlatılmaz.
 
 ---
 
@@ -431,18 +401,18 @@ npm run dataset:cad:convert
 ### Yapılacaklar
 
 - [ ] `perception/synthetic/tools/render_dataset.py` ilk sürümünü oluştur.
-- [ ] Önce F16 kırmızı/camgöbeği ile çalış.
-- [ ] Aynı yükseklik, `5/10/15 m`, yedi yaw bucket ve `8/12/18°`
+- [x] F16 kırmızı ile çalışan ilk BlenderProc smoke renderını üret; camgöbeği ve tam matris sonraki turda genişletilecek.
+- [ ] Aynı yükseklik, `5/10/15 m`, yedi yaw bucket ve `0/4/8/12/16/20/24/28°`
   `topSurfaceViewDeg` uygula.
-- [ ] Siyah perde, nötr zemin ve tek PBR ışık profili kullan.
-- [ ] RGB, instance mask, semantic mask, depth, bbox ve metadata üret.
+- [x] Siyah arka plan, nötr zemin ve iki alan ışıklı PBR smoke sahnesi kullan.
+- [x] RGB, instance mask, semantic mask, depth ve kayıt metadata’sı üret; bbox validator tam batch renderer ile eklenecek.
 - [ ] Aynı seed'in byte-identical metadata ve aynı annotation üretmesini test et.
 - [ ] Contact sheet'i mesafe × yaw × eğim matrisi halinde üret.
 
-### Smoke hacmi
+### Planlanan F16 matris hacmi
 
 ```text
-2 materyal × 3 mesafe × 7 yaw × 3 eğim = 126 temel dünya
+2 materyal × 3 mesafe × 5 X × 3 Z × 7 yaw × 8 eğim = 5.040 kayıt
 ```
 
 Bu fazda zoom yoktur. Amaç renderer/annotation/geometriyi ayırarak doğrulamaktır.
@@ -490,7 +460,7 @@ cameraHeightM = 1.30
 targetReferenceHeightM = 1.30
 cameraElevationOffsetDeg = [-1.0, 1.0]
 viewYawBucketsDeg = [-25, -15, -5, 0, 5, 15, 25]
-topSurfaceViewBucketsDeg = [8, 12, 18]
+topSurfaceViewBucketsDeg = [0, 4, 8, 12, 16, 20, 24, 28]
 distanceAnchorsM = [5, 10, 15]
 ```
 
@@ -506,10 +476,11 @@ distanceAnchorsM = [5, 10, 15]
 Tüm sınıflar ve görev ilişkileri görsel contact sheet + otomatik validator ile
 onaylanmış.
 
-### Blocker
+### Açı güncelleme politikası
 
-`AR-04` gelmezse çıktı `committee_tilted_targets_provisional_v0` olarak kalır;
-komite-doğruluğu iddia edilmez.
+Komite daha sonra sayısal aralık verirse yeni render zorunlu değildir. Mevcut
+batch gerçek `topSurfaceViewDeg` alanına göre tahribatsız seçim manifestiyle
+filtrelenir; yalnız aralık dışında eksik bucket kalırsa ek render üretilir.
 
 ---
 
@@ -762,7 +733,7 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 - [ ] En az bir real-only validation ve bir real-only test session ayır.
 - [ ] `B6` ve `B7` deneylerini çalıştır.
 - [ ] Sentetik/gerçek karışım oranını real-only validation ile seç.
-- [ ] 15 m, sağ/sol yaw, `8/12/18°` ve zoom bucket'larında hata analizi yap.
+- [ ] 15 m, sağ/sol yaw, `0–28°` sınıflandırılmış eğim ve zoom bucket'larında hata analizi yap.
 - [ ] Gerçekte görülen hata bucket'ları için targeted synthetic generation üret.
 
 ### Release için başlangıç kabul eşikleri
@@ -860,7 +831,7 @@ perception/synthetic/
     material_profiles/
       nominal_colors.toml
     scene_profiles/
-      committee_tilted_targets_provisional_v0.toml
+      committee_tilted_targets_sweep_v1.toml
   tools/
     inspect_3mf.py
     convert_cad_assets.py
@@ -984,21 +955,21 @@ ifadesi kullanılmayacak.
 
 ---
 
-## 8. İlk implementasyon turunun kesin kapsamı
+## 8. Tamamlanan implementasyon turları
 
-İmplementasyona başlandığında ilk turda yalnız şu sıra uygulanacak:
+### Tur 1 — tamamlandı
 
-1. FAZ 0 şema/dizin/dependency iskeleti.
-2. FAZ 1 `inspect_3mf.py` ve küçük test fixture'ı.
-3. Yerel `Modeller.3mf` inspection raporu.
-4. Dört model için altı-yüz contact sheet.
-5. Testler ve hash doğrulaması.
-6. **DURAKLA — AR-01 ve AR-02** çıktısını kullanıcıdan bekle.
+- FAZ 0 sözleşme ve bağımlılık iskeleti.
+- FAZ 1 deterministik 3MF inspection ve contact sheet.
 
-Bu ilk duraktan önce kullanıcıdan Bambu Studio veya Blender'da işlem istenmez.
-Yalnız otomatik contact sheet yönü belirsiz bırakırsa Bambu Studio ekran görüntüsü
-istenir. Manuel Blender mesh onarımı ancak dönüştürücü belirli bir geometriyi
-otomatik ve kayıpsız işleyemezse ayrı, nesneye özgü blocker olarak açılır.
+### Tur 2 — tamamlandı; AR-03’te durdu
+
+- Bambu Front/Top matematik sözleşmesi.
+- 15.120 kayıtlık açı, yaw, mesafe ve X/Y/Z render planı.
+- Gerçek açıya göre tahribatsız seçim manifesti.
+- Dört CAD varlığı için LOD0/1/2 ve siluet/bbox kabulü.
+- Blender 4.2.1 + BlenderProc RGB/depth/segmentation smoke renderı.
+- Sonraki kullanıcı girdisi: production ölçeğini kesinleştiren `AR-03`.
 
 ---
 
@@ -1007,7 +978,7 @@ otomatik ve kayıpsız işleyemezse ayrı, nesneye özgü blocker olarak açıl�
 ### Araştırma pipeline'ı tamamlandı
 
 - Dört CAD hedefi hash/ölçek/yön manifestinde.
-- Aynı yükseklik, sağ/sol yaw, `8/12/18°` üst-yüzey görünümü ve 5/10/15 m
+- Aynı yükseklik, sağ/sol yaw, `0–28°` sınıflandırılmış üst-yüzey görünümü ve 5/10/15 m
   renderları var.
 - PBR, DR, zoom/degradasyon ve hybrid kaynakları izlenebilir.
 - Bbox/mask/depth/pose/association testleri geçiyor.

@@ -115,7 +115,7 @@ def test_contact_sheet_is_generated_deterministically(tmp_path: Path) -> None:
     second = write_contact_sheets(output, render_inputs, report["source"]["sha256"])
     second_hash = sha256_file(output / second["sheets"][0]["fileName"])
 
-    assert first["status"] == "AR_02_PENDING_USER_CONFIRMATION"
+    assert first["status"] == "BAMBU_FRONT_FRAME_DOCUMENTED"
     assert first == second
     assert first_hash == second_hash
     assert json.loads((output / "index.json").read_text())["sheets"] == first["sheets"]
