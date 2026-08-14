@@ -3,6 +3,12 @@
 Bu dizin kanonik seed → sentetik augmentation → gerçek baskı fotoğrafı pull →
 YOLO veri seti → araştırma eğitimi zincirinin giriş sözleşmesidir.
 
+`Modeller.3mf` tabanlı fiziksel render, gerçek boş kamera arka planıyla hibrit
+veri ve gerçek hedeflere geçiş yol haritası için
+[`docs/CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md`](../../docs/CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md)
+belgesine bakın. CAD türevleri de gerçek grup-ayrılmış test verisi olmadan
+release kanıtı değildir.
+
 ## Hızlı başlangıç
 
 ```bash

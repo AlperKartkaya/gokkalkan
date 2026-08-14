@@ -46,6 +46,11 @@ CMakeFiles/
 *.weights
 
 # ==========================================
+# CAD Files
+# ==========================================
+Modeller.3mf
+
+# ==========================================
 # Telemetry & Logs (WP-05)
 # ==========================================
 # The operator UI and backend will generate lots of data. Do not push this.

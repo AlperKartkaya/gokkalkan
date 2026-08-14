@@ -6,6 +6,12 @@ Kanonik seed dosyaları
 [`perception/assets/target_prints/`](../perception/assets/target_prints/)
 altındadır.
 
+`Modeller.3mf` içindeki 3B hedef geometrilerinden fizik tabanlı sentetik ve
+hibrit kamera verisi üretme yaklaşımı, sim-to-real sınırları ve uygulama fazları
+ayrı olarak
+[`CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md`](CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md)
+dosyasında tanımlanmıştır.
+
 ## 1. Ana sonuç
 
 Altı sunum görselini augmentation ile çoğaltıp rastgele train/test ayırmak yeterli
