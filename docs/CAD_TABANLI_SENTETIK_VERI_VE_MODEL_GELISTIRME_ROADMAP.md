@@ -3,7 +3,7 @@
 > **Durum:** Uygulama öncesi teknik yol haritası  
 > **Kapsam:** Gerçek hedef fotoğrafları elde edilene kadar model geliştirme, CAD'den sentetik veri üretimi ve sonrasında sim-to-real geçişi  
 > **Bağlayıcı kaynak:** [`docs/sartname_v4.pdf`](sartname_v4.pdf) ve güncel hedef/parkur bilgileri  
-> **İlgili belgeler:** [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md), [`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md), [`YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md`](YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md)
+> **İlgili belgeler:** [`CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md), [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md), [`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md), [`YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md`](YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md)
 
 ![Modeller.3mf Bambu Studio görünümü](../modeller.png)
 
@@ -232,12 +232,18 @@ Balon CAD dosyasında yoktur. Parametrik bir balon nesnesi oluşturulmalı:
 ### 7.1. Geometri ve yerleşim
 
 - Kesinleşmiş fiziksel hedef ölçüleri manifestten uygulanır.
-- Hedeflerin alt/ön/yan açıları yarışmadaki görüş aralığında örneklenir.
-- Hedef ve kamera optik merkez yüksekliği yaklaşık `1.30 m` dünya yüksekliği
-  tasarımına göre başlatılır; gerçek montaj ölçümü gelince güncellenir.
-- Kabul mesafeleri ayrı bucket olarak `5 m`, `10 m`, `15 m` tutulur.
-- Robustness için bu noktaların çevresinde küçük menzil sapmaları üretilir;
-  metrikler yine kesin 5/10/15 m bucket'larında raporlanır.
+- Kamera optik merkezi ile hedef referans merkezi aynı dünya yüksekliğinde,
+  başlangıçta `1.30 m`, tutulur. Ana veri setinde aşağıdan/yukarıdan geniş kamera
+  açıları üretilmez; yalnız montaj toleransı için `±1°` dikey sapma bulunur.
+- Komitenin bildirdiği burun eğik yerleşim, hedefin üst yüzeyini kameraya
+  gösterecek semantik `topSurfaceViewDeg` alanıyla modellenir. İlk araştırma
+  profili `8°`, `12°`, `18°`; nominal değer `12°`dür. Bu aralık fiziksel ölçüm
+  gelene kadar provisional kalır.
+- Hedefin sağdan/soldan görünümü `viewYawDeg` bucket'larıyla simetrik üretilir:
+  `-25°`, `-15°`, `-5°`, `0°`, `+5°`, `+15°`, `+25°`.
+- Kabul mesafeleri ayrı bucket olarak `5 m`, `10 m`, `15 m` tutulur. Renderların
+  `%70`i bu anchor'lara, `%30`u `5–15 m` sürekli aralığa ayrılır.
+- Aynı sahnenin açı, ışık ve zoom türevleri aynı `worldId` içinde kalır.
 - Aşama 2/3 parkur kolları, görünür alan ve bariyer çıkışları modellenir.
 
 ### 7.2. Materyal
@@ -293,6 +299,21 @@ Kalibrasyonsuz “Camera Module 3 FoV yaklaşık budur” varsayımı release re
 
 Kusurlar yalnız rastgele filtre olarak uygulanmamalı; mümkün olduğunda kamera
 ayarlarıyla fiziksel bağı kurulmalıdır.
+
+### 7.6. Dijital zoom ve çözünürlük kaybı
+
+Camera Module 3 için optik zoom varsayılmayacaktır. İki yöntem ayrı veri kaynağı
+olarak üretilecek ve karşılaştırılacaktır:
+
+- `sensor_roi`: yüksek çözünürlüklü sensör alanını kırpıp `1280×720` çıkışa ölçekleme;
+- `application_crop`: mevcut `1280×720` kareyi kırpıp yeniden büyütme.
+
+Ana zoom bucket'ları `1.0×`, `1.5×`, `2.0×`; `3.0×` yalnız hard-case'tir. Her
+varyant `640×640` model girdisine aynı letterbox hattından gider. Crop, resize,
+blur/noise/compression ve hedef piksel sayıları manifestte tutulur. Zoom varyantı
+temel sahneyle aynı `worldId/groupId/split` içinde kalır; zoomun faydası özellikle
+15 m real-only recall ve false-positive metriğiyle kanıtlanmadan runtime kararı
+sayılmaz.
 
 ## 8. Gerçek hedef olmadan bugün toplanabilecek gerçek veri
 

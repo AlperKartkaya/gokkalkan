@@ -1,0 +1,5 @@
+profileId = "NOMINAL_TARGET_COLORS_R1"
+status = "UNVERIFIED_CAMERA_COLOR"
+enemyHex = "#F50A0A"
+friendlyHex = "#00A3E0"
+balloonHex = "#F50A0A"

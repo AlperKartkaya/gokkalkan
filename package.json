@@ -25,6 +25,7 @@
     "test:unit": "npm --prefix frontend run test:unit --",
     "dataset:pull": ".venv-perception/bin/python perception/tools/dataset_pipeline.py pull-captures",
     "dataset:prepare": ".venv-perception/bin/python perception/tools/dataset_pipeline.py prepare",
+    "dataset:cad:inspect": ".venv-synthetic/bin/python perception/synthetic/tools/inspect_3mf.py",
     "model:train:smoke": ".venv-training/bin/python perception/tools/train_yolo.py --allow-unverified --epochs 1 --name target-smoke"
   }
 }

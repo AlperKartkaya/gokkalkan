@@ -6,7 +6,10 @@ YOLO veri seti → araştırma eğitimi zincirinin giriş sözleşmesidir.
 `Modeller.3mf` tabanlı fiziksel render, gerçek boş kamera arka planıyla hibrit
 veri ve gerçek hedeflere geçiş yol haritası için
 [`docs/CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md`](../../docs/CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md)
-belgesine bakın. CAD türevleri de gerçek grup-ayrılmış test verisi olmadan
+belgesine bakın. Uygulanacak kesin sıra, zoom/geometri sözleşmesi ve kullanıcı
+aksiyonu gerektiren duraklar
+[`docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](../../docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md)
+belgesinde tanımlıdır. CAD türevleri gerçek grup-ayrılmış test verisi olmadan
 release kanıtı değildir.
 
 ## Hızlı başlangıç

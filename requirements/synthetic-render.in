@@ -1,0 +1,11 @@
+-r dev.lock
+-r perception-dev.lock
+
+# CAD ingest, schema validation and contact-sheet generation.
+lib3mf==2.5.0
+jsonschema==4.25.0
+Pillow==11.3.0
+
+# Development-only physical renderer. Blender is managed by BlenderProc and is
+# never installed on the Raspberry Pi runtime image.
+blenderproc==2.8.0

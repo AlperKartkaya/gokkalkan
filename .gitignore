@@ -50,6 +50,12 @@ CMakeFiles/
 # ==========================================
 Modeller.3mf
 
+# CAD tabanlı sentetik veri hattı yalnız sözleşme ve araçları Git'te tutar.
+# Normalize mesh, contact sheet, render ve inceleme raporları tekrar üretilebilir
+# geliştirme artefaktlarıdır.
+perception/synthetic/generated/*
+!perception/synthetic/generated/.gitkeep
+
 # ==========================================
 # Telemetry & Logs (WP-05)
 # ==========================================

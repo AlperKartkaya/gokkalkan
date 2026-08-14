@@ -1,0 +1,11 @@
+profileId = "COMMITTEE_TILTED_TARGETS_PROVISIONAL_V0"
+status = "PROVISIONAL_ANGLE_PENDING_AR_04"
+distanceAnchorsM = [5.0, 10.0, 15.0]
+anchorSampleRatio = 0.70
+continuousDistanceRangeM = [5.0, 15.0]
+continuousSampleRatio = 0.30
+viewYawBucketsDeg = [-25.0, -15.0, -5.0, 0.0, 5.0, 15.0, 25.0]
+viewYawJitterDeg = 2.0
+topSurfaceViewBucketsDeg = [8.0, 12.0, 18.0]
+topSurfaceViewJitterDeg = 1.5
+cameraElevationOffsetDeg = [-1.0, 1.0]

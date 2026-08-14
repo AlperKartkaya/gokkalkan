@@ -30,9 +30,13 @@ Kaynak görseller:
 - **Kritik sonuç:** Kırmızı bir blob tek başına düşman kanıtı değildir. Aşama 3'te
   dost maketin altında da kırmızı balon vardır. Ateş nişan noktası, düşman olduğu
   doğrulanmış maket ile mekânsal/zamansal olarak ilişkilendirilmiş balon olmalıdır.
-- Maketler kamera kesitini büyütmek için hafif eğimli yerleştirilebilir. Kesin
-  açı bildirilmediğinden veri seti bir açı aralığı kullanmalı; tek açı
-  varsayılmamalıdır.
+- Maketler kamera kesitini büyütmek için burunları hafif aşağı eğimli
+  yerleştirilecektir. Kamera ve hedef referans merkezi aynı yükseklikte kabul
+  edilir; üst yüzey görünümü kamera yüksekliğinden değil bu burun eğiminden gelir.
+  Kesin açı bildirilmediğinden araştırma veri seti `8°/12°/18°` provisional
+  bucket'larını kullanır; üretim profili fiziksel/komite ölçümüyle kilitlenir.
+- Hedef yaw görünümü simetrik sağ/sol açıları kapsamalıdır; yalnız tam karşıdan
+  görünüşe eğitim yapılmamalıdır.
 
 ### 1.1. Yaklaşık maket boyutları
 

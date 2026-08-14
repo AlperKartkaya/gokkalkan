@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gokkalkan.local/schema/cad-asset-manifest.schema.json",
+  "title": "Gökkalkan CAD Asset Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "manifestId",
+    "sourceAssetId",
+    "coordinateConvention",
+    "assets"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "manifestId": {"type": "string", "minLength": 1},
+    "sourceAssetId": {"type": "string", "minLength": 1},
+    "coordinateConvention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worldUp", "canonicalNose", "canonicalLeft", "canonicalTop"],
+      "properties": {
+        "worldUp": {"const": "+Z"},
+        "canonicalNose": {"const": "+X"},
+        "canonicalLeft": {"const": "+Y"},
+        "canonicalTop": {"const": "+Z"}
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {"$ref": "#/$defs/asset"}
+    }
+  },
+  "$defs": {
+    "axis": {
+      "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z", "PENDING"]
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assetKey",
+        "displayName",
+        "sourceResourceId",
+        "presentationClasses",
+        "sourceGeometry",
+        "orientation",
+        "scale"
+      ],
+      "properties": {
+        "assetKey": {
+          "enum": ["drone", "helicopter", "f16", "missile"]
+        },
+        "displayName": {"type": "string", "minLength": 1},
+        "sourceResourceId": {"type": "integer", "minimum": 1},
+        "presentationClasses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "sourceGeometry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "vertexCount",
+            "triangleCount",
+            "boundsMm",
+            "lib3mfValid",
+            "manifoldAndOriented"
+          ],
+          "properties": {
+            "vertexCount": {"type": "integer", "minimum": 4},
+            "triangleCount": {"type": "integer", "minimum": 4},
+            "boundsMm": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "lib3mfValid": {"type": "boolean"},
+            "manifoldAndOriented": {"type": "boolean"}
+          }
+        },
+        "orientation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "noseAxis", "upAxis"],
+          "properties": {
+            "status": {"enum": ["PENDING_USER_CONFIRMATION", "VERIFIED"]},
+            "noseAxis": {"$ref": "#/$defs/axis"},
+            "upAxis": {"$ref": "#/$defs/axis"}
+          }
+        },
+        "scale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "targetLongestAxisMm", "factor"],
+          "properties": {
+            "status": {"enum": ["PROVISIONAL", "VERIFIED"]},
+            "targetLongestAxisMm": {"type": "number", "exclusiveMinimum": 0},
+            "factor": {"type": "number", "exclusiveMinimum": 0}
+          }
+        }
+      }
+    }
+  }
+}

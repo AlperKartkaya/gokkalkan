@@ -1,0 +1,12 @@
+profileId = "CAMERA_MODULE_3_PROVISIONAL_R1"
+status = "UNVERIFIED"
+cameraModel = "Raspberry Pi Camera Module 3 Standard"
+runtimeResolution = [1280, 720]
+modelInputResolution = [640, 640]
+provisionalRenderResolution = [2304, 1296]
+calibratedRenderResolution = [4608, 2592]
+cameraHeightM = 1.30
+targetReferenceHeightM = 1.30
+cameraElevationOffsetDeg = [-1.0, 1.0]
+zoomFactors = [1.0, 1.5, 2.0]
+hardCaseZoomFactors = [3.0]

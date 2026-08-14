@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gokkalkan.local/schema/render-record.schema.json",
+  "title": "Gökkalkan Synthetic Render Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recordId",
+    "worldId",
+    "variantId",
+    "groupId",
+    "sourceKind",
+    "split",
+    "assetKey",
+    "cameraProfileId",
+    "distanceM",
+    "viewYawDeg",
+    "topSurfaceViewDeg",
+    "cameraElevationOffsetDeg",
+    "zoom"
+  ],
+  "properties": {
+    "recordId": {"type": "string", "minLength": 1},
+    "worldId": {"type": "string", "minLength": 1},
+    "variantId": {"type": "string", "minLength": 1},
+    "groupId": {"type": "string", "minLength": 1},
+    "sourceKind": {
+      "enum": [
+        "synthetic_seed_2d",
+        "synthetic_cad_pbr",
+        "synthetic_cad_dr",
+        "synthetic_cad_hybrid",
+        "real_background_only",
+        "real_capture"
+      ]
+    },
+    "split": {"enum": ["train", "val", "test"]},
+    "assetKey": {"type": "string", "minLength": 1},
+    "cameraProfileId": {"type": "string", "minLength": 1},
+    "distanceM": {"type": "number", "minimum": 5, "maximum": 15},
+    "viewYawDeg": {"type": "number", "minimum": -27, "maximum": 27},
+    "topSurfaceViewDeg": {"type": "number", "minimum": 6.5, "maximum": 19.5},
+    "cameraElevationOffsetDeg": {"type": "number", "minimum": -1, "maximum": 1},
+    "zoom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "factor",
+        "cropRectPx",
+        "preCropResolution",
+        "postCropResolution",
+        "modelInputResolution",
+        "interpolation",
+        "targetPixelsBeforeZoom",
+        "targetPixelsAfterZoom",
+        "zoomCenterErrorPx"
+      ],
+      "properties": {
+        "mode": {"enum": ["none", "sensor_roi", "application_crop"]},
+        "factor": {"enum": [1.0, 1.5, 2.0, 3.0]},
+        "cropRectPx": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"type": "integer", "minimum": 0}
+        },
+        "preCropResolution": {"$ref": "#/$defs/resolution"},
+        "postCropResolution": {"$ref": "#/$defs/resolution"},
+        "modelInputResolution": {"$ref": "#/$defs/resolution"},
+        "interpolation": {"type": "string", "minLength": 1},
+        "targetPixelsBeforeZoom": {"type": "integer", "minimum": 0},
+        "targetPixelsAfterZoom": {"type": "integer", "minimum": 0},
+        "zoomCenterErrorPx": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {"type": "number"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "resolution": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"type": "integer", "minimum": 1}
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "GOKKALKAN-CAD-ASSETS-R1",
+  "sourceAssetId": "GOKKALKAN_TARGETS_3MF_R1",
+  "coordinateConvention": {
+    "worldUp": "+Z",
+    "canonicalNose": "+X",
+    "canonicalLeft": "+Y",
+    "canonicalTop": "+Z"
+  },
+  "assets": [
+    {
+      "assetKey": "drone",
+      "displayName": "Drone",
+      "sourceResourceId": 1,
+      "presentationClasses": ["dusman_drone_kirmizi"],
+      "sourceGeometry": {
+        "vertexCount": 357702,
+        "triangleCount": 715412,
+        "boundsMm": [287.452, 374.986, 195.076],
+        "lib3mfValid": true,
+        "manifoldAndOriented": true
+      },
+      "orientation": {
+        "status": "PENDING_USER_CONFIRMATION",
+        "noseAxis": "PENDING",
+        "upAxis": "PENDING"
+      },
+      "scale": {
+        "status": "PROVISIONAL",
+        "targetLongestAxisMm": 300.0,
+        "factor": 0.8
+      }
+    },
+    {
+      "assetKey": "f16",
+      "displayName": "F16",
+      "sourceResourceId": 2,
+      "presentationClasses": ["dusman_f16_kirmizi", "dost_f16_camgobegi"],
+      "sourceGeometry": {
+        "vertexCount": 344011,
+        "triangleCount": 687994,
+        "boundsMm": [300.403, 500.0, 139.258],
+        "lib3mfValid": true,
+        "manifoldAndOriented": true
+      },
+      "orientation": {
+        "status": "PENDING_USER_CONFIRMATION",
+        "noseAxis": "PENDING",
+        "upAxis": "PENDING"
+      },
+      "scale": {
+        "status": "PROVISIONAL",
+        "targetLongestAxisMm": 500.0,
+        "factor": 1.0
+      }
+    },
+    {
+      "assetKey": "helicopter",
+      "displayName": "Helikopter",
+      "sourceResourceId": 3,
+      "presentationClasses": [
+        "dusman_helikopter_kirmizi",
+        "dost_helikopter_camgobegi"
+      ],
+      "sourceGeometry": {
+        "vertexCount": 303828,
+        "triangleCount": 607680,
+        "boundsMm": [392.467, 582.673, 178.363],
+        "lib3mfValid": false,
+        "manifoldAndOriented": false
+      },
+      "orientation": {
+        "status": "PENDING_USER_CONFIRMATION",
+        "noseAxis": "PENDING",
+        "upAxis": "PENDING"
+      },
+      "scale": {
+        "status": "PROVISIONAL",
+        "targetLongestAxisMm": 500.0,
+        "factor": 0.8581
+      }
+    },
+    {
+      "assetKey": "missile",
+      "displayName": "Füze",
+      "sourceResourceId": 4,
+      "presentationClasses": ["dusman_fuze_kirmizi"],
+      "sourceGeometry": {
+        "vertexCount": 10297,
+        "triangleCount": 20626,
+        "boundsMm": [105.132, 218.899, 500.0],
+        "lib3mfValid": true,
+        "manifoldAndOriented": true
+      },
+      "orientation": {
+        "status": "PENDING_USER_CONFIRMATION",
+        "noseAxis": "PENDING",
+        "upAxis": "PENDING"
+      },
+      "scale": {
+        "status": "PROVISIONAL",
+        "targetLongestAxisMm": 400.0,
+        "factor": 0.8
+      }
+    }
+  ]
+}
