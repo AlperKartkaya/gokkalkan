@@ -1,5 +1,29 @@
-profileId = "NOMINAL_TARGET_COLORS_R1"
-status = "UNVERIFIED_CAMERA_COLOR"
+profileId = "TARGET_COLOR_VARIANTS_R2"
+status = "SYNTHETIC_RESEARCH_COLOR_SWEEP"
 enemyHex = "#F50A0A"
 friendlyHex = "#00A3E0"
 balloonHex = "#F50A0A"
+
+[[appearanceVariants]]
+id = "nominal"
+saturationScale = 1.00
+valueScale = 1.00
+weight = 0.40
+
+[[appearanceVariants]]
+id = "slightly_faded"
+saturationScale = 0.82
+valueScale = 1.00
+weight = 0.20
+
+[[appearanceVariants]]
+id = "dim_environment"
+saturationScale = 0.95
+valueScale = 0.78
+weight = 0.20
+
+[[appearanceVariants]]
+id = "bright_environment"
+saturationScale = 0.95
+valueScale = 1.18
+weight = 0.20

@@ -62,7 +62,16 @@ def test_asset_manifest_has_exactly_four_front_aligned_assets() -> None:
             [0.0, 1.0, 0.0],
             [0.0, 0.0, 1.0],
         ]
-    assert all(asset["scale"]["status"] == "PROVISIONAL" for asset in assets)
+    assert all(asset["scale"]["status"] == "VERIFIED" for asset in assets)
+    assert all(asset["scale"]["factor"] == 1.0 for asset in assets)
+    assert {
+        asset["assetKey"]: asset["scale"]["targetLongestAxisMm"] for asset in assets
+    } == {
+        "drone": 374.986,
+        "f16": 500.0,
+        "helicopter": 582.673,
+        "missile": 500.0,
+    }
     geometry_status = {
         asset["assetKey"]: (
             asset["sourceGeometry"]["lib3mfValid"],
@@ -80,26 +89,56 @@ def test_asset_manifest_has_exactly_four_front_aligned_assets() -> None:
 
 def test_camera_and_scene_profiles_lock_same_height_and_pose_buckets() -> None:
     camera = tomllib.loads(
-        (SYNTHETIC / "config/camera_profiles/camera_module_3_provisional.toml")
-        .read_text(encoding="utf-8")
+        (
+            SYNTHETIC / "config/camera_profiles/camera_module_3_provisional.toml"
+        ).read_text(encoding="utf-8")
     )
     scene = tomllib.loads(
         (
-            SYNTHETIC
-            / "config/scene_profiles/committee_tilted_targets_sweep_v1.toml"
+            SYNTHETIC / "config/scene_profiles/committee_tilted_targets_sweep_v1.toml"
         ).read_text(encoding="utf-8")
+    )
+    material = tomllib.loads(
+        (SYNTHETIC / "config/material_profiles/nominal_colors.toml").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert camera["status"] == "UNVERIFIED"
     assert camera["cameraHeightM"] == camera["targetReferenceHeightM"] == 1.30
     assert camera["runtimeResolution"] == [1280, 720]
     assert camera["modelInputResolution"] == [640, 640]
-    assert scene["distanceAnchorsM"] == [5.0, 10.0, 15.0]
-    assert scene["viewYawBucketsDeg"] == [-25.0, -15.0, -5.0, 0.0, 5.0, 15.0, 25.0]
-    assert scene["topSurfaceViewBucketsDeg"] == [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0]
-    assert scene["lateralOffsetBucketsM"] == [-0.75, -0.35, 0.0, 0.35, 0.75]
-    assert scene["verticalOffsetBucketsM"] == [-0.25, 0.0, 0.25]
-    assert scene["anchorSampleRatio"] + scene["continuousSampleRatio"] == 1.0
+    assert scene["longitudinalDistanceBucketsM"] == [
+        float(value) for value in range(3, 18)
+    ]
+    assert scene["sideRouteLateralDistanceBucketsM"] == [2.75, 2.87, 3.0]
+    assert scene["centerRouteLateralDistanceM"] == 0.0
+    assert scene["yawComputation"] == "ATAN2_SIGNED_LATERAL_OVER_LONGITUDINAL"
+    assert "viewYawBucketsDeg" not in scene
+    assert scene["topSurfaceViewBucketsDeg"] == [
+        4.0,
+        6.0,
+        8.0,
+        10.0,
+        12.0,
+        14.0,
+        16.0,
+        18.0,
+        20.0,
+        24.0,
+        28.0,
+    ]
+    assert scene["topSurfaceViewJitterDeg"] == 0.5
+    assert scene["longitudinalDistanceJitterM"] == 0.0
+    assert scene["lateralDistanceJitterM"] == 0.0
+    assert [item["id"] for item in material["appearanceVariants"]] == scene[
+        "appearanceProfileIds"
+    ]
+    assert [item["weight"] for item in material["appearanceVariants"]] == scene[
+        "appearanceWeights"
+    ]
+    assert material["enemyHex"] == material["balloonHex"] == "#F50A0A"
+    assert material["friendlyHex"] == "#00A3E0"
 
 
 def test_render_record_schema_rejects_out_of_range_camera_pose() -> None:
@@ -113,10 +152,15 @@ def test_render_record_schema_rejects_out_of_range_camera_pose() -> None:
         "assetKey": "f16",
         "presentationClass": "dusman_f16_kirmizi",
         "cameraProfileId": "CAMERA_MODULE_3_PROVISIONAL_R1",
+        "appearanceProfileId": "nominal",
+        "routeId": "ROTA_2",
+        "longitudinalDistanceM": 10.0,
+        "lateralDistanceM": 0.0,
+        "lateralDistanceBucketM": 0.0,
+        "yawComputation": "ATAN2_SIGNED_LATERAL_OVER_LONGITUDINAL",
         "distanceM": 10.0,
         "targetPositionM": [0.0, 10.0, 1.3],
-        "viewYawBucketDeg": 15.0,
-        "viewYawDeg": 15.0,
+        "viewYawDeg": 0.0,
         "topSurfaceViewBucketDeg": 12.0,
         "topSurfaceViewDeg": 12.0,
         "targetRotationWorld3x3": [
@@ -125,6 +169,19 @@ def test_render_record_schema_rejects_out_of_range_camera_pose() -> None:
             [0.0, 0.0, 1.0],
         ],
         "cameraElevationOffsetDeg": 0.0,
+        "sceneGroundTruth": {
+            "targetInstanceId": "TARGET-001",
+            "eligibleStageIds": ["ASAMA_3"],
+            "friendFoe": "Düşman",
+            "balloon": {
+                "instanceId": "BALLOON-001",
+                "targetInstanceId": "TARGET-001",
+                "diameterM": 0.14,
+                "relativeCenterM": [0.0, 0.0, -0.4],
+                "colorHex": "#F50A0A",
+                "fireCandidateAllowed": True,
+            },
+        },
         "zoom": {
             "mode": "none",
             "factor": 1.0,

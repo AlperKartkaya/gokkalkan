@@ -1,9 +1,9 @@
-"""Camera-centric pose math for filterable CAD render batches.
+"""Camera-centric pose math for route-derived CAD render batches.
 
-The 3MF source is already authored in the Bambu Studio presentation frame:
-``Front`` means the camera is on source ``-Y``; screen-right is ``+X`` and
-screen-up is ``+Z``.  A positive top-surface angle pitches the target around
-``+X`` so its nose moves down and its top surface moves toward the camera.
+The camera sits at ``[0, 0, camera_height]``; ``+X`` is image-right, ``+Y``
+is forward and ``+Z`` is up.  The target remains Front-aligned.  Its apparent
+yaw is a consequence of the signed route offset and is therefore metadata,
+not an additional rotation around Z.
 """
 
 from __future__ import annotations
@@ -26,71 +26,46 @@ def rotation_x(degrees: float) -> list[list[float]]:
     ]
 
 
-def rotation_z(degrees: float) -> list[list[float]]:
-    angle = math.radians(degrees)
-    cosine, sine = math.cos(angle), math.sin(angle)
-    return [
-        [cosine, -sine, 0.0],
-        [sine, cosine, 0.0],
-        [0.0, 0.0, 1.0],
-    ]
-
-
-def matrix_multiply(
-    left: Sequence[Sequence[float]],
-    right: Sequence[Sequence[float]],
-) -> list[list[float]]:
-    return [
-        [
-            sum(float(left[row][index]) * float(right[index][column]) for index in range(3))
-            for column in range(3)
-        ]
-        for row in range(3)
-    ]
-
-
-def target_rotation_world(
+def route_view_yaw_deg(
     *,
-    view_yaw_deg: float,
-    top_surface_view_deg: float,
-) -> list[list[float]]:
-    """Return ``Rz(yaw) @ Rx(tilt)`` for the Bambu Front source frame."""
+    longitudinal_distance_m: float,
+    signed_lateral_distance_m: float,
+) -> float:
+    """Return apparent yaw from route geometry: ``atan2(x, y)`` in degrees."""
 
-    if not -90.0 < view_yaw_deg < 90.0:
-        raise PoseContractError("view yaw front yarımkürede kalmalı")
+    if longitudinal_distance_m <= 0:
+        raise PoseContractError("boylamasına mesafe sıfırdan büyük olmalı")
+    return math.degrees(math.atan2(signed_lateral_distance_m, longitudinal_distance_m))
+
+
+def target_rotation_world(*, top_surface_view_deg: float) -> list[list[float]]:
+    """Return only the physical nose-down tilt for the Front-aligned target.
+
+    Route-derived yaw must not be applied here a second time: the camera-to-
+    target ray already creates the intended right/left viewing angle.
+    """
+
     if not 0.0 <= top_surface_view_deg < 90.0:
         raise PoseContractError("top-surface açısı [0, 90) aralığında olmalı")
-    matrix = matrix_multiply(
-        rotation_z(view_yaw_deg),
-        rotation_x(top_surface_view_deg),
-    )
-    return [[round(value, 9) for value in row] for row in matrix]
+    return [
+        [round(value, 9) for value in row] for row in rotation_x(top_surface_view_deg)
+    ]
 
 
 def target_position_world(
     *,
-    distance_m: float,
-    lateral_offset_m: float,
+    longitudinal_distance_m: float,
+    signed_lateral_distance_m: float,
     vertical_offset_m: float,
     camera_height_m: float,
 ) -> list[float]:
-    """Place target while keeping ``distance_m`` as true camera range.
+    """Place a route sample directly from its longitudinal/lateral distances."""
 
-    Camera is at ``[0, 0, camera_height_m]``.  ``+X`` is image-right, ``+Y``
-    is forward and ``+Z`` is up.  Forward Y is solved from the Euclidean range
-    instead of silently changing range when X/Z offsets are sampled.
-    """
-
-    remaining_squared = (
-        distance_m * distance_m
-        - lateral_offset_m * lateral_offset_m
-        - vertical_offset_m * vertical_offset_m
-    )
-    if distance_m <= 0 or remaining_squared <= 0:
-        raise PoseContractError("X/Z ofsetleri seçilen mesafeden küçük olmalı")
+    if longitudinal_distance_m <= 0:
+        raise PoseContractError("boylamasına mesafe sıfırdan büyük olmalı")
     return [
-        round(lateral_offset_m, 6),
-        round(math.sqrt(remaining_squared), 6),
+        round(signed_lateral_distance_m, 6),
+        round(longitudinal_distance_m, 6),
         round(camera_height_m + vertical_offset_m, 6),
     ]
 

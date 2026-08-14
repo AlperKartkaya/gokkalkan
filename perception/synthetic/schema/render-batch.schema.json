@@ -35,6 +35,32 @@
         "seed": {"type": "integer", "minimum": 0}
       }
     },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "longitudinalDistanceM",
+        "topSurfaceViewBucketDeg",
+        "yawPolicy",
+        "recordCount"
+      ],
+      "properties": {
+        "longitudinalDistanceM": {
+          "type": "array",
+          "items": {"type": "number", "minimum": 3, "maximum": 17},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "topSurfaceViewBucketDeg": {
+          "type": "array",
+          "items": {"type": "number", "minimum": 4, "maximum": 28},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "yawPolicy": {"const": "DERIVED_FROM_ALL_ROUTE_POSITIONS"},
+        "recordCount": {"type": "integer", "minimum": 1}
+      }
+    },
     "records": {
       "type": "array",
       "items": {"$ref": "render-record.schema.json"}

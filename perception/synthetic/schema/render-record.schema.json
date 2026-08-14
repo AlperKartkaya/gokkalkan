@@ -14,21 +14,39 @@
     "assetKey",
     "presentationClass",
     "cameraProfileId",
+    "yawComputation",
+    "lateralDistanceBucketM",
+    "lateralDistanceM",
+    "longitudinalDistanceM",
+    "routeId",
+    "appearanceProfileId",
     "distanceM",
     "targetPositionM",
-    "viewYawBucketDeg",
     "viewYawDeg",
     "topSurfaceViewBucketDeg",
     "topSurfaceViewDeg",
     "targetRotationWorld3x3",
     "cameraElevationOffsetDeg",
+    "sceneGroundTruth",
     "zoom"
   ],
   "properties": {
-    "recordId": {"type": "string", "minLength": 1},
-    "worldId": {"type": "string", "minLength": 1},
-    "variantId": {"type": "string", "minLength": 1},
-    "groupId": {"type": "string", "minLength": 1},
+    "recordId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worldId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variantId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "groupId": {
+      "type": "string",
+      "minLength": 1
+    },
     "sourceKind": {
       "enum": [
         "synthetic_seed_2d",
@@ -39,21 +57,53 @@
         "real_capture"
       ]
     },
-    "split": {"enum": ["train", "val", "test"]},
-    "assetKey": {"type": "string", "minLength": 1},
-    "presentationClass": {"type": "string", "minLength": 1},
-    "cameraProfileId": {"type": "string", "minLength": 1},
-    "distanceM": {"type": "number", "minimum": 5, "maximum": 15},
+    "split": {
+      "enum": [
+        "train",
+        "val",
+        "test"
+      ]
+    },
+    "assetKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "presentationClass": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cameraProfileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "distanceM": {
+      "type": "number",
+      "minimum": 3,
+      "maximum": 17.27
+    },
     "targetPositionM": {
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
-      "items": {"type": "number"}
+      "items": {
+        "type": "number"
+      }
     },
-    "viewYawBucketDeg": {"type": "number", "minimum": -25, "maximum": 25},
-    "viewYawDeg": {"type": "number", "minimum": -27, "maximum": 27},
-    "topSurfaceViewBucketDeg": {"type": "number", "minimum": 0, "maximum": 28},
-    "topSurfaceViewDeg": {"type": "number", "minimum": 0, "maximum": 29},
+    "viewYawDeg": {
+      "type": "number",
+      "minimum": -45,
+      "maximum": 45
+    },
+    "topSurfaceViewBucketDeg": {
+      "type": "number",
+      "minimum": 4,
+      "maximum": 28
+    },
+    "topSurfaceViewDeg": {
+      "type": "number",
+      "minimum": 3.5,
+      "maximum": 28.5
+    },
     "targetRotationWorld3x3": {
       "type": "array",
       "minItems": 3,
@@ -62,10 +112,16 @@
         "type": "array",
         "minItems": 3,
         "maxItems": 3,
-        "items": {"type": "number"}
+        "items": {
+          "type": "number"
+        }
       }
     },
-    "cameraElevationOffsetDeg": {"type": "number", "minimum": -1, "maximum": 1},
+    "cameraElevationOffsetDeg": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1
+    },
     "zoom": {
       "type": "object",
       "additionalProperties": false,
@@ -82,25 +138,200 @@
         "zoomCenterErrorPx"
       ],
       "properties": {
-        "mode": {"enum": ["none", "sensor_roi", "application_crop"]},
-        "factor": {"enum": [1.0, 1.5, 2.0, 3.0]},
+        "mode": {
+          "enum": [
+            "none",
+            "sensor_roi",
+            "application_crop"
+          ]
+        },
+        "factor": {
+          "enum": [
+            1.0,
+            1.5,
+            2.0,
+            3.0
+          ]
+        },
         "cropRectPx": {
           "type": "array",
           "minItems": 4,
           "maxItems": 4,
-          "items": {"type": "integer", "minimum": 0}
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
-        "preCropResolution": {"$ref": "#/$defs/resolution"},
-        "postCropResolution": {"$ref": "#/$defs/resolution"},
-        "modelInputResolution": {"$ref": "#/$defs/resolution"},
-        "interpolation": {"type": "string", "minLength": 1},
-        "targetPixelsBeforeZoom": {"type": "integer", "minimum": 0},
-        "targetPixelsAfterZoom": {"type": "integer", "minimum": 0},
+        "preCropResolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "postCropResolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "modelInputResolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "interpolation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetPixelsBeforeZoom": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetPixelsAfterZoom": {
+          "type": "integer",
+          "minimum": 0
+        },
         "zoomCenterErrorPx": {
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
-          "items": {"type": "number"}
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "appearanceProfileId": {
+      "enum": [
+        "nominal",
+        "slightly_faded",
+        "dim_environment",
+        "bright_environment"
+      ]
+    },
+    "routeId": {
+      "enum": [
+        "ROTA_1",
+        "ROTA_2",
+        "ROTA_3"
+      ]
+    },
+    "longitudinalDistanceM": {
+      "type": "number",
+      "minimum": 3,
+      "maximum": 17
+    },
+    "lateralDistanceM": {
+      "type": "number",
+      "minimum": -3,
+      "maximum": 3
+    },
+    "lateralDistanceBucketM": {
+      "type": "number",
+      "minimum": -3,
+      "maximum": 3
+    },
+    "yawComputation": {
+      "const": "ATAN2_SIGNED_LATERAL_OVER_LONGITUDINAL"
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bboxBeforeZoomPx",
+        "bboxAfterZoomPx",
+        "targetVisibleAfterZoom"
+      ],
+      "properties": {
+        "bboxBeforeZoomPx": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/bbox"
+            }
+          ]
+        },
+        "bboxAfterZoomPx": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/bbox"
+            }
+          ]
+        },
+        "targetVisibleAfterZoom": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sceneGroundTruth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetInstanceId",
+        "eligibleStageIds",
+        "friendFoe",
+        "balloon"
+      ],
+      "properties": {
+        "targetInstanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eligibleStageIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ASAMA_1",
+              "ASAMA_2",
+              "ASAMA_3"
+            ]
+          }
+        },
+        "friendFoe": {
+          "enum": [
+            "Dost",
+            "Düşman"
+          ]
+        },
+        "balloon": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instanceId",
+            "targetInstanceId",
+            "diameterM",
+            "relativeCenterM",
+            "colorHex",
+            "fireCandidateAllowed"
+          ],
+          "properties": {
+            "instanceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "targetInstanceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "diameterM": {
+              "type": "number",
+              "minimum": 0.12,
+              "maximum": 0.16
+            },
+            "relativeCenterM": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "number"
+              }
+            },
+            "colorHex": {
+              "const": "#F50A0A"
+            },
+            "fireCandidateAllowed": {
+              "type": "boolean"
+            }
+          }
         }
       }
     }
@@ -110,7 +341,19 @@
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
-      "items": {"type": "integer", "minimum": 1}
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "bbox": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
     }
   }
 }

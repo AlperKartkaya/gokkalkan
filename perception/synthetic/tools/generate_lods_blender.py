@@ -82,7 +82,7 @@ def main() -> None:
                     },
                 }
             )
-    manifest["status"] = "LOD_COMPLETE_PROVISIONAL_SCALE"
+    manifest["status"] = "LOD_COMPLETE_VERIFIED_3MF_SCALE"
     manifest["assets"] = sorted(records, key=lambda item: (item["assetKey"], item["lod"]))
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": manifest["status"], "records": len(records)}))

@@ -74,22 +74,21 @@ Dosya yerel olarak incelendi:
 | F16 | `f16.stl` | `300.4 × 500.0 × 139.3` | `500.0 mm` | `687,994` |
 | Drone | `Drone` | `287.5 × 375.0 × 195.1` | `375.0 mm` | `715,412` |
 
-### 2.2. Ölçek uyuşmazlıkları
+### 2.2. Kesin CAD ölçüleri
 
-Güncel hedef tablosunda yaklaşık uzunluklar Drone için `30 cm`, Helikopter ve
-F16 için `50 cm`, Füze için `40 cm` olarak tutuluyor. 3MF en uzun eksenleriyle
-karşılaştırıldığında:
+`docs/images/hedef_maket_bilgileri.png` içindeki değerler yaklaşık bilgilerdir.
+Sentetik üretimde ve imal edilecek hedeflerde gerçek ölçü sözleşmesi
+`Modeller.3mf` mesh sınırlarıdır:
 
-| Nesne | 3MF en uzun ekseni | Güncel plan değeri | Aksiyon |
-| --- | ---: | ---: | --- |
-| F16 | `500 mm` | `500 mm` | Ölçek uyumlu görünüyor; yön doğrulanmalı. |
-| Helikopter | `582.7 mm` | `500 mm` | Renderda yaklaşık `0.858` ölçek adayı; fiziksel hedef kesinleşmeden kilitlenmez. |
-| Drone | `375 mm` | `300 mm` | Renderda `0.800` ölçek adayı; fiziksel hedef kesinleşmeden kilitlenmez. |
-| Füze | `500 mm` | `400 mm` | Renderda `0.800` ölçek adayı; organizasyon bilgisiyle tekrar doğrulanmalı. |
+| Nesne | Kesin mesh boyutu (mm) | En uzun eksen | Render ölçeği |
+| --- | --- | ---: | ---: |
+| F16 | `300.403 × 500.000 × 139.258` | `500.000 mm` | `1.000` |
+| Helikopter | `392.467 × 582.673 × 178.363` | `582.673 mm` | `1.000` |
+| Drone | `287.452 × 374.986 × 195.076` | `374.986 mm` | `1.000` |
+| Füze | `105.132 × 218.899 × 500.000` | `500.000 mm` | `1.000` |
 
-Bu ölçekler mesh üzerinde kalıcı değişiklik olarak uygulanmamalıdır. Kaynak CAD
-master korunmalı; hedeflenen fiziksel ölçü ve ölçek katsayısı sürümlü bir asset
-manifestinde tutulmalıdır.
+Kaynak CAD master değiştirilmez; manifest bu boyutları `VERIFIED` ve ölçek
+katsayısını `1.0` olarak taşır.
 
 ### 2.3. CAD dosyasının eksikleri
 
@@ -231,31 +230,30 @@ Balon CAD dosyasında yoktur. Parametrik bir balon nesnesi oluşturulmalı:
 
 ### 7.1. Geometri ve yerleşim
 
-- Kesinleşmiş fiziksel hedef ölçüleri manifestten uygulanır.
-- Kamera optik merkezi ile hedef referans merkezi aynı dünya yüksekliğinde,
-  başlangıçta `1.30 m`, tutulur. Ana veri setinde aşağıdan/yukarıdan geniş kamera
-  açıları üretilmez; yalnız montaj toleransı için `±1°` dikey sapma bulunur.
-- Bambu Studio `Front` görünüşü `0°` kabul edilir. Burun aşağı eğildikçe Front
-  görünüşe Top katkısı ekleyen semantik `topSurfaceViewDeg` artar. Belirsizlik
-  `0/4/8/12/16/20/24/28°` bucket'larıyla kapsanır; her kayıt bucket ve jitter
-  sonrası gerçek açıyı ayrı taşır. Komite daha sonra aralık verirse mevcut
-  renderlar gerçek açı alanına göre tahribatsız filtrelenir.
-- Hedefin sağdan/soldan görünümü `viewYawDeg` bucket'larıyla simetrik üretilir:
-  `-25°`, `-15°`, `-5°`, `0°`, `+5°`, `+15°`, `+25°`.
-- Kabul mesafeleri ayrı bucket olarak `5 m`, `10 m`, `15 m` tutulur. Renderların
-  `%70`i bu anchor'lara, `%30`u `5–15 m` sürekli aralığa ayrılır.
-- Aynı sahnenin açı, ışık ve zoom türevleri aynı `worldId` içinde kalır.
+- Kesin 3MF hedef ölçüleri manifestten `1.0` ölçekle uygulanır.
+- Kamera optik merkezi ile hedef referans merkezi `1.30 m` dünya yüksekliğinde tutulur.
+- Boylamasına uzaklık `3–17 m` arasında her tam metredir.
+- Rota 1/3 enlemesine uzaklıkları `2.75`, `2.87`, `3.00 m`; Rota 2 ofseti `0 m`'dir.
+- `viewYawDeg = degrees(atan2(signedLateralDistanceM, longitudinalDistanceM))`.
+  Yaw bağımsız bucket veya veri hacmi çarpanı değildir; yakın yan rotada büyür,
+  uzakta küçülür, Rota 2'de her zaman `0°` olur.
+- Bambu Studio `Front` görünüşü referanstır. Burun eğimi
+  `4/6/8/10/12/14/16/18/20/24/28°` bucket'ları ve `±0.5°` jitter ile kapsanır.
+  Komite daha sonra aralık verirse kayıtlar gerçek `topSurfaceViewDeg` alanına
+  göre tahribatsız filtrelenir.
+- Aynı sahnenin açı, görünüm ve zoom türevleri aynı `worldId` içinde kalır.
 - Aşama 2/3 parkur kolları, görünür alan ve bariyer çıkışları modellenir.
 
 ### 7.2. Materyal
 
 - Düşman başlangıç nominali: `#F50A0A`.
 - Dost başlangıç nominali: `#00A3E0`.
-- Renk değişimi friend/foe sınırını aşmayacak dar bir aralıkta yapılır.
-- Roughness, specular, katman izi, mat/parlak baskı ve küçük yüzey kusurları
-  örneklenir.
-- Hedefler geldiğinde gerçek materyal Camera Module 3 altında ölçülüp RGB yerine
-  kamera renk dağılımı olarak profile yazılır.
+- Dört sentetik görünüm varyantı kullanılır: nominal `%40`, hafif soluk `%20`,
+  hafif karanlık `%20`, hafif aydınlık `%20`.
+- Bu görünüm profilleri geometri kombinasyonlarını dört katına çıkarmaz; pozlara
+  deterministik ve dengeli atanır.
+- Gerçek hedeflerden ölçülen kamera renk dağılımı sonraki fiziksel veri fazında
+  eklenir; mevcut sentetik üretimi bloke etmez.
 
 ### 7.3. Işık
 
@@ -436,7 +434,7 @@ Gerçek hedef verisi gelmeden ölçülen tüm değerlerin rapor başlığı
 - `Modeller.3mf` hash'ini ve dört nesne kimliğini manifestle.
 - Hedeflerin gerçek yarışmada tam 3B baskı mı, planar maket mi olacağını teyit
   edilecek açık karar olarak kaydet.
-- 3MF boyutları ile güncel 30/40/50 cm bilgilerindeki farkı kapat.
+- 3MF boyutlarını gerçek ölçü sözleşmesi olarak `1.0` ölçekle kilitle.
 - Kırmızı/camgöbeği materyal ve balon ölçüsü için varsayım/kanıt ayrımı yap.
 
 **Çıktı**
@@ -446,8 +444,8 @@ Gerçek hedef verisi gelmeden ölçülen tüm değerlerin rapor başlığı
 
 **Çıkış kapısı**
 
-- Her CAD nesnesi doğru sınıfa map edilmiş ve fiziksel ölçek belirsizliği açıkça
-  işaretlenmiş olmalı.
+- Her CAD nesnesi doğru sınıfa map edilmiş; 3MF ölçüsü ve `1.0` ölçek faktörü
+  manifestte doğrulanmış olmalı.
 
 ### FAZ CAD-1 — Deterministik 3MF ingest ve LOD üretimi
 
@@ -473,7 +471,7 @@ Gerçek hedef verisi gelmeden ölçülen tüm değerlerin rapor başlığı
 
 **İşler**
 
-- Önce F16 ile 5/10/15 m kamera sahnesi.
+- Önce F16 ile `3–17 m`, yedi rota konumu ve rota-türetilmiş yaw sahnesi.
 - Kırmızı ve camgöbeği PBR materyal.
 - Siyah perde, zemin, tek ışık profili.
 - RGB + mask + bbox + depth + metadata.
@@ -486,7 +484,7 @@ Gerçek hedef verisi gelmeden ölçülen tüm değerlerin rapor başlığı
 **Çıkış kapısı**
 
 - Görüntü, mask ve bbox piksel olarak uyumlu;
-- 15 m hedefi kadrajda beklenen yönde küçülüyor;
+- Boylamasına uzaklık arttıkça hedef kadrajda beklenen yönde küçülüyor;
 - aynı seed aynı manifest ve aynı annotation'ı üretiyor.
 
 ### FAZ CAD-3 — Dört hedef + balon + parkur sahnesi

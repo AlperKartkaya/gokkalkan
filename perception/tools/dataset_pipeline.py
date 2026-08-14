@@ -14,10 +14,10 @@ import math
 import random
 import shutil
 import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "perception/dataset/config.json"
@@ -25,6 +25,8 @@ DEFAULT_ASSET_MANIFEST = ROOT / "perception/assets/target_prints/manifest.json"
 DEFAULT_DROP = ROOT / "perception/dataset/captures/drop"
 DEFAULT_STORE = ROOT / "perception/dataset/captures/store"
 DEFAULT_OUTPUT = ROOT / "perception/dataset/generated/yolo_current"
+DEFAULT_CAD_BATCH_ROOT = ROOT / "perception/synthetic/generated/render_batches"
+DEFAULT_CAD_OUTPUT = ROOT / "perception/dataset/generated/yolo_cad_research"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 
 
@@ -278,7 +280,7 @@ def pull_captures(source: Path, store: Path, config_path: Path) -> dict[str, Any
             if not copied_meta.exists():
                 shutil.copy2(session_meta, copied_meta)
         entries.append({"sessionId": session_id, "presentationClass": class_name, "source": str(image.resolve()), "stored": str(destination.relative_to(store)) if status == "IMPORTED" else None, "sha256": digest, "status": status})
-    result = {"schemaVersion": 1, "pulledAt": datetime.now(timezone.utc).isoformat(), "source": str(source.resolve()), "status": "EMPTY" if not entries else "COMPLETE", "entries": entries}
+    result = {"schemaVersion": 1, "pulledAt": datetime.now(UTC).isoformat(), "source": str(source.resolve()), "status": "EMPTY" if not entries else "COMPLETE", "entries": entries}
     atomic_json(store / "pull-manifest.json", result)
     return result
 
@@ -349,13 +351,134 @@ def add_real_captures(config_path: Path, store: Path, output: Path) -> dict[str,
     return {"records": records, "review": review, "realCount": len(records)}
 
 
+def _bbox_for_class(np: Any, class_map: Any, class_id: int) -> tuple[int, int, int, int] | None:
+    rows, columns = np.where(class_map == class_id)
+    if len(rows) == 0:
+        return None
+    left, right = int(columns.min()), int(columns.max())
+    top, bottom = int(rows.min()), int(rows.max())
+    return left, top, right - left + 1, bottom - top + 1
+
+
+def ingest_cad_render_batches(
+    *,
+    batch_root: Path,
+    output: Path,
+    config_path: Path,
+) -> dict[str, Any]:
+    """Convert validated BlenderProc HDF5 batches into a research-only YOLO set."""
+
+    cv2, np = _cv()
+    try:
+        import h5py  # type: ignore
+    except ImportError as exc:
+        raise PipelineError("CAD render ingest h5py gerektirir") from exc
+
+    config = load_json(config_path)
+    classes = list(config["classes"])
+    if output.exists():
+        shutil.rmtree(output)
+    _ensure_layout(output)
+    records: list[dict[str, Any]] = []
+    seen_world_splits: dict[str, str] = {}
+
+    for record_path in sorted(batch_root.rglob("record.json")):
+        batch_dir = record_path.parent
+        hdf5_files = sorted(batch_dir.glob("*.hdf5"))
+        if len(hdf5_files) != 1:
+            continue
+        record = load_json(record_path)
+        if record.get("sourceKind") not in {"synthetic_cad_pbr", "synthetic_cad_dr"}:
+            continue
+        split = str(record["split"])
+        if split == "test":
+            raise PipelineError("sentetik CAD kaydı test split'ine atanamaz")
+        world_id = str(record["worldId"])
+        previous = seen_world_splits.setdefault(world_id, split)
+        if previous != split:
+            raise PipelineError(f"worldId split sızıntısı: {world_id}")
+        presentation_class = str(record["presentationClass"])
+        if presentation_class not in classes:
+            raise PipelineError(f"bilinmeyen CAD presentationClass: {presentation_class}")
+
+        with h5py.File(hdf5_files[0], "r") as handle:
+            if "colors" not in handle or "class_segmaps" not in handle:
+                raise PipelineError(f"RGB/class segmentation eksik: {batch_dir}")
+            rgb = handle["colors"][:]
+            class_map = handle["class_segmaps"][:]
+        height, width = rgb.shape[:2]
+        if class_map.shape[:2] != (height, width):
+            raise PipelineError(f"RGB/mask çözünürlük uyuşmazlığı: {batch_dir}")
+        target_bbox = _bbox_for_class(np, class_map, 1)
+        balloon_bbox = _bbox_for_class(np, class_map, 7)
+        if target_bbox is None or balloon_bbox is None:
+            raise PipelineError(f"hedef veya bağlı balon görünür değil: {batch_dir}")
+
+        stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
+        image_path = output / "images" / split / f"{stem}.png"
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        if not cv2.imwrite(str(image_path), bgr):
+            raise PipelineError(f"CAD görüntüsü yazılamadı: {image_path}")
+        labels = [
+            yolo_line(classes.index(presentation_class), target_bbox, width, height),
+            yolo_line(classes.index("balon"), balloon_bbox, width, height),
+        ]
+        (output / "labels" / split / f"{stem}.txt").write_text(
+            "\n".join(labels) + "\n", encoding="utf-8"
+        )
+        records.append(
+            {
+                "id": stem,
+                "sourceKind": record["sourceKind"],
+                "split": split,
+                "worldId": world_id,
+                "groupId": record["groupId"],
+                "presentationClass": presentation_class,
+                "routeId": record["routeId"],
+                "longitudinalDistanceM": record["longitudinalDistanceM"],
+                "lateralDistanceM": record["lateralDistanceM"],
+                "viewYawDeg": record["viewYawDeg"],
+                "topSurfaceViewDeg": record["topSurfaceViewDeg"],
+                "appearanceProfileId": record["appearanceProfileId"],
+                "targetBalloonLinked": True,
+                "imageSha256": sha256(image_path),
+                "sourceBatchSha256": sha256(hdf5_files[0]),
+            }
+        )
+
+    if not records:
+        raise PipelineError(f"içe aktarılabilir CAD render batch bulunamadı: {batch_root}")
+    manifest = write_dataset_contract(
+        output,
+        config,
+        records,
+        [],
+        {
+            "configSha256": sha256(config_path),
+            "cadBatchRoot": str(batch_root.resolve()),
+            "cadBatchCount": len(records),
+        },
+    )
+    manifest["status"] = "SYNTHETIC_RESEARCH_ONLY"
+    manifest["trainingAuthorized"] = False
+    manifest["releaseCandidate"] = False
+    atomic_json(output / "dataset-manifest.json", manifest)
+    return {
+        "status": manifest["status"],
+        "records": len(records),
+        "trainingAuthorized": False,
+        "releaseCandidate": False,
+        "output": str(output),
+    }
+
+
 def write_dataset_contract(output: Path, config: dict[str, Any], records: list[dict[str, Any]], review: list[dict[str, Any]], inputs: dict[str, Any]) -> dict[str, Any]:
     classes = list(config["classes"])
     yaml = [f"path: {output.resolve()}", "train: images/train", "val: images/val", "test: images/test", "names:"]
     yaml.extend(f"  {index}: {name}" for index, name in enumerate(classes))
     (output / "data.yaml").write_text("\n".join(yaml) + "\n", encoding="utf-8")
     counts = {split: sum(1 for item in records if item["split"] == split) for split in ("train", "val", "test")}
-    manifest = {"schemaVersion": 1, "datasetId": "GOKKALKAN-TARGETS-WORKING", "generatedAt": datetime.now(timezone.utc).isoformat(), "status": "SYNTHETIC_SMOKE_ONLY" if not any(item["sourceKind"] == "real-capture" for item in records) else "REAL_CAPTURE_MIXED_UNVERIFIED", "trainingAuthorized": counts["val"] > 0 and counts["test"] > 0 and not review, "classes": classes, "counts": counts, "records": records, "reviewQueue": review, "inputs": inputs, "warnings": ["Sentetik veri fiziksel kabul kanıtı değildir.", "Sentetik val aynı temel maketlerden türediği için yalnız pipeline smoke-validation'dır.", "Validation/test gerçek capture session grupları oluşmadan model release adayı değildir.", "AUTO_REVIEW_REQUIRED gerçek etiketler insan incelemesi olmadan release kabulüne girmez."]}
+    manifest = {"schemaVersion": 1, "datasetId": "GOKKALKAN-TARGETS-WORKING", "generatedAt": datetime.now(UTC).isoformat(), "status": "SYNTHETIC_SMOKE_ONLY" if not any(item["sourceKind"] == "real-capture" for item in records) else "REAL_CAPTURE_MIXED_UNVERIFIED", "trainingAuthorized": counts["val"] > 0 and counts["test"] > 0 and not review, "classes": classes, "counts": counts, "records": records, "reviewQueue": review, "inputs": inputs, "warnings": ["Sentetik veri fiziksel kabul kanıtı değildir.", "Sentetik val aynı temel maketlerden türediği için yalnız pipeline smoke-validation'dır.", "Validation/test gerçek capture session grupları oluşmadan model release adayı değildir.", "AUTO_REVIEW_REQUIRED gerçek etiketler insan incelemesi olmadan release kabulüne girmez."]}
     atomic_json(output / "dataset-manifest.json", manifest)
     return manifest
 
@@ -385,6 +508,11 @@ def build_parser() -> argparse.ArgumentParser:
     prep.add_argument("--drop", type=Path, default=DEFAULT_DROP)
     prep.add_argument("--store", type=Path, default=DEFAULT_STORE)
     prep.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    cad = sub.add_parser(
+        "ingest-cad", help="BlenderProc batch'lerini araştırma YOLO verisine dönüştür"
+    )
+    cad.add_argument("--batch-root", type=Path, default=DEFAULT_CAD_BATCH_ROOT)
+    cad.add_argument("--output", type=Path, default=DEFAULT_CAD_OUTPUT)
     return parser
 
 
@@ -393,8 +521,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "pull-captures":
             result = pull_captures(args.source, args.store, args.config)
-        else:
+        elif args.command == "prepare":
             result = prepare(args.config, args.asset_manifest, args.drop, args.store, args.output)
+        else:
+            result = ingest_cad_render_batches(
+                batch_root=args.batch_root,
+                output=args.output,
+                config_path=args.config,
+            )
     except PipelineError as exc:
         print(json.dumps({"status": "ERROR", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2

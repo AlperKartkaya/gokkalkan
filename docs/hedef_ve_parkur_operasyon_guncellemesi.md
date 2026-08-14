@@ -33,28 +33,27 @@ Kaynak görseller:
 - Maketler kamera kesitini büyütmek için burunları hafif aşağı eğimli
   yerleştirilecektir. Kamera ve hedef referans merkezi aynı yükseklikte kabul
   edilir; üst yüzey görünümü kamera yüksekliğinden değil bu burun eğiminden gelir.
-  Kesin açı bildirilmediğinden araştırma veri seti `0/4/8/12/16/20/24/28°`
-  bucket'larını kullanır. Bucket ve jitter sonrası gerçek açı ayrı tutulduğu için
-  komitenin daha sonra bildireceği aralık mevcut veriden tahribatsız seçilebilir.
-- Hedef yaw görünümü simetrik sağ/sol açıları kapsamalıdır; yalnız tam karşıdan
-  görünüşe eğitim yapılmamalıdır.
+  Kesin açı bildirilmediğinden araştırma veri seti
+  `4/6/8/10/12/14/16/18/20/24/28°` bucket'larını ve `±0.5°` jitter kullanır.
+  Gerçek açı ayrı tutulduğu için komitenin daha sonra bildireceği aralık mevcut
+  veriden tahribatsız seçilebilir.
+- Hedef yaw'ı bağımsız varsayılmaz. Rota 1/3 için enlemesine `2.75/2.87/3.00 m`,
+  Rota 2 için `0 m`; boylamasına `3–17 m` alınır ve
+  `viewYawDeg = atan2(enlemesine, boylamasına)` ile hesaplanır.
 
-### 1.1. Yaklaşık maket boyutları
+### 1.1. Kesin CAD/maket boyutları
 
-| Sunum sınıfı | Yaklaşık boyut | Kanonik varlık |
-| --- | --- | --- |
-| Düşman Drone | 30 cm | `dusman_drone_kirmizi_siyah_arka_plan.png` |
-| Düşman Helikopter | 50 cm | `dusman_helikopter_kirmizi_siyah_arka_plan.png` |
-| Düşman F16 | 50 cm | `dusman_f16_kirmizi_siyah_arka_plan.png` |
-| Düşman Füze | tabloda boy 40 cm | `dusman_fuze_kirmizi_siyah_arka_plan.png` |
-| Dost Helikopter | 50 cm | `dost_helikopter_camgobegi_siyah_arka_plan.png` |
-| Dost F16 | 50 cm | `dost_f16_camgobegi_siyah_arka_plan.png` |
+Bilgilendirme görselindeki değerler yaklaşık, `Modeller.3mf` içindeki mesh
+ölçüleri ise bu çalışma için kesin üretim sözleşmesidir.
 
-Bilgilendirme metnindeki “drone 30 cm, diğer hedefler 50 cm” genellemesi ile
-son eklenen tablodaki “füze boyu 40 cm” arasında ayrıntı farkı vardır. Veri
-manifestinde daha özgül ve daha yeni tablo değeri `40 cm` tutulur; imalat/baskı
-öncesinde organizasyon kaynağıyla tekrar doğrulanır. Tüm değerler yaklaşık ve
- değişebilir.
+| Nesne | Kesin 3MF boyutu (mm) | En uzun eksen |
+| --- | --- | ---: |
+| Drone | `287.452 × 374.986 × 195.076` | `374.986 mm` |
+| Helikopter | `392.467 × 582.673 × 178.363` | `582.673 mm` |
+| F16 | `300.403 × 500.000 × 139.258` | `500.000 mm` |
+| Füze | `105.132 × 218.899 × 500.000` | `500.000 mm` |
+
+Sentetik varlık manifesti bu ölçüleri `VERIFIED`, ölçek katsayısını `1.0` tutar.
 
 ## 2. Parkur ve yükseklikler
 
@@ -90,7 +89,7 @@ manifestinde daha özgül ve daha yeni tablo değeri `40 cm` tutulur; imalat/bas
 
 ## 4. Açık fiziksel kabul kapıları
 
-- Maketlerin gerçek baskı ölçüsü, malzemesi, matlık/parlama davranışı ve eğim açısı.
+- 3MF'de doğrulanan maket ölçülerinin baskı toleransı; gerçek malzeme, matlık/parlama davranışı ve yarışma yerleşim eğimi.
 - Balon merkezinin makete göre piksel/geometrik ofset dağılımı.
 - Camera Module 3 gerçek intrinsics/extrinsics ve 5/10/15 m piksel boyutları.
 - Taret pan/tilt kesin yarışma limitleri ve mekanik limit anahtarı doğrulaması.

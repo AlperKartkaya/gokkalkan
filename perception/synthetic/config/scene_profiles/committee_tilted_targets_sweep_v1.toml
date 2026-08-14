@@ -1,31 +1,29 @@
-profileId = "COMMITTEE_TILTED_TARGETS_SWEEP_V1"
-status = "RESEARCH_SWEEP_FILTERABLE_BY_ANGLE"
+profileId = "COMMITTEE_ROUTE_GEOMETRY_TILT_SWEEP_V2"
+status = "SYNTHETIC_ROUTE_GEOMETRY_LOCKED"
 
-# Kamera-merkezli dünya çerçevesi: +X görüntü sağı, +Y ileri, +Z yukarı.
+# Kamera-merkezli dünya: +X görüntü sağı, +Y boylamasına ileri, +Z yukarı.
 worldFrame = "CAMERA_CENTRIC_X_RIGHT_Y_FORWARD_Z_UP"
 cameraPositionM = [0.0, 0.0, 1.30]
 targetReferenceHeightM = 1.30
 
-# distanceM kamera ile hedef referans noktası arasındaki Öklid mesafesidir.
-distanceAnchorsM = [5.0, 10.0, 15.0]
-anchorSampleRatio = 0.70
-continuousDistanceRangeM = [5.0, 15.0]
-continuousSampleRatio = 0.30
+# Rota geometrisi: Rota 2 merkezde; Rota 1/3 simetrik yan kollardır.
+longitudinalDistanceBucketsM = [3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0]
+centerRouteLateralDistanceM = 0.0
+sideRouteLateralDistanceBucketsM = [2.75, 2.87, 3.0]
+longitudinalDistanceJitterM = 0.0
+lateralDistanceJitterM = 0.0
 
-# X/Z konum çeşitliliği pozdan bağımsızdır; Y, distanceM korunarak hesaplanır.
-lateralOffsetBucketsM = [-0.75, -0.35, 0.0, 0.35, 0.75]
-lateralOffsetJitterM = 0.08
-verticalOffsetBucketsM = [-0.25, 0.0, 0.25]
-verticalOffsetJitterM = 0.05
+# viewYawDeg bağımsız örneklenmez: atan2(signedLateralM, longitudinalM).
+yawComputation = "ATAN2_SIGNED_LATERAL_OVER_LONGITUDINAL"
 
-# 0° Bambu Studio Front görünüşüdür. Sağ/sol görünüş simetriktir.
-viewYawBucketsDeg = [-25.0, -15.0, -5.0, 0.0, 5.0, 15.0, 25.0]
-viewYawJitterDeg = 2.0
+# 0° Bambu Front referansıdır; pozitif açı burunu aşağı indirip Top katkısı ekler.
+topSurfaceViewBucketsDeg = [4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0]
+topSurfaceViewJitterDeg = 0.5
 
-# Pozitif açı burunu aşağı indirir ve Front görünüşe Top katkısı ekler.
-# Dış bucket'lar belirsizliği kapsar; her kayıt bucket ve gerçek açıyı ayrı taşır.
-topSurfaceViewBucketsDeg = [0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0]
-topSurfaceViewJitterDeg = 1.0
-nominalResearchRangeDeg = [8.0, 20.0]
+# Kamera/hedef merkezi aynı yüksekliktedir; fiziksel kamera kalibrasyonu bu turda yoktur.
+verticalOffsetM = 0.0
+cameraElevationOffsetDeg = 0.0
 
-cameraElevationOffsetDeg = [-1.0, 1.0]
+# Görünüm profilleri tam Kartezyen çarpan değildir; pozlara deterministik ve dengeli atanır.
+appearanceProfileIds = ["nominal", "slightly_faded", "dim_environment", "bright_environment"]
+appearanceWeights = [0.40, 0.20, 0.20, 0.20]

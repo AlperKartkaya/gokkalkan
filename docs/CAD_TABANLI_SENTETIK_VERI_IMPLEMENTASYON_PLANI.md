@@ -6,14 +6,16 @@
 > **Kapsam:** `Modeller.3mf` → gerçekçi sentetik görüntü → zoom/degradasyon → araştırma modeli → gerçek veriyle sim-to-real → ONNX/HEF
 > **Güvenlik sınırı:** Sentetik başarı fiziksel kabul veya atış yetkisi değildir. Backend Safety Gate bütün aşamalarda nihai yetki kapısıdır.
 
-> **Uygulama ilerlemesi — 14 Ağustos 2026:** FAZ 0, FAZ 1 ve FAZ 2 tamamlandı.
-> Bambu Studio `Front` koordinat sözleşmesi kodlandı; 15.120 kayıtlık açı/X/Y/Z
-> render planı üretildi ve sonradan açı aralığı seçebilen tahribatsız filtre doğrulandı.
-> Dört varlık için LOD0/1/2 üretildi; altı görünüşte LOD2 siluet IoU `≥0.98` ve
-> bbox farkı `≤2 px` kapısı geçti. BlenderProc RGB/depth/instance/semantic smoke
-> renderı yerelde çalıştı. Üretim ölçeğini kesinleştiren
-> [`AR-03`](../perception/synthetic/ACTION_REQUIRED_AR_03.md) girdisinde duruldu.
-
+> **Uygulama ilerlemesi — 14 Ağustos 2026:** FAZ 0–5'in CAD tabanlı çekirdeği,
+> FAZ 8'in araştırma-dataset ingest'i, FAZ 9'un `378` kayıtlık pilot seçici/yeniden
+> başlatılabilir renderer'ı ve FAZ 10'un fail-back zoom durum makinesi tamamlandı.
+> `Modeller.3mf` içindeki gerçek ölçüler `1.0` ölçekle kilitlendi. Bağımsız yaw
+> bucket'ları kaldırıldı; Rota 1/2/3 görünüş açıları boylamasına ve enlemesine
+> uzaklıktan `atan2` ile türetiliyor. `3–17 m`, yedi rota konumu ve on bir eğim
+> bucket'ı için toplam `6.930` kayıtlık plan üretilebilir. LOD0/1/2 doğrulaması ve
+> BlenderProc RGB/depth/instance/semantic smoke renderı yerelde çalışıyor.
+> Fiziksel kamera ve gerçek hedef işleri bu CAD/sentetik fazının blocker'ı değildir;
+> sonraki zorunlu kabul sınırı yalnız AR-09 ve AR-10'dur.
 ---
 
 ## 1. Bu planın kesinleştirdiği kararlar
@@ -32,53 +34,62 @@
 
 ### 1.2. Geometri ve görüş sözleşmesi
 
-Bambu Studio eksen göstergesi bu iş için bağlayıcı sunum çerçevesidir:
+Bambu Studio sunum çerçevesi korunur: `Front` kamera yönü kaynak `-Y`, ekran
+sağı `+X`, ekran yukarısı `+Z`'dir. Kamera-merkezli dünyada kamera
+`[0, 0, 1.30] m`, hedef referans merkezi `1.30 m` yüksekliğindedir.
 
-- Bambu `Front`: kamera kaynak modelin `-Y` tarafındadır.
-- Ekran sağı: kaynak `+X`; ekran yukarısı: kaynak `+Z`.
-- Kamera-merkezli dünya: `+X = görüntü sağı`, `+Y = ileri`, `+Z = yukarı`.
-- Kamera konumu `[0, 0, 1.30] m`; hedef referans yüksekliği `1.30 m`.
-- Nominal `0°` poz tam `Front` görünüşüdür.
-- Pozitif `topSurfaceViewDeg`, hedefi `+X` çevresinde döndürür; burun aşağı iner ve
-  `Front` görünüşe kontrollü `Top` katkısı eklenir.
-- Sağ/sol görünüş `viewYawDeg` ile dünya `+Z` çevresinde simetrik üretilir.
-
-Her hedef dönüşü açıkça şu matrisle hesaplanır:
+Hedefin fiziksel dönüşü yalnız burun eğimidir:
 
 ```text
-R_target = Rz(viewYawDeg) · Rx(topSurfaceViewDeg)
+R_target = Rx(topSurfaceViewDeg)
 ```
 
-Hedef konumu gerçek kamera mesafesini korur. Kamera yüksekliğine göre göreli
-X/Z ofsetleri `x` ve `z`, kamera-hedef mesafesi `d` ise:
+Sağ/sol görünüş için hedefe ikinci kez yaw rotasyonu uygulanmaz. Rota geometrisi
+bu görünüşü zaten oluşturur:
 
 ```text
-targetPositionM = [x, sqrt(d² - x² - z²), 1.30 + z]
+x = signedLateralDistanceM
+y = longitudinalDistanceM
+viewYawDeg = degrees(atan2(x, y))
+targetPositionM = [x, y, 1.30]
+distanceM = sqrt(x² + y²)
 ```
 
-Örnekleme sözleşmesi:
+- Rota 1: `x = +2.75 / +2.87 / +3.00 m`;
+- Rota 2: `x = 0 m`, dolayısıyla her mesafede `viewYawDeg = 0°`;
+- Rota 3: `x = -2.75 / -2.87 / -3.00 m`.
 
-- `topSurfaceViewBucketDeg`: `0, 4, 8, 12, 16, 20, 24, 28°`;
-- gerçek `topSurfaceViewDeg`: bucket çevresinde en fazla `±1°`, negatifse `0°`ye kırpılır;
-- `viewYawBucketDeg`: `-25, -15, -5, 0, 5, 15, 25°`;
-- gerçek `viewYawDeg`: bucket çevresinde en fazla `±2°`;
-- X bucket'ları: `-0.75, -0.35, 0, 0.35, 0.75 m` ve `±0.08 m` jitter;
-- Z bucket'ları: `-0.25, 0, 0.25 m` ve `±0.05 m` jitter;
-- mesafe: `5, 10, 15 m` anchor'ları ve sonraki üretimde `5–15 m` sürekli örnekler.
+İşaret, görüntünün sağ/sol tarafını; açı büyüklüğü hedefin ne kadar yandan
+izlendiğini gösterir. Aynı yan ofsette boylamasına mesafe arttıkça mutlak yaw
+monoton azalır. En uç örnek `3 m / 3 m` için `±45°`'dir.
 
-Her kayıt hem bucket değerini hem gerçek sayısal değeri taşır. Komite daha sonra
-örneğin `10–16°` derse renderlar silinmez; `filter_render_plan.py` yalnız bu gerçek
-aralığa uyan kayıt kimliklerini seçer. Böylece karar değişikliği yeniden render
-zorunluluğu veya hatalı açıların elle ayıklanması doğurmaz.
+Burun eğimi bucket'ları `4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28°`'dir. Gerçek
+`topSurfaceViewDeg`, bucket çevresinde `±0.5°` jitter taşır. Mesafe ve enlemesine
+ofset değerleri komitenin parkur varsayımını doğrudan temsil ettiği için bu
+sürümde konumsal jitter `0`'dır. Her kayıt route, bucket ve gerçek sayısal
+alanları ayrı taşır; kesin eğim sonradan bildirilirse renderlar
+`filter_render_plan.py` ile tahribatsız seçilir.
 
-### 1.3. Mesafe örneklemesi
+### 1.3. Rota ve mesafe örneklemesi
 
-- Yarışma anchor'ları: tam `5.0 m`, `10.0 m`, `15.0 m`.
-- Ana renderların `%70`i bu üç anchor arasında dengeli dağıtılacak.
-- Ana renderların `%30`u `5.0–15.0 m` sürekli uniform örneklenecek.
-- Test/rapor bucket'ları her zaman ayrı `5 m`, `10 m`, `15 m` olarak gösterilecek.
-- Aynı hedefin mesafe, yaw, eğim, ışık ve zoom türevleri aynı `worldId` altında
-  kalacak; split sızıntısı olmayacak.
+- Boylamasına uzaklıklar: `3, 4, 5, …, 17 m`.
+- Rota 1/3 enlemesine uzaklıkları: `2.75, 2.87, 3.00 m`.
+- Rota 2 merkez ofseti: `0 m`.
+- Kamera-hedef gerçek menzili `hypot(longitudinal, lateral)` olarak metadata'ya yazılır.
+- Yaw bağımsız bir çarpan değildir; her rota konumu için matematiksel olarak türetilir.
+- Aynı pozun görünüm varyantı deterministik atanır: nominal `%40`, hafif soluk
+  `%20`, karanlık ortam `%20`, aydınlık ortam `%20`.
+- `worldId/groupId` split'ten önce üretilir; aynı dünyanın türevleri train/val/test
+  arasında bölünmez.
+
+Toplam temel poz sayısı:
+
+```text
+6 sunum sınıfı × 15 boylamasına mesafe × 7 rota konumu × 11 eğim = 6.930
+```
+
+Renk/aydınlık görünüm profilleri tam Kartezyen çarpan değildir; bu 6.930 poza
+oranlı ve deterministik atanır. Böylece gereksiz dört kat render artışı önlenir.
 
 ### 1.4. Zoom ve çözünürlük kaybı
 
@@ -138,105 +149,21 @@ split'ini hiçbir zaman dolduramaz.
 
 ## 2. ACTION REQUIRED blocker sözleşmesi
 
-İmplementasyon sırasında ajan şu kurala göre çalışacak:
+CAD ingest, LOD, sentetik poz, materyal, render, zoom ve eğitim araştırması fiziksel
+kamera beklenmeden sürdürülebilir. Fiziksel kamera kalibrasyonu, boş arka plan,
+zoom eşlemesi, imalat ve boya ölçümü bu fazın blocker'ı değildir; gerçek veri
+fazına ertelenmiştir.
 
-1. Bulunduğu fazdaki otomatik ve bağımsız işleri tamamlar.
-2. Sonraki gerekli iş aşağıdaki blocker'lardan birine bağlıysa `ACTION REQUIRED`
-   başlığıyla gereken girdiyi ve beklenen dosyayı bildirir.
-3. Blocker'ı geçmiş gibi işaretlemez; fiziksel/manuel kanıt gelene kadar durur.
-4. Kullanıcı çıktıyı repoya eklediğinde veya yolu verdiğinde hash/format kontrolü
-   yapar ve kaldığı fazdan devam eder.
-5. Blocker yalnız sonraki bağımlı fazı durduruyorsa diğer bağımsız test/doküman
-   işleri sürdürülebilir.
+### AR-09 — Gerçek hedef oturumları (CAD/sentetik işler bittikten sonra)
 
-### AR-03 — Fiziksel hedef boyutları
+**Ne zaman durulur:** Gerçek veri fine-tuning'i ve release metriği öncesi.
+**Kullanıcı aksiyonu:** Gerçek hedefleri ayrı gün/ışık oturumlarında; rota,
+mesafe, burun eğimi, zoomsuz/zoomlu ve hareketli biçimde kaydet. Aynı oturumu
+train ve test için bölme.
 
-**Ne zaman durulur:** Ölçek manifesti `provisional` durumundan çıkarılmadan önce.
-**Kullanıcı aksiyonu:** Komitenin/imalatın son ölçüsünü onayla veya gerçek baskıyı
-ölç. Başlangıçta kullanılacak değerler:
-
-- Drone: `300 mm`;
-- Füze: `400 mm`;
-- Helikopter: `500 mm`;
-- F16: `500 mm`.
-
-**Beklenen çıktı:** Dört hedef için üretimde kullanılacak en uzun eksen ölçüsünün
-milimetre cinsinden yazılı onayı. Fotoğraf veya ayrı kanıt yalnız ölçü belirsizse gerekir.
-**Blokladığı iş:** `cad_asset_manifest.json` durumunun `VERIFIED_SCALE` olması ve
-calibrated dataset üretimi.
-**Bloklamadığı iş:** Yukarıdaki değerlerle `PROVISIONAL_SCALE` araştırma renderı.
-
-### AR-05 — Camera Module 3 kalibrasyonu
-
-**Ne zaman durulur:** Kamera-doğrulu render ve hibrit dataset öncesi.
-**Kullanıcı aksiyonu:** Gerçek Pi 5 + Camera Module 3 Standard ile sağlanacak
-çekim scriptini çalıştır:
-
-- checkerboard görüntüleri;
-- kullanılacak `1280×720 @ 30 FPS` video modu;
-- sabit/otomatik focus, exposure, gain ve AWB metadata'sı;
-- kamera taret üzerinde son yerine takılıyken boresight/extrinsic ölçümü.
-
-**Beklenen çıktı:** Hash'li calibration oturumu ve `K`, distortion, çözünürlük,
-focus/exposure profili.
-**Blokladığı iş:** `camera_calibrated_v1` renderı ve lens-distortion eşleşmesi.
-**Bloklamadığı iş:** Provisional pinhole/PBR/DR araştırma renderı.
-
-### AR-06 — Boş arka plan kayıtları
-
-**Ne zaman durulur:** Hibrit dataset üretiminden önce.
-**Kullanıcı aksiyonu:** Sağlanacak capture komutuyla Camera Module 3 üzerinden:
-
-- siyah perde/duvar;
-- zemin, ray, stand, kablo ve güvenlik bariyeri;
-- farklı ışık/exposure;
-- hareketli mekanizma ama hedefsiz sahne;
-- kırmızı/camgöbeği ilgisiz nesne hard-negative;
-- lens kapalı dark-frame
-
-oturumlarını kaydet.
-
-**Beklenen çıktı:** Her oturumda benzersiz `sessionId`, ortam/ışık metadata'sı ve
-video/kare hash'leri.
-**Blokladığı iş:** `synthetic_cad_hybrid`.
-**Bloklamadığı iş:** Saf PBR ve domain-randomized render.
-
-### AR-07 — Zoom davranışı için gerçek kamera örneği
-
-**Ne zaman durulur:** Runtime zoom yöntemi kilitlenmeden önce.
-**Kullanıcı aksiyonu:** Aynı durağan sahneyi ve aynı hedef/kalibrasyon levhasını:
-
-- zoomsuz `1280×720`;
-- Picamera2 `ScalerCrop` ile `1.5×` ve `2.0×`;
-- zoomsuz kareden yazılım crop ile `1.5×` ve `2.0×`
-
-kaydet. Kamera focus/exposure metadata'sını koru.
-
-**Beklenen çıktı:** Aynı `sceneId` altında eşleştirilmiş zoom örnekleri.
-**Blokladığı iş:** `sensor_roi` ile `application_crop` arasındaki runtime seçimi.
-**Bloklamadığı iş:** Her iki yöntemin sentetik üretimi ve yazılım ablation'ı.
-
-### AR-08 — Renk ve malzeme karakterizasyonu
-
-**Ne zaman durulur:** Kamera-kalibre materyal profili öncesi.
-**Kullanıcı aksiyonu:** Gerçek baskı/paint sample geldiğinde kırmızı ve camgöbeği
-numuneyi Camera Module 3 ile en az üç ışıkta, bir renk referansı yanında çek.
-
-**Beklenen çıktı:** `material_sessionId`, kullanılan boya/filament, mat/parlak
-bilgisi ve ham görüntüler.
-**Blokladığı iş:** `material_camera_measured_v1`.
-**Bloklamadığı iş:** Nominal `#F50A0A`/`#00A3E0` dar randomization profili.
-
-### AR-09 — Gerçek hedef oturumları
-
-**Ne zaman durulur:** Fine-tuning ve release metriği öncesi.
-**Kullanıcı aksiyonu:** Gerçek hedefleri ayrı gün/ışık oturumlarında; `5/10/15 m`,
-sağ/sol yaw, nominal/min/max burun eğimi, zoomsuz/zoomlu ve hareketli biçimde
-çek. Aynı oturumu train ve test için bölme.
-
-**Beklenen çıktı:** Session bazlı ham veri + insan gözünden geçirilmiş annotation.
+**Beklenen çıktı:** Session bazlı ham veri ve insan gözünden geçirilmiş annotation.
 **Blokladığı iş:** Real-only validation/test, releaseCandidate ve fiziksel model kabulü.
-**Bloklamadığı iş:** Araştırma eğitimi, replay ve deployment smoke.
+**Bloklamadığı iş:** CAD/sentetik araştırma eğitimi, replay ve deployment smoke.
 
 ### AR-10 — Hailo donanımı ve dönüşüm ortamı
 
@@ -247,8 +174,6 @@ compiler ortamını erişilebilir kıl.
 **Beklenen çıktı:** Cihaz/SDK sürümü, model/HEF hash'i ve ölçüm logları.
 **Blokladığı iş:** HEF/Pi canlı kabulü ve soak.
 **Bloklamadığı iş:** ONNX export ve mock runner testleri.
-
----
 
 ## 3. Fazlar ve uygulanma sırası
 
@@ -359,12 +284,12 @@ manuel eksen onayı beklenmeden FAZ 2'ye geçildi.
 
 ### İlk ölçek katsayıları
 
-| Varlık | Katsayı | Durum |
-| --- | ---: | --- |
-| F16 | `1.000` | provisional/uyumlu |
-| Helikopter | `0.858` | provisional |
-| Drone | `0.800` | provisional |
-| Füze | `0.800` | provisional |
+| Varlık | 3MF mesh boyutu (mm) | En uzun eksen | Katsayı | Durum |
+| --- | --- | ---: | ---: | --- |
+| F16 | `300.403 × 500.000 × 139.258` | `500.000 mm` | `1.000` | doğrulandı |
+| Helikopter | `392.467 × 582.673 × 178.363` | `582.673 mm` | `1.000` | doğrulandı |
+| Drone | `287.452 × 374.986 × 195.076` | `374.986 mm` | `1.000` | doğrulandı |
+| Füze | `105.132 × 218.899 × 500.000` | `500.000 mm` | `1.000` | doğrulandı |
 
 ### Kabul kuralı
 
@@ -389,8 +314,7 @@ npm run dataset:cad:validate
 
 ### Blocker
 
-`AR-03` gelene kadar durum `PROVISIONAL_SCALE` kalır. Kod ve smoke render çalışır;
-ölçüye bağlı production dataset başlatılmaz.
+Yok. Bu fazda `Modeller.3mf` ölçüleri üretim gerçeği olarak kabul edilmiştir.
 
 ---
 
@@ -400,19 +324,21 @@ npm run dataset:cad:validate
 
 ### Yapılacaklar
 
-- [ ] `perception/synthetic/tools/render_dataset.py` ilk sürümünü oluştur.
+- [x] `perception/synthetic/tools/render_dataset.py` ile plan kaydını kimlik/indeks üzerinden render et.
 - [x] F16 kırmızı ile çalışan ilk BlenderProc smoke renderını üret; camgöbeği ve tam matris sonraki turda genişletilecek.
-- [ ] Aynı yükseklik, `5/10/15 m`, yedi yaw bucket ve `0/4/8/12/16/20/24/28°`
-  `topSurfaceViewDeg` uygula.
+- [x] Aynı yükseklikte `3–17 m`, yedi rota konumu ve
+  `4/6/8/10/12/14/16/18/20/24/28°` `topSurfaceViewDeg` uygula; yaw'ı `atan2`
+  ile rota geometrisinden türet.
 - [x] Siyah arka plan, nötr zemin ve iki alan ışıklı PBR smoke sahnesi kullan.
 - [x] RGB, instance mask, semantic mask, depth ve kayıt metadata’sı üret; bbox validator tam batch renderer ile eklenecek.
-- [ ] Aynı seed'in byte-identical metadata ve aynı annotation üretmesini test et.
-- [ ] Contact sheet'i mesafe × yaw × eğim matrisi halinde üret.
+- [x] Aynı seed ve dünya anahtarının tam/filtreli üretimde aynı metadata vermesini test et.
+- [ ] Tam pilot render tamamlanınca contact sheet'i mesafe × rota-türetilmiş yaw ×
+  eğim matrisi halinde üret.
 
 ### Planlanan F16 matris hacmi
 
 ```text
-2 materyal × 3 mesafe × 5 X × 3 Z × 7 yaw × 8 eğim = 5.040 kayıt
+2 sunum sınıfı × 15 boylamasına mesafe × 7 rota konumu × 11 eğim = 2.310 kayıt
 ```
 
 Bu fazda zoom yoktur. Amaç renderer/annotation/geometriyi ayırarak doğrulamaktır.
@@ -421,7 +347,7 @@ Bu fazda zoom yoktur. Amaç renderer/annotation/geometriyi ayırarak doğrulamak
 
 ```bash
 npm run dataset:cad:render:smoke
-npm run dataset:cad:validate -- \
+npm run dataset:cad:validate:batch -- \
   --batch perception/synthetic/generated/render_batches/smoke
 ```
 
@@ -442,15 +368,15 @@ npm run dataset:cad:validate -- \
 
 ### Yapılacaklar
 
-- [ ] Drone, Helikopter, F16 ve Füze geometrilerini ekle.
-- [ ] Helikopter/F16 için kırmızı düşman ve camgöbeği dost materyali üret.
-- [ ] Drone/Füze için yalnız izin verilen kırmızı presentation class'ları kullan.
-- [ ] `12–16 cm` procedural kırmızı balon üret.
-- [ ] Balonu `targetInstanceId` ile tam bir makete bağla.
+- [x] Drone, Helikopter, F16 ve Füze geometrilerini ortak plan/renderer hattına ekle.
+- [x] Helikopter/F16 için kırmızı düşman ve camgöbeği dost materyali üret.
+- [x] Drone/Füze için yalnız izin verilen kırmızı presentation class'ları kullan.
+- [x] `12–16 cm` sözleşmeli procedural kırmızı balonu renderer smoke sahnesine ekle.
+- [x] Balonu `targetInstanceId` ile tam bir makete bağla.
 - [ ] Hedef standı, ip, ray, siyah duvar/perde, zemin ve bariyer ekle.
 - [ ] Aşama 1/2/3 sahne üreticilerini ayrı profiller yap.
 - [ ] Occlusion/truncation oranını metadata'ya ekle.
-- [ ] Dost hedef altındaki kırmızı balonun ateş adayı olmadığını ground-truth
+- [x] Dost hedef altındaki kırmızı balonun ateş adayı olmadığını ground-truth
   ilişki kaydında açıkça tut.
 
 ### Geometri profili
@@ -458,10 +384,12 @@ npm run dataset:cad:validate -- \
 ```toml
 cameraHeightM = 1.30
 targetReferenceHeightM = 1.30
-cameraElevationOffsetDeg = [-1.0, 1.0]
-viewYawBucketsDeg = [-25, -15, -5, 0, 5, 15, 25]
-topSurfaceViewBucketsDeg = [0, 4, 8, 12, 16, 20, 24, 28]
-distanceAnchorsM = [5, 10, 15]
+longitudinalDistanceBucketsM = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+centerRouteLateralDistanceM = 0.0
+sideRouteLateralDistanceBucketsM = [2.75, 2.87, 3.0]
+yawComputation = "ATAN2_SIGNED_LATERAL_OVER_LONGITUDINAL"
+topSurfaceViewBucketsDeg = [4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28]
+topSurfaceViewJitterDeg = 0.5
 ```
 
 ### Doğrulama
@@ -486,21 +414,21 @@ filtrelenir; yalnız aralık dışında eksik bucket kalırsa ek render üretili
 
 ## FAZ 5 — Zoom, çözünürlük kaybı ve kamera kusurları
 
-**Amaç:** 5–15 m hedeflerinde dijital zoom'un gerçek faydasını/zararını ölçmek.
+**Amaç:** 3–17 m sentetik örnekleme aralığında dijital zoom'un gerçek faydasını/zararını ölçmek; 5–15 m şartname aralığını ayrıca raporlamak.
 
 ### Yapılacaklar
 
-- [ ] `perception/synthetic/tools/apply_camera_pipeline.py` oluştur.
-- [ ] `sensor_roi` ve `application_crop` yollarını ayrı fonksiyonlar yap.
-- [ ] `1.0×`, `1.5×`, `2.0×`; hard-case için `3.0×` üret.
+- [x] `perception/synthetic/tools/apply_camera_pipeline.py` oluştur.
+- [x] `sensor_roi` ve `application_crop` yollarını işlem sırası farklı ayrı fonksiyonlar yap.
+- [x] `1.0×`, `1.5×`, `2.0×`; hard-case için `3.0×` sözleşmesini uygula.
 - [ ] PoC/pilot renderı `2304×1296`, kamera-doğruluk alt kümesini daha sonra
   `4608×2592` üret.
-- [ ] Runtime ara karesini `1280×720`, model girdisini `640×640` yap.
-- [ ] Crop merkezi hatası, takip gecikmesi, kısmi target crop ekle.
-- [ ] Blur, noise, JPEG/H.264 benzeri sıkıştırma ve sharpening profillerini zoom
-  işleminden sonra uygula.
-- [ ] Her base world ve zoom türevini aynı `worldId/groupId/split` içinde tut.
-- [ ] Zoomsuz arama + track sonrası ROI zoom stratejisini replay için yapılandır.
+- [x] Runtime ara karesini `1280×720`, model girdisi metadata'sını `640×640` yap.
+- [x] Crop merkezi hatası, bir kare gecikmeli merkez ve kısmi target crop desteği ekle.
+- [x] Blur, deterministik noise ve JPEG sıkıştırmasını zoom işleminden sonra uygula;
+  H.264/sharpening sonraki araştırma varyantıdır.
+- [x] Her base world ve zoom türevini aynı `worldId/groupId/split` içinde tut.
+- [x] Zoomsuz arama + kararlı track sonrası ROI zoom + kayıpta fail-back state machine'ini uygula.
 
 ### Kesin runtime başlangıç politikası
 
@@ -527,7 +455,7 @@ Her mesafe × yaw × eğim × zoom hücresinde:
 - Annotation crop/resize sonrasında doğru dönüştürülüyor.
 - Zoom varyantları split sızıntısı oluşturmuyor.
 - 15 m için zoomsuz, 1.5× ve 2.0× ayrı raporlanıyor.
-- Runtime yöntemi `AR-07` ve gerçek kamera kıyası gelene kadar kilitlenmiyor.
+- Runtime yöntemi sentetik ablation ile araştırılır; fiziksel runtime seçimi gerçek veri fazında kilitlenir.
 
 ---
 
@@ -547,10 +475,10 @@ Her mesafe × yaw × eğim × zoom hücresinde:
 - [ ] `UNVERIFIED` profilin production render üretmesini engelle.
 - [ ] BlenderProc K-matrix ve lens-distortion hattını gerçek profil ile besle.
 
-### Zorunlu durak
+### Faz sınırı
 
-`AR-05` ve `AR-07` olmadan bu fazın fiziksel kabul kısmı tamamlanmış sayılmaz.
-Ajan script/testleri tamamladıktan sonra gerçek çekimleri bekler.
+Bu faz CAD/sentetik implementasyonundan sonra ele alınır. Şimdilik blocker değildir;
+fiziksel kamera geldiğinde araçlar ve kabul metrikleri gerçek oturumla doğrulanır.
 
 ### Doğrulama
 
@@ -580,9 +508,9 @@ Ajan script/testleri tamamladıktan sonra gerçek çekimleri bekler.
 - [ ] Hard-negative kayıtları hedefsiz tut; yanlışlıkla annotation üretme.
 - [ ] Background kimliği ile sınıf arasında korelasyon denetimi ekle.
 
-### Zorunlu durak
+### Ertelenmiş fiziksel faz sınırı
 
-Scriptler hazır olduğunda `AR-06` kayıtları beklenir.
+Bu faz CAD/sentetik implementasyonundan sonra gerçek kamera erişimiyle yürütülür.
 
 ### Çıkış kapısı
 
@@ -598,19 +526,19 @@ Scriptler hazır olduğunda `AR-06` kayıtları beklenir.
 
 ### Yapılacaklar
 
-- [ ] `perception/tools/dataset_pipeline.py` içine render-manifest ingest ekle.
-- [ ] Mevcut `synthetic_seed_2d` üretimini smoke amaçlı koru.
-- [ ] CAD config'i mevcut `perception/dataset/config.json` içine sessizce
-  sıkıştırma; ayrı `perception/synthetic/config/render.toml` kullan.
-- [ ] CAD kayıtlarında `worldId` tabanlı stable split uygula.
-- [ ] Sentetik CAD için yalnız train/val üret; gerçek test'i sentetikle doldurma.
-- [ ] `trainingAuthorized` hesabını şu koşullara bağla:
+- [x] `perception/tools/dataset_pipeline.py` içine HDF5 render batch ingest ekle.
+- [x] Mevcut `synthetic_seed_2d` üretimini smoke amaçlı koru.
+- [x] CAD geometri/materyal profillerini `perception/synthetic/config/` altında ayrı tut.
+- [x] CAD kayıtlarında `worldId` tabanlı stable split uygula.
+- [x] Sentetik CAD için yalnız train/val üret; gerçek test'i sentetikle doldurma.
+- [x] CAD ingest için `trainingAuthorized=false` ve `releaseCandidate=false` değerlerini zorunlu tut.
+- [ ] Gerçek veri geldikten sonra genel `trainingAuthorized` hesabını şu koşullara bağla:
   - bağımsız gerçek val ve test session;
   - boş review queue;
   - geçerli camera/calibration hash;
   - açık model/release sözleşmesi.
-- [ ] `dataset-manifest.json` içine renderer, BlenderProc, Blender, asset, camera,
-  material, scene ve postprocess hash'lerini ekle.
+- [ ] Tam batch üretiminde renderer, BlenderProc, Blender, asset, camera, material,
+  scene ve postprocess hash zincirini dataset manifestine ekle; smoke ingest HDF5 ve görüntü hash'lerini taşır.
 
 ### Regresyon testleri
 
@@ -634,21 +562,19 @@ npm run dataset:prepare
 
 **Amaç:** Büyük veri üretmeden önce en yararlı render bileşimini seçmek.
 
-### Pilot hacim
+### Pilot ve tam plan hacmi
+
+Tam rota planı:
 
 ```text
-6 presentation class
-× 3 mesafe
-× 7 yaw
-× 3 üst-yüzey eğimi
-× 4 ışık profili
-× 2 seed
-= 3.024 temel dünya
+6 presentation class × 15 boylamasına mesafe × 7 rota konumu × 11 eğim
+= 6.930 temel dünya
 ```
 
-Zoom türevleri ayrı `variantId` olarak üretilir. İlk pilotta her dünya için tüm
-zoomları üretmek yerine stratified `%40` alt kümeye `1.5×/2.0×`, `%10` hard-case
-alt kümeye `3.0×` uygulanır.
+İlk pilot, tam plan içinden `5/10/15 m` boylamasına mesafe ve `8/16/24°` eğim
+seçerek `6 × 3 × 7 × 3 = 378` dünya üretir. Yaw ayrıca çarpılmaz; rota
+geometrisinden gelir. Zoom türevleri ayrı `variantId` olur. Stratified `%40` alt
+kümeye `1.5×/2.0×`, `%10` hard-case alt kümeye `3.0×` uygulanır.
 
 ### Deneyler
 
@@ -697,15 +623,15 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 - [ ] Aynı target `trackId` ile hareketli BlenderProc sekansları üret.
 - [ ] Parkur kolları, bariyere giriş/çıkış, yeniden görünme ve hız değişimi ekle.
 - [ ] RGB + depth + optical flow + pose + track metadata üret.
-- [ ] Detector → tracker → backend bridge replay testini çalıştır.
-- [ ] Zoom state machine'i uygula:
+- [ ] Hareketli CAD sekansı üretildikten sonra Detector → tracker → backend bridge replay testini çalıştır.
+- [x] Zoom state machine'i uygula:
   - `SEARCH_FULL_FRAME`;
   - `TRACK_CONFIRMING`;
   - `TRACK_ROI_1_5X`;
   - `TRACK_ROI_2X`;
   - `LOST_FAILBACK`.
-- [ ] Zoom crop merkezinde bir kare gecikme ve ölçüm jitter'ı test et.
-- [ ] Track stale/low-confidence olduğunda ateş yolunu fail-closed tut.
+- [x] Zoom crop merkezinde bir kare gecikme ve ölçüm jitter'ı test et.
+- [x] Track stale/low-confidence olduğunda tam kadraja dön; zoom kararı hiçbir zaman atış yetkisi üretmez.
 
 ### Çıkış kapısı
 
@@ -722,7 +648,7 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 
 ### Zorunlu durak
 
-- `AR-08`: renk/malzeme örnekleri.
+- Fiziksel renk/malzeme ölçümü gerçek veri fazında ek kalibrasyon girdisidir.
 - `AR-09`: gerçek hedef oturumları.
 
 ### Yapılacaklar
@@ -733,7 +659,7 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 - [ ] En az bir real-only validation ve bir real-only test session ayır.
 - [ ] `B6` ve `B7` deneylerini çalıştır.
 - [ ] Sentetik/gerçek karışım oranını real-only validation ile seç.
-- [ ] 15 m, sağ/sol yaw, `0–28°` sınıflandırılmış eğim ve zoom bucket'larında hata analizi yap.
+- [ ] 15 m, sağ/sol yaw, `4–28°` örneklenmiş eğim ve zoom bucket'larında hata analizi yap.
 - [ ] Gerçekte görülen hata bucket'ları için targeted synthetic generation üret.
 
 ### Release için başlangıç kabul eşikleri
@@ -916,7 +842,7 @@ git diff --check
 ```bash
 .venv-synthetic/bin/python -m pytest tests/test_synthetic_*.py
 npm run dataset:cad:render:smoke
-npm run dataset:cad:validate -- --batch <batch-path>
+npm run dataset:cad:validate:batch -- --batch <batch-path>
 ```
 
 ### Dataset ve eğitim hattı
@@ -962,14 +888,14 @@ ifadesi kullanılmayacak.
 - FAZ 0 sözleşme ve bağımlılık iskeleti.
 - FAZ 1 deterministik 3MF inspection ve contact sheet.
 
-### Tur 2 — tamamlandı; AR-03’te durdu
+### Tur 2 — tamamlandı; rota geometrisi V2’ye geçildi
 
 - Bambu Front/Top matematik sözleşmesi.
-- 15.120 kayıtlık açı, yaw, mesafe ve X/Y/Z render planı.
+- 6.930 kayıtlık rota-türetilmiş yaw, mesafe, eğim ve görünüm render planı.
 - Gerçek açıya göre tahribatsız seçim manifesti.
 - Dört CAD varlığı için LOD0/1/2 ve siluet/bbox kabulü.
 - Blender 4.2.1 + BlenderProc RGB/depth/segmentation smoke renderı.
-- Sonraki kullanıcı girdisi: production ölçeğini kesinleştiren `AR-03`.
+- 3MF gerçek ölçüleri kilitlendi; CAD/sentetik implementasyon sonraki fazlarla sürer.
 
 ---
 
@@ -978,7 +904,7 @@ ifadesi kullanılmayacak.
 ### Araştırma pipeline'ı tamamlandı
 
 - Dört CAD hedefi hash/ölçek/yön manifestinde.
-- Aynı yükseklik, sağ/sol yaw, `0–28°` sınıflandırılmış üst-yüzey görünümü ve 5/10/15 m
+- Aynı yükseklik, rota-türetilmiş sağ/sol yaw, `4–28°` örneklenmiş üst-yüzey görünümü ve `3–17 m`
   renderları var.
 - PBR, DR, zoom/degradasyon ve hybrid kaynakları izlenebilir.
 - Bbox/mask/depth/pose/association testleri geçiyor.

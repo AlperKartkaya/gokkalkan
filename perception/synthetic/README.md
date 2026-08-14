@@ -1,22 +1,25 @@
 # CAD Tabanlı Sentetik Veri Araçları
 
 Bu dizin `Modeller.3mf` içindeki Drone, Helikopter, F16 ve Füze geometrilerini
-inceleme, normalize etme, açı/X/Y/Z render planı oluşturma ve BlenderProc ile
+inceleme, normalize etme, rota-türetilmiş poz planı oluşturma ve BlenderProc ile
 kamera benzeri çıktılar üretme araçlarını barındırır.
 
 Uygulama planı:
 [`docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](../../docs/CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md).
 
-## Koordinat ve eğim sözleşmesi
+## Geometri sözleşmesi
 
-- Bambu Studio `Front`: kamera kaynak `-Y` tarafında.
-- Ekran sağı: `+X`; ekran yukarısı: `+Z`.
-- `topSurfaceViewDeg=0`: tam Front.
-- Pozitif `topSurfaceViewDeg`: burun aşağı, Front görünüşe Top katkısı.
-- `viewYawDeg`: hedefin hafif sağdan/ soldan görünümü.
-- Her kayıt bucket ve jitter sonrası gerçek sayısal açıyı ayrı taşır.
+- 3MF ölçüleri kesindir; dört varlığın render ölçeği `1.0`'dır.
+- Bambu Studio `Front`: kamera kaynak `-Y`; ekran sağı `+X`, ekran yukarısı `+Z`.
+- Boylamasına uzaklıklar `3–17 m` arasında her tam metredir.
+- Rota 1/3 enlemesine ofsetleri `±2.75`, `±2.87`, `±3.00 m`; Rota 2 `0 m`'dir.
+- `viewYawDeg = degrees(atan2(signedLateralDistanceM, longitudinalDistanceM))`.
+- Yaw hedefe ayrıca rotasyon olarak uygulanmaz; kamera-hedef geometrisinden doğar.
+- Burun eğimi `4/6/8/10/12/14/16/18/20/24/28°`, jitter `±0.5°`'dir.
+- Nominal, hafif soluk, hafif karanlık ve hafif aydınlık görünüm profilleri pozlara
+  `%40/%20/%20/%20` oranıyla deterministik atanır; veri hacmini dört katına çıkarmaz.
 
-Komite ileride kesin açı aralığı verirse ham renderlar silinmez. Seçim manifesti:
+Kesin eğim bilgisi sonradan gelirse ham renderlar silinmeden seçim manifesti üretilir:
 
 ```bash
 npm run dataset:cad:filter -- \
@@ -25,43 +28,37 @@ npm run dataset:cad:filter -- \
   --min-tilt-deg 10 --max-tilt-deg 18
 ```
 
-## Kurulum
+## Kurulum ve çalışma sırası
 
 ```bash
 uv venv .venv-synthetic --python 3.11
 uv pip install --python .venv-synthetic/bin/python \
   -r requirements/synthetic-render.lock
 npm run setup:synthetic:blender
-```
 
-Blender/BlenderProc yalnız geliştirme makinesinde kullanılır; Raspberry Pi/LIVE
-ortamına kurulmaz.
-
-## Çalışma sırası
-
-```bash
 npm run dataset:cad:inspect -- --input Modeller.3mf
 npm run dataset:cad:convert
 npm run dataset:cad:lod
 npm run dataset:cad:validate
 npm run dataset:cad:plan
+npm run dataset:cad:plan:pilot
 npm run dataset:cad:render:smoke
+npm run dataset:cad:validate:batch -- \
+  --batch perception/synthetic/generated/render_batches/smoke
+npm run dataset:cad:render:pilot -- --limit 1
+npm run dataset:cad:ingest
 ```
 
-Üretilen 3MF türevleri, 15.120 kayıtlık plan, renderlar ve Blender kurulumu Git’e
-eklenmez. Kaynak/manifest hash’leri sonuçların yeniden üretilebilmesini sağlar.
+Blender/BlenderProc yalnız geliştirme makinesinde kullanılır; Raspberry Pi/LIVE
+ortamına kurulmaz. Üretilen meshler, `6.930` kayıtlık plan ve renderlar Git'e
+eklenmez; kaynak/manifest hash'leri yeniden üretilebilirliği sağlar.
 
-## Mevcut teknik durum
+## Mevcut teknik durum ve sınır
 
-- Dört mesh hash ve boyut kontrolünden geçti.
-- Helikopterde 4 non-manifold kenar bulundu; kaynak değiştirilmedi. Blender smoke
-  renderı için kullanılabilir, fiziksel baskı/solid kabulü olarak yorumlanmaz.
+- Dört mesh hash, kesin 3MF boyutu ve yön kontrolünden geçti.
+- Helikopterde 4 non-manifold kenar kaynak özelliği olarak loglandı; sessizce onarılmadı.
 - LOD0/1/2 altı görünüş siluet IoU ve bbox kapısından geçti.
-- F16 için RGB, depth, instance ve semantic segmentation smoke çıktısı üretildi.
-- Ölçekler `AR-03` kesinleşene kadar `PROVISIONAL_SCALE` durumundadır.
-
-## Güvenlik ve release sınırı
-
-CAD renderı veya sentetik metrik fiziksel hedef kabulü değildir. Gerçek Camera
-Module 3 kalibrasyonu ve grup-ayrılmış gerçek hedef oturumları olmadan model
-release adayı sayılmaz.
+- F16 RGB, depth, instance ve semantic segmentation smoke çıktısı üretilebiliyor.
+- CAD/sentetik fazında fiziksel kamera blocker'ı yoktur.
+- AR-09 gerçek hedef oturumları olmadan model release adayı değildir.
+- AR-10 Hailo/Pi kabulü olmadan HEF ve canlı latency doğrulanmış sayılmaz.

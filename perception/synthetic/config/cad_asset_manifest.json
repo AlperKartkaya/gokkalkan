@@ -52,9 +52,9 @@
         ]
       },
       "scale": {
-        "status": "PROVISIONAL",
-        "targetLongestAxisMm": 300.0,
-        "factor": 0.8
+        "status": "VERIFIED",
+        "targetLongestAxisMm": 374.986,
+        "factor": 1.0
       }
     },
     {
@@ -101,7 +101,7 @@
         ]
       },
       "scale": {
-        "status": "PROVISIONAL",
+        "status": "VERIFIED",
         "targetLongestAxisMm": 500.0,
         "factor": 1.0
       }
@@ -150,9 +150,9 @@
         ]
       },
       "scale": {
-        "status": "PROVISIONAL",
-        "targetLongestAxisMm": 500.0,
-        "factor": 0.8581
+        "status": "VERIFIED",
+        "targetLongestAxisMm": 582.673,
+        "factor": 1.0
       }
     },
     {
@@ -198,9 +198,9 @@
         ]
       },
       "scale": {
-        "status": "PROVISIONAL",
-        "targetLongestAxisMm": 400.0,
-        "factor": 0.8
+        "status": "VERIFIED",
+        "targetLongestAxisMm": 500.0,
+        "factor": 1.0
       }
     }
   ]

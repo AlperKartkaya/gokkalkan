@@ -138,7 +138,7 @@ def convert_assets(
 
     output = {
         "schemaVersion": 1,
-        "status": "LOD0_PROVISIONAL_SCALE",
+        "status": "LOD0_VERIFIED_3MF_SCALE",
         "sourceCadSha256": actual_hash,
         "assets": records,
     }
