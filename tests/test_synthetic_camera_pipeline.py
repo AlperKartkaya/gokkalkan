@@ -14,10 +14,14 @@ sys.path.insert(0, str(ROOT / "perception/synthetic/tools"))
 from apply_camera_pipeline import (
     apply_zoom,
     bbox_from_mask,
+    build_sahi_search_views,
+    build_track_square_view,
     build_variant_record,
     crop_rect,
     degrade_image,
     letterbox,
+    square_crop_rect,
+    uniform_resize,
 )
 
 
@@ -120,3 +124,48 @@ def test_default_camera_degradation_does_not_invent_codec_artifacts() -> None:
     result = degrade_image(image, seed=123, blur_kernel=0, noise_std=0)
 
     assert np.array_equal(result, image)
+
+
+def test_sahi_search_views_use_eight_square_tiles_without_padding() -> None:
+    image = np.zeros((1296, 2304, 3), dtype=np.uint8)
+    mask = np.zeros((1296, 2304), dtype=np.uint8)
+    mask[500:700, 700:900] = 255
+
+    views = build_sahi_search_views(image, mask)
+
+    assert len(views) == 8
+    assert views[0]["image"].shape == (768, 768, 3)
+    assert views[0]["modelInput"].shape == (640, 640, 3)
+    assert all(view["metadata"]["modelPaddingPx"] == [0, 0, 0, 0] for view in views)
+    assert [view["metadata"]["sliceIndex"] for view in views] == list(range(8))
+    assert any(view["metadata"]["truncatedBySlice"] for view in views)
+
+
+def test_track_square_view_clamps_center_and_never_upsamples() -> None:
+    image = np.zeros((1296, 2304, 3), dtype=np.uint8)
+    mask = np.zeros((1296, 2304), dtype=np.uint8)
+    mask[0:100, 0:100] = 255
+
+    view = build_track_square_view(
+        image,
+        mask,
+        roi_size_px=768,
+        predicted_center_px=(10.0, 10.0),
+        center_error_px=(-100.0, -100.0),
+    )
+
+    assert view["metadata"]["roiRectFullFramePx"] == [0, 0, 768, 768]
+    assert view["metadata"]["upsampledBeforeModel"] is False
+    assert view["modelInput"].shape == (640, 640, 3)
+
+
+def test_square_model_preprocess_rejects_artificial_upsample() -> None:
+    with pytest.raises(Exception, match="upsample"):
+        uniform_resize(np.zeros((320, 320, 3), dtype=np.uint8))
+    with pytest.raises(Exception, match="640"):
+        square_crop_rect(
+            image_width=2304,
+            image_height=1296,
+            size_px=320,
+            center_px=(1000.0, 600.0),
+        )

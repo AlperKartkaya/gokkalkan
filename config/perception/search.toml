@@ -1,0 +1,37 @@
+schema_version = 1
+
+[search]
+main_width = 2304
+main_height = 1296
+model_width = 640
+model_height = 640
+slice_width = 768
+slice_height = 768
+overlap_width_ratio = 0.25
+overlap_height_ratio = 0.25
+batch_size = 8
+target_sweeps_per_second = 10.0
+minimum_sweeps_per_second = 8.0
+stale_after_ms = 250.0
+perform_standard_prediction = false
+
+[postprocess]
+type = "GREEDYNMM"
+match_metric = "IOS"
+match_threshold = 0.50
+class_agnostic = false
+ambiguity_ios_threshold = 0.50
+
+[temporal]
+history_sweeps = 3
+required_hits = 2
+spatial_iou_threshold = 0.30
+
+[track]
+normal_roi_size_px = 768
+first_recovery_roi_size_px = 960
+second_recovery_roi_size_px = 1152
+return_to_search_after_misses = 3
+confirm_frames = 3
+minimum_confidence = 0.65
+

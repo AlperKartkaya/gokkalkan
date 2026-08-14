@@ -1,15 +1,23 @@
 # CAD Tabanlı Sentetik Veri — Adım Adım İmplementasyon Planı
 
 > **Durum:** Uygulamaya hazır teknik plan
-> **Tarih:** 14 Ağustos 2026
+> **Tarih:** 15 Ağustos 2026
 > **Ana roadmap:** [`CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md`](CAD_TABANLI_SENTETIK_VERI_VE_MODEL_GELISTIRME_ROADMAP.md)
 > **Kamera/ROI kararı:** [`KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md`](KAMERA_ROI_ZOOM_VE_SENTETIK_VERI_KARARLARI.md)
+> **Arama mimarisi kararı:** [`adr/006-sahi-hailo-tiled-search.md`](adr/006-sahi-hailo-tiled-search.md)
 > **Kapsam:** `Modeller.3mf` → gerçekçi sentetik görüntü → zoom/degradasyon → araştırma modeli → gerçek veriyle sim-to-real → ONNX/HEF
 > **Güvenlik sınırı:** Sentetik başarı fiziksel kabul veya atış yetkisi değildir. Backend Safety Gate bütün aşamalarda nihai yetki kapısıdır.
 
-> **Uygulama ilerlemesi — 14 Ağustos 2026:** FAZ 0–5'in CAD tabanlı çekirdeği,
+> **Uygulama ilerlemesi — 15 Ağustos 2026:** FAZ 0–5'in CAD tabanlı çekirdeği,
 > FAZ 8'in araştırma-dataset ingest'i, FAZ 9'un `378` kayıtlık pilot seçici/yeniden
-> başlatılabilir renderer'ı ve FAZ 10'un fail-back zoom durum makinesi tamamlandı.
+> başlatılabilir renderer'ı tamamlandı. 15 Ağustos kararıyla ilk tespit yolu SAHI
+> tabanlı `8×768` tile aramasına çevrildi; SAHI-compatible tile/merge geometrisi,
+> sentetik search/track türev üreticisi, Hailo batch adapterı, latest-wins scheduler,
+> `2-of-3` temporal doğrulama, dual-stream kamera sözleşmesi ve kare ROI takip
+> durumu kod/test düzeyinde uygulandı. Doğrulanmış model tespiti HSV adayına bağlı
+> kalmadan kararlı `MODEL-*` iz kimliğiyle backend'e taşınır; kamera bbox'ı menzil
+> sayılmaz ve LiDAR füzyonuna kadar `rangeM=0` ile kapalı kalır. Gerçek HEF runner,
+> Pi/Hailo benchmark'ı ve fiziksel kamera kabulü AR-09/AR-10 kapsamında açıktır.
 > `Modeller.3mf` içindeki gerçek ölçüler `1.0` ölçekle kilitlendi. Bağımsız yaw
 > bucket'ları kaldırıldı; Rota 1/2/3 görünüş açıları boylamasına ve enlemesine
 > uzaklıktan `atan2` ile türetiliyor. `3–17 m`, yedi rota konumu ve on bir eğim
@@ -28,7 +36,7 @@
 | 3MF okuma/doğrulama | Resmî `lib3mf==2.5.0` Python binding kullanılacak. ZIP/XML'i uygulama mantığı olarak elle parse etmeyeceğiz. |
 | Render | `blenderproc==2.8.0` + onun desteklediği Blender `4.2.1` headless kullanılacak. |
 | Görüntü sonrası işleme | OpenCV/NumPy kullanılacak. |
-| Eğitim başlangıcı | Mevcut YOLOv8n araştırma baseline'ı korunacak; gerçek veri kıyası olmadan mimari değiştirilmeyecek. |
+| Eğitim başlangıcı | Aynı SAHI-sliced veri ve split üzerinde YOLOv8s birincil doğruluk adayı, YOLOv8n throughput fallback'i olacak. |
 | Runtime | Blender, BlenderProc ve CAD araçları Raspberry Pi/LIVE ortamına kurulmayacak; yalnız geliştirme makinesinde çalışacak. |
 | Ağır dosyalar | 3MF, türetilmiş mesh, render, ağırlık, ONNX ve HEF normal Git geçmişine eklenmeyecek. Manifest ve hash repoda tutulacak. |
 | Release | `trainingAuthorized=false` ve `releaseCandidate=false`, bağımsız gerçek validation/test oturumları ve fiziksel kapılar tamamlanana kadar korunacak. |
@@ -92,42 +100,43 @@ Toplam temel poz sayısı:
 Renk/aydınlık görünüm profilleri tam Kartezyen çarpan değildir; bu 6.930 poza
 oranlı ve deterministik atanır. Böylece gereksiz dört kat render artışı önlenir.
 
-### 1.4. Zoom ve çözünürlük kaybı
+### 1.4. SAHI arama, kare ROI ve çözünürlük kaybı
 
 Camera Module 3 üzerinde optik zoom yoktur. Varsayılan yol aynı capture request'ten
-tam-FoV `1280×720 lores` ve `2304×1296 main` alıp, kararlı track sonrası yüksek
-çözünürlüklü main üzerinde software ROI üretmektir:
+`1280×720 lores` ve `2304×1296 main` alıp main görüntüde SAHI araması ve kare
+software ROI üretmektir:
 
-1. **`none`** — tam görüş lores arama görüntüsü.
-2. **`high_res_roi`** — `2304×1296 main` üzerinde 16:9 crop; doğrudan model
-   letterbox aşamasına gider. Runtime varsayılanıdır.
-3. **`scaler_crop`** — Picamera2 `ScalerCrop` araştırma proxy'si; fiziksel
+1. **`search_sahi_tile`** — main üzerinde `%25` örtüşmeli sekiz `768×768` tile;
+   her tile `640×640` modele gider. Runtime arama varsayılanıdır.
+2. **`track_square_roi`** — normal `768×768`, kayıp kurtarmada `960×960` ve
+   `1152×1152` crop. Runtime takip varsayılanıdır.
+3. **`none`** — `1280×720 → 640×360` tam görüş; yalnız legacy ablation.
+4. **`scaler_crop`** — Picamera2 `ScalerCrop` araştırma proxy'si; fiziksel
    benchmark olmadan varsayılan olmaz.
-4. **`application_crop`** — `1280×720` üzerinde crop+büyütme; yalnız düşük
+5. **`application_crop`** — `1280×720` üzerinde crop+büyütme; yalnız düşük
    çözünürlüklü negatif baseline'dır.
 
-Kesin zoom bucket'ları:
-
-- ana veri: `1.0×`, `1.5×`, `2.0×`;
-- yalnız hard-case/robustness: `3.0×`;
-- model girdisi: mevcut sözleşmeye uygun `640×640` letterbox.
+Arama parametreleri `768×768`, `%25` overlap, `8 tile/sweep`, batch `8` ve
+başlangıç hedefi `10 sweep/s` olarak ADR-006'da kilitlidir. Model girdisi
+`640×640`'tır; kare tile ve ROI'de letterbox padding yoktur.
 
 İşlem sırası değişmeyecek:
 
 ```text
 sahne renderı
 → optik/sensör/ISP profili
-→ full-frame lores VEYA high-res main ROI
-→ en-boy oranı korunmuş 640×640 model letterbox
+→ high-res main SAHI tile VEYA kare track ROI
+→ 640×640 model resize
 ```
 
 RGB888 inference yolunda JPEG/H.264 codec yoktur; codec artefaktı varsayılan
 olarak eklenmez. Blur/noise Camera Module 3'e ait ölçüm gibi rastgele uygulanmaz;
 profil kimliğiyle izlenen araştırma sweep'i olarak kalır.
 
-Her zoom örneğinde şu metadata zorunlu olacak:
+Her tile/ROI örneğinde şu metadata zorunlu olacak:
 
-- `zoomMode`, `zoomFactor`;
+- `viewFamily`, `sliceIndex`, `sweepId`;
+- `sliceRectFullFramePx` veya `roiRectFullFramePx`;
 - `cropRectPx`;
 - `preCropResolution`, `postCropResolution`, `modelInputResolution`;
 - `interpolation`;
@@ -420,9 +429,10 @@ filtrelenir; yalnız aralık dışında eksik bucket kalırsa ek render üretili
 
 ---
 
-## FAZ 5 — Zoom, çözünürlük kaybı ve kamera kusurları
+## FAZ 5 — SAHI tile, kare ROI, çözünürlük kaybı ve kamera kusurları
 
-**Amaç:** 3–17 m sentetik örnekleme aralığında dijital zoom'un gerçek faydasını/zararını ölçmek; 5–15 m şartname aralığını ayrıca raporlamak.
+**Amaç:** 3–17 m sentetik örnekleme aralığında SAHI arama ve kare takip ROI'sinin
+küçük hedef temsilini doğrulamak; 5–15 m şartname aralığını ayrıca raporlamak.
 
 ### Yapılacaklar
 
@@ -440,32 +450,38 @@ filtrelenir; yalnız aralık dışında eksik bucket kalırsa ek render üretili
   açık kimlikli araştırma profili olarak tut. H.264/JPEG yalnız gerçek yol kullanırsa eklenir.
 - [x] Her base world ve zoom türevini aynı `worldId/groupId/split` içinde tut.
 - [x] Zoomsuz arama + kararlı track sonrası ROI zoom + kayıpta fail-back state machine'ini uygula.
+- [x] Mevcut OpenCV kilidiyle uyumlu `sahi==0.11.36` offline exact lock'unu ekle;
+  Pi runtime'ında parity-testli dependency-light geometri kullan.
+- [x] `768×768`, `%25` overlap ile sekiz arama tile'ı ve annotation dönüşümü üret.
+- [x] `768/960/1152` kare track ROI türevlerini üret.
+- [ ] Easy-negative örneklemesini ve tile-boundary hard-case korumasını uygula.
+- [x] Eski full-frame/16:9 zoom state machine'ini ADR-006 durumlarıyla değiştir.
 
 ### Kesin runtime başlangıç politikası
 
-- Sistem hedef ararken `1.0×` tam kadraj kullanır.
-- Track oluşmadan yalnız zoomlu kadraja geçmez.
-- Track kararlıysa `1.5×`; uzakta hedef piksel sayısı düşükse `2.0×` denenebilir.
-- Track kaybolursa tam kadraja fail-back eder.
-- `3.0×` ilk runtime sürümünde etkin değildir; yalnız robustness datasıdır.
-- Model/ölçüm sonucu göstermeden zoom “daha iyi” kabul edilmez.
+- Sistem hedef ararken sekiz tile'lık deterministik SAHI sweep kullanır.
+- Motion/HSV adayı öncelikli `768×768` inference üretir fakat sweep'i kapatmaz.
+- Track kararlıysa `768×768` kare ROI'ye geçer.
+- Kayıpta `960×960`, ardından `1152×1152`; stale olduğunda tekrar SAHI search.
+- Legacy full-frame inference yalnız ablation/teşhistir.
 
 ### Metrikler
 
-Her mesafe × yaw × eğim × zoom hücresinde:
+Her mesafe × yaw × eğim × view-family hücresinde:
 
 - bbox yüksekliği/genişliği ve hedef piksel sayısı;
 - recall ve confidence;
 - sınıf karışıklığı;
 - false positive;
-- crop nedeniyle kayıp hedef oranı;
+- tile/ROI nedeniyle kayıp hedef oranı;
+- tile sınırı recall'u ve full-sweep p50/p95;
 - işleme süresi.
 
 ### Çıkış kapısı
 
 - Annotation crop/resize sonrasında doğru dönüştürülüyor.
-- Zoom varyantları split sızıntısı oluşturmuyor.
-- 15 m için zoomsuz, 1.5× ve 2.0× ayrı raporlanıyor.
+- Tile/ROI varyantları split sızıntısı oluşturmuyor.
+- 15 m için legacy full-frame, `8×768` SAHI ve kare ROI ayrı raporlanıyor.
 - Runtime yöntemi sentetik ablation ile araştırılır; fiziksel runtime seçimi gerçek veri fazında kilitlenir.
 
 ---
@@ -584,8 +600,10 @@ Tam rota planı:
 
 İlk pilot, tam plan içinden `5/10/15 m` boylamasına mesafe ve `8/16/24°` eğim
 seçerek `6 × 3 × 7 × 3 = 378` dünya üretir. Yaw ayrıca çarpılmaz; rota
-geometrisinden gelir. Zoom türevleri ayrı `variantId` olur. Stratified `%40` alt
-kümeye `1.5×/2.0×`, `%10` hard-case alt kümeye `3.0×` uygulanır.
+geometrisinden gelir. Her pilot dünya sekiz SAHI tile'ına dönüşür; hedef içeren ve
+tile-boundary hard-case örnekler korunur, kolay boş tile sayısı frame başına en
+fazla iki olur. Dengeli alt kümeye `768×768` track ROI, kayıp kurtarma alt
+kümelerine `960×960/1152×1152` uygulanır.
 
 ### Deneyler
 
@@ -593,17 +611,16 @@ kümeye `1.5×/2.0×`, `%10` hard-case alt kümeye `3.0×` uygulanır.
 - `B1`: yalnız `synthetic_cad_pbr`;
 - `B2`: PBR + geometri/yaw/eğim randomization;
 - `B3`: B2 + kamera kusurları;
-- `B4`: B3 + zoom türevleri;
+- `B4`: B3 + SAHI tile ve kare ROI türevleri;
 - `B5`: B4 + hybrid background;
 - `B6`: sentetik pretrain + gerçek fine-tune (AR-09 sonrası);
 - `B7`: yalnız gerçek veri baseline'ı (AR-09 sonrası).
 
 ### Model kararı
 
-- İlk bütün deneyler YOLOv8n ve `640×640` ile yapılır.
-- Dataset etkisi ile mimari etkisi aynı deneyde değiştirilmez.
-- Başka model ancak aynı real-only validation split'inde belirgin kazanç veya
-  Hailo uyumluluk sorunu gösterilirse ayrı ADR ile değerlendirilir.
+- İlk dataset reçetesi YOLOv8s ve `640×640` ile ölçülür.
+- Aynı reçete/split/preprocess üzerinde YOLOv8n throughput fallback'i ölçülür.
+- Dataset etkisi ile model etkisi ayrı deney kimlikleriyle raporlanır.
 
 ### Araştırma raporu
 
@@ -625,7 +642,7 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 
 ---
 
-## FAZ 10 — Hareketli sekans, takip ve zoom state machine
+## FAZ 10 — Hareketli sekans, SAHI arama ve kare ROI state machine
 
 **Amaç:** Tek kare başarısını takip/nişan davranışı sanmamak.
 
@@ -635,19 +652,22 @@ Kazanan sentetik reçete seçilir fakat durum hâlâ
 - [ ] Parkur kolları, bariyere giriş/çıkış, yeniden görünme ve hız değişimi ekle.
 - [ ] RGB + depth + optical flow + pose + track metadata üret.
 - [ ] Hareketli CAD sekansı üretildikten sonra Detector → tracker → backend bridge replay testini çalıştır.
-- [x] Zoom state machine'i uygula:
-  - `SEARCH_FULL_FRAME`;
-  - `TRACK_CONFIRMING`;
-  - `TRACK_ROI_1_5X`;
-  - `TRACK_ROI_2X`;
-  - `LOST_FAILBACK`.
+- [x] Doğrulanmış detector tespitini HSV konturu olmasa da kararlı model izine çevir;
+  aynı hedefe ait HSV ve model izlerini çift yayınlama; LiDAR olmadan menzil kapısını açma.
+- [x] Eski full-frame/zoom state machine'i regresyon baseline'ı olarak uygula.
+- [x] ADR-006 state machine'inin inference kararlarını uygula:
+  - SAHI ile tam arama (`SEARCH_SAHI_SWEEP`);
+  - son üç aramanın ikisinde uzamsal olarak eşleşen hedefi onaylama;
+  - tek kare ROI ile takip (`768`);
+  - birinci ve ikinci kayıpta ROI'yi sırasıyla `960` ve `1152` piksele genişletme;
+  - üçüncü ardışık kayıpta geçmişi temizleyip aynı ana karede SAHI aramasına dönme.
 - [x] Zoom crop merkezinde bir kare gecikme ve ölçüm jitter'ı test et.
-- [x] Track stale/low-confidence olduğunda tam kadraja dön; zoom kararı hiçbir zaman atış yetkisi üretmez.
+- [x] Track stale/low-confidence olduğunda SAHI aramasına dön; tile/ROI kararı hiçbir zaman atış yetkisi üretmez.
 
 ### Çıkış kapısı
 
 - Track ID kararlılığı raporlanıyor.
-- Zoom hedefi kadrajdan çıkardığında tam kadraja dönüş var.
+- ROI hedefi kadrajdan çıkardığında genişleme ve SAHI yeniden arama var.
 - Dost hedef/bağlı balon hiçbir replay'de fire candidate olmuyor.
 - Sentetik replay fiziksel HIL olarak adlandırılmıyor.
 
@@ -708,8 +728,11 @@ Eşik sağlanmıyorsa Safety Gate gevşetilmez; veri/model/zoom stratejisi düze
 - [ ] Quantization calibration için temsilî **gerçek** kamera kareleri kullan.
 - [ ] HEF üret.
 - [ ] FP32 ↔ ONNX ↔ HEF bbox/class/score toleranslarını raporla.
-- [ ] Pi 5 + Hailo-8 üzerinde `1280×720 @ 30 FPS` capture ile latency/FPS ölç.
-- [ ] Zoom state machine, tracker, backend bridge ve Safety Gate ile soak test yap.
+- [ ] Pi 5 + Hailo-8 üzerinde `2304×1296` main + `1280×720` lores capture ile
+  tile hazırlama, batch inference, merge ve end-to-end latency/FPS ölç.
+- [ ] Yol A `YOLOv8s 8×768`, Yol B `YOLOv8n 8×768` ve gerekirse Yol C
+  `6×960` için full-sweep p50/p95 ölç.
+- [ ] SAHI/kare ROI state machine, tracker, backend bridge ve Safety Gate ile soak test yap.
 - [ ] Model/dataset/calibration/runtime sürümlerini release manifestine yaz.
 
 ### Zorunlu durak
@@ -920,7 +943,7 @@ ifadesi kullanılmayacak.
 - PBR, DR, zoom/degradasyon ve hybrid kaynakları izlenebilir.
 - Bbox/mask/depth/pose/association testleri geçiyor.
 - World/session split sızıntısı yok.
-- YOLOv8n ablation raporu var.
+- Aynı sliced veri/split üzerinde YOLOv8s–YOLOv8n ve birleştirme yöntemi ablation raporu var.
 - Sonuç `SYNTHETIC_RESEARCH_ONLY` olarak işaretli.
 
 ### Sim-to-real tamamlandı

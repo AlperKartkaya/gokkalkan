@@ -3,7 +3,7 @@
 > **Durum:** Uygulama öncesi teknik yol haritası  
 > **Kapsam:** Gerçek hedef fotoğrafları elde edilene kadar model geliştirme, CAD'den sentetik veri üretimi ve sonrasında sim-to-real geçişi  
 > **Bağlayıcı kaynak:** [`docs/sartname_v4.pdf`](sartname_v4.pdf) ve güncel hedef/parkur bilgileri  
-> **İlgili belgeler:** [`CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md), [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md), [`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md), [`YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md`](YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md)
+> **İlgili belgeler:** [`CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md`](CAD_TABANLI_SENTETIK_VERI_IMPLEMENTASYON_PLANI.md), [`adr/006-sahi-hailo-tiled-search.md`](adr/006-sahi-hailo-tiled-search.md), [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md), [`hedef_ve_parkur_operasyon_guncellemesi.md`](hedef_ve_parkur_operasyon_guncellemesi.md), [`YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md`](YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md)
 
 ![Modeller.3mf Bambu Studio görünümü](../modeller.png)
 
@@ -41,6 +41,7 @@ Render için sadeleştirilmiş mesh + PBR materyal
 2. Domain-randomized sahneler
 3. Gerçek boş kamera görüntüsü + CAD hibrit sahneler
 4. Hareketli sentetik video sekansları
+5. `2304×1296` main görüntüden SAHI `8×768` arama tile'ları ve kare track ROI türevleri
     ↓ otomatik ve kusursuz bbox/mask/pose/ilişki etiketleri
 Sentetik araştırma eğitimi ve ablation
     ↓
@@ -299,20 +300,22 @@ Kalibrasyonsuz “Camera Module 3 FoV yaklaşık budur” varsayımı release re
 Kusurlar yalnız rastgele filtre olarak uygulanmamalı; mümkün olduğunda kamera
 ayarlarıyla fiziksel bağı kurulmalıdır.
 
-### 7.6. Dijital zoom ve çözünürlük kaybı
+### 7.6. SAHI arama, kare ROI ve çözünürlük kaybı
 
-Camera Module 3 için optik zoom varsayılmayacaktır. İki yöntem ayrı veri kaynağı
+Camera Module 3 için optik zoom varsayılmayacaktır. Dört yöntem ayrı veri ailesi
 olarak üretilecek ve karşılaştırılacaktır:
 
-- `sensor_roi`: yüksek çözünürlüklü sensör alanını kırpıp `1280×720` çıkışa ölçekleme;
+- `search_sahi_tile`: `2304×1296` main görüntüden `%25` örtüşmeli sekiz
+  `768×768` tile ve `640×640` model girdisi;
+- `track_square_roi`: normal `768×768`, kayıp kurtarmada `960×960/1152×1152`;
+- `full_frame_legacy`: `1280×720 → 640×360` aktif alanlı teşhis baseline'ı;
 - `application_crop`: mevcut `1280×720` kareyi kırpıp yeniden büyütme.
 
-Ana zoom bucket'ları `1.0×`, `1.5×`, `2.0×`; `3.0×` yalnız hard-case'tir. Her
-varyant `640×640` model girdisine aynı letterbox hattından gider. Crop, resize,
-blur/noise/compression ve hedef piksel sayıları manifestte tutulur. Zoom varyantı
-temel sahneyle aynı `worldId/groupId/split` içinde kalır; zoomun faydası özellikle
-15 m real-only recall ve false-positive metriğiyle kanıtlanmadan runtime kararı
-sayılmaz.
+Kamera degradasyonu full frame üzerinde tile/crop işleminden önce uygulanır.
+Crop, resize, tile sınırı, görünür oran ve hedef piksel sayıları manifestte
+tutulur. Bütün türevler temel sahneyle aynı `worldId/groupId/split` içinde kalır.
+SAHI ve ROI faydası özellikle 15 m real-only recall, time-to-first-detection ve
+false-positive metriğiyle fiziksel olarak doğrulanmadan release kararı sayılmaz.
 
 ## 8. Gerçek hedef olmadan bugün toplanabilecek gerçek veri
 
@@ -792,4 +795,3 @@ doğrulamayı **iptal edemez**.
 - Raspberry Pi Camera Module 3 product brief:
   <https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf>
 - Picamera2 manual: <https://datasheets.raspberrypi.com/camera/picamera2-manual.pdf>
-

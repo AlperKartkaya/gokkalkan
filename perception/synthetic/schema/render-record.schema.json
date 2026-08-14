@@ -35,6 +35,10 @@
       "type": "string",
       "minLength": 1
     },
+    "sourceFrameId": {
+      "type": "string",
+      "minLength": 1
+    },
     "worldId": {
       "type": "string",
       "minLength": 1
@@ -346,6 +350,120 @@
         }
       }
     },
+    "inferenceView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "viewFamily",
+        "sourceResolution",
+        "sliceRectFullFramePx",
+        "roiRectFullFramePx",
+        "sliceIndex",
+        "overlapWidthRatio",
+        "overlapHeightRatio",
+        "resizeScale",
+        "bboxFullFramePx",
+        "bboxCropPx",
+        "bboxModelPx",
+        "visibleFraction",
+        "truncatedBySlice",
+        "edgeDistancePx",
+        "modelInputResolution",
+        "modelPaddingPx",
+        "upsampledBeforeModel"
+      ],
+      "properties": {
+        "viewFamily": {
+          "enum": [
+            "SEARCH_SAHI_TILE_768",
+            "TRACK_SQUARE_ROI"
+          ]
+        },
+        "sourceResolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "sliceRectFullFramePx": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bbox" }
+          ]
+        },
+        "roiRectFullFramePx": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bbox" }
+          ]
+        },
+        "sliceIndex": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "overlapWidthRatio": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 0.9
+        },
+        "overlapHeightRatio": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 0.9
+        },
+        "resizeScale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "bboxFullFramePx": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bbox" }
+          ]
+        },
+        "bboxCropPx": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bbox" }
+          ]
+        },
+        "bboxModelPx": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/bbox" }
+          ]
+        },
+        "visibleFraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "truncatedBySlice": {
+          "type": "boolean"
+        },
+        "edgeDistancePx": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "modelInputResolution": {
+          "$ref": "#/$defs/resolution"
+        },
+        "modelPaddingPx": {
+          "$ref": "#/$defs/bbox"
+        },
+        "upsampledBeforeModel": {
+          "const": false
+        },
+        "roiSourceSizePx": {
+          "type": "integer",
+          "enum": [768, 960, 1152]
+        },
+        "predictedCenterPx": {
+          "$ref": "#/$defs/point"
+        },
+        "centerErrorPx": {
+          "$ref": "#/$defs/point"
+        }
+      }
+    },
     "sceneGroundTruth": {
       "type": "object",
       "additionalProperties": false,
@@ -439,6 +557,14 @@
       "items": {
         "type": "integer",
         "minimum": 0
+      }
+    },
+    "point": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number"
       }
     }
   }

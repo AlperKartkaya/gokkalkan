@@ -95,3 +95,49 @@ def high_res_roi_from_model_center(
     left = min(max(0, round(center_x - crop_width / 2)), high_width - crop_width)
     top = min(max(0, round(center_y - crop_height / 2)), high_height - crop_height)
     return Rect(left=left, top=top, width=crop_width, height=crop_height)
+
+
+def square_roi_from_source_center(
+    center: tuple[float, float],
+    *,
+    roi_size_px: int,
+    source_size: tuple[int, int] = (2304, 1296),
+) -> Rect:
+    """Return a clamped square main-stream ROI without artificial upsampling."""
+
+    source_width, source_height = source_size
+    if roi_size_px < 640:
+        raise ValueError("ROI 640 pikselden küçük olamaz")
+    if roi_size_px > min(source_width, source_height):
+        raise ValueError("ROI kaynak görüntünün kısa kenarını aşamaz")
+    left = min(
+        max(0, round(center[0] - roi_size_px / 2)),
+        source_width - roi_size_px,
+    )
+    top = min(
+        max(0, round(center[1] - roi_size_px / 2)),
+        source_height - roi_size_px,
+    )
+    return Rect(left=left, top=top, width=roi_size_px, height=roi_size_px)
+
+
+def model_bbox_to_source_roi(
+    bbox_xyxy: tuple[float, float, float, float],
+    *,
+    roi: Rect,
+    model_size: tuple[int, int] = (640, 640),
+) -> tuple[float, float, float, float]:
+    """Map a square model-space bbox back into full main-frame coordinates."""
+
+    model_width, model_height = model_size
+    if min(model_width, model_height) <= 0:
+        raise ValueError("model çözünürlüğü pozitif olmalı")
+    scale_x = roi.width / model_width
+    scale_y = roi.height / model_height
+    x1, y1, x2, y2 = bbox_xyxy
+    return (
+        roi.left + x1 * scale_x,
+        roi.top + y1 * scale_y,
+        roi.left + x2 * scale_x,
+        roi.top + y2 * scale_y,
+    )

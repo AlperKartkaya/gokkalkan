@@ -31,6 +31,8 @@ class CapturedFrame:
     receive_monotonic_ns: int
     sequence: int
     timestamp_source: str
+    main_image: Any | None = None
+    metadata: dict[str, Any] | None = None
 
 # numpy ve opencv isteğe bağlı; kurulu değilse mock frame döner
 try:
@@ -71,6 +73,8 @@ class CameraNode:
     # RPi Camera Module 3 için önerilen başlangıç çözünürlüğü
     DEFAULT_WIDTH:  int = 1280
     DEFAULT_HEIGHT: int = 720
+    DEFAULT_MAIN_WIDTH: int = 2304
+    DEFAULT_MAIN_HEIGHT: int = 1296
     DEFAULT_FPS:    int = 30
 
     def __init__(
@@ -80,11 +84,15 @@ class CameraNode:
         fps:      int = DEFAULT_FPS,
         device:   int = 0,    # OpenCV kamera indeksi
         backend: str | None = None,  # "picamera2" | "opencv" | None (otomatik)
+        main_width: int = DEFAULT_MAIN_WIDTH,
+        main_height: int = DEFAULT_MAIN_HEIGHT,
     ) -> None:
         self.width  = width
         self.height = height
         self.fps    = fps
         self.device = device
+        self.main_width = main_width
+        self.main_height = main_height
 
         self._sample: CapturedFrame | None = None
         self._lock                = threading.Lock()
@@ -151,6 +159,12 @@ class CameraNode:
         with self._lock:
             return self._sample
 
+    def get_latest_main_frame(self) -> Any:
+        """Return the high-resolution main stream used by SAHI search."""
+
+        with self._lock:
+            return None if self._sample is None else self._sample.main_image
+
     def health(self, stale_after_sec: float = 1.0) -> dict[str, Any]:
         """Kamera durumu hakkında bilgi döndür."""
         sample = self.get_latest_sample()
@@ -180,6 +194,8 @@ class CameraNode:
             "lastCaptureAt":   self._last_capture_at,
             "error":           self._error,
             "resolution":      f"{self.width}x{self.height}",
+            "mainResolution":  f"{self.main_width}x{self.main_height}",
+            "mainStreamAvailable": sample is not None and sample.main_image is not None,
             "fps":             self.fps,
             "status":          status,
             "healthy":         status == "READY",
@@ -195,6 +211,8 @@ class CameraNode:
         self,
         frame: Any,
         *,
+        main_frame: Any | None = None,
+        metadata: dict[str, Any] | None = None,
         camera_timestamp_ns: int | None = None,
         timestamp_source: str,
     ) -> None:
@@ -206,6 +224,8 @@ class CameraNode:
             receive_monotonic_ns=receive_ns,
             sequence=self._frames_captured,
             timestamp_source=timestamp_source,
+            main_image=main_frame,
+            metadata=None if metadata is None else dict(metadata),
         )
         with self._lock:
             self._sample = sample
@@ -229,8 +249,13 @@ class CameraNode:
             from picamera2 import Picamera2  # type: ignore[import]
             cam = Picamera2()
             config = cam.create_video_configuration(
-                main={"size": (self.width, self.height), "format": "RGB888"},
+                main={
+                    "size": (self.main_width, self.main_height),
+                    "format": "RGB888",
+                },
+                lores={"size": (self.width, self.height), "format": "RGB888"},
                 controls={"FrameRate": self.fps},
+                buffer_count=4,
             )
             cam.configure(config)
             cam.start()
@@ -238,11 +263,14 @@ class CameraNode:
             while self._running:
                 request = cam.capture_request()
                 try:
-                    frame = request.make_array("main")
+                    main_frame = request.make_array("main")
+                    frame = request.make_array("lores")
                     metadata = request.get_metadata()
                     sensor_ts = metadata.get("SensorTimestamp")
                     self._publish(
                         frame,
+                        main_frame=main_frame,
+                        metadata=metadata,
                         camera_timestamp_ns=(
                             int(sensor_ts) if isinstance(sensor_ts, (int, float)) else None
                         ),
@@ -289,7 +317,11 @@ class CameraNode:
                 continue
             # BGR → RGB dönüşümü (downstream bileşenler RGB bekler)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            self._publish(rgb, timestamp_source="receive-monotonic-fallback")
+            self._publish(
+                rgb,
+                main_frame=None,
+                timestamp_source="receive-monotonic-fallback",
+            )
 
         cap.release()
 
@@ -297,9 +329,17 @@ class CameraNode:
         """Kamera yoksa sentetik siyah kare üret (test/geliştirme)."""
         if _NUMPY_OK:
             blank = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            main_blank = np.zeros(
+                (self.main_height, self.main_width, 3), dtype=np.uint8
+            )
         else:
             blank = None
+            main_blank = None
         period = 1.0 / self.fps
         while self._running:
-            self._publish(blank, timestamp_source="simulated-monotonic")
+            self._publish(
+                blank,
+                main_frame=main_blank,
+                timestamp_source="simulated-monotonic",
+            )
             time.sleep(period)

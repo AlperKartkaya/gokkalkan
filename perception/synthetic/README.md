@@ -20,9 +20,10 @@ Kamera/ROI kararı:
 - Burun eğimi `4/6/8/10/12/14/16/18/20/24/28°`, jitter `±0.5°`'dir.
 - Nominal, hafif soluk, hafif karanlık ve hafif aydınlık görünüm profilleri pozlara
   `%40/%20/%20/%20` oranıyla deterministik atanır; veri hacmini dört katına çıkarmaz.
-- Arama yolu tam-FoV `1280×720`; runtime ROI yolu aynı capture request'in
-  `2304×1296` main akışından `high_res_roi` crop'tur. Her ikisi stretch yapılmadan
-  `640×640` letterbox edilir.
+- Arama yolu `2304×1296` main görüntüden `%25` örtüşmeli sekiz `768×768` SAHI
+  tile'ıdır. Takip yolu aynı main görüntüden `768×768`, kayıpta `960×960` veya
+  `1152×1152` kare ROI'dir. Kare görünümler padding olmadan `640×640` küçültülür.
+- Tam-FoV `1280×720 → 640×360` letterbox yalnız legacy ablation'dır.
 - `scaler_crop` ve düşük çözünürlüklü `application_crop` varsayılan runtime değil,
   yalnız araştırma/ablation yollarıdır.
 
@@ -55,6 +56,23 @@ npm run dataset:cad:validate:batch -- \
 npm run dataset:cad:render:pilot -- --limit 1
 npm run dataset:cad:ingest
 ```
+
+Bir render ve tek kanallı hedef maskesinden runtime ile aynı search tile'larını
+üretmek için:
+
+```bash
+npm run dataset:cad:views -- \
+  --image <render.png> \
+  --mask <class-mask.png> \
+  --target-value <class-id> \
+  --record <record.json> \
+  --output-dir <output/search> \
+  --family search-sahi
+```
+
+Takip/recovery görünümü için `--family track-square --roi-size 768`; kayıp
+senaryolarında `960` veya `1152` kullanılır. Blur/noise tam kareye yalnız bir kez
+uygulanır, ardından tile/ROI türetilir.
 
 Blender/BlenderProc yalnız geliştirme makinesinde kullanılır; Raspberry Pi/LIVE
 ortamına kurulmaz. Üretilen meshler, `6.930` kayıtlık plan ve renderlar Git'e

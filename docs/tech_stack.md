@@ -146,8 +146,9 @@ oluşturup canlı arm iznini kapatır.
    gerçek 5/10/15 m kalibrasyon kanıtı imalat sonrası açık.
 6. Hedef tip modeli: dört özgün maket geometrisinden üretilen altı kanonik sunum varyantı
    `perception/assets/target_prints/` altında sürümlenmiştir. Gerçek Camera
-   Module 3 baskı kayıtları ana veri olacak; YOLOv8n ve klasik HSV/template
-   baseline aynı grup-split testinde karşılaştırılacaktır. Kazanan model HEF'e
+   Module 3 baskı kayıtları ana veri olacak; SAHI-sliced YOLOv8s birincil aday,
+   YOLOv8n throughput fallback'i, klasik HSV/template ise tanısal baseline olarak
+   aynı grup-split testinde karşılaştırılacaktır. Kazanan model HEF'e
    çevrilip AI HAT+ üzerinde doğrulanana kadar tip `Bilinmeyen` kalır. Ayrıntı:
    `docs/hedef_gorseli_yolo_veri_plani.md`.
 
@@ -233,10 +234,12 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
   Mutasyonlar Mission Core kuyruğuna girer; `GET /state/stream` SSE snapshot,
   `GET /commands/{id}` komut izleme, SQLite WAL + segmentli JSONL telemetri, `/readiness`,
   `/telemetry/export` ve `/replay` kanıt yüzeyleri uygulanmıştır.
-- **Görüntü işleme:** OpenCV renk/adayı çıkarma korunur; tip tespiti için
-  gerçek basılı hedef kayıtlarıyla klasik HSV/template ve YOLOv8n baseline'ları
-  karşılaştırılır; doğrulanmış kazanan HEF model AI HAT+ üzerinde
-  çalıştırılacaktır. Modelin Safety Gate veya ateş yetkisi yoktur.
+- **Görüntü işleme:** OpenCV motion/renk adayları hızlı yol olarak korunur;
+  doğruluk yolu `2304×1296` main görüntüde SAHI tabanlı sekiz örtüşmeli
+  `768×768` tile araması ve kare track ROI'sidir. Aynı sliced veri/split üzerinde
+  YOLOv8s birincil doğruluk adayı, YOLOv8n throughput fallback'i olarak
+  karşılaştırılır; doğrulanmış kazanan HEF model AI HAT+ 26 TOPS üzerinde
+  çalıştırılır. Motion/HSV/model sonucunun Safety Gate veya atış yetkisi yoktur.
 - **Kamera:** Tek Raspberry Pi Camera Module 3 Standard, Picamera2, üretici
   nominali 66° yatay FoV; intrinsics imalat sonrası kalibrasyonla değiştirilir.
 - **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi

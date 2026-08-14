@@ -33,6 +33,7 @@
     "dataset:cad:validate": ".venv-synthetic/bin/python perception/synthetic/tools/validate_lods.py",
     "dataset:cad:validate:batch": ".venv-synthetic/bin/python perception/synthetic/tools/validate_render_batch.py",
     "dataset:cad:camera": ".venv-synthetic/bin/python perception/synthetic/tools/apply_camera_pipeline.py",
+    "dataset:cad:views": ".venv-synthetic/bin/python perception/synthetic/tools/generate_inference_views.py",
     "dataset:cad:plan": ".venv-synthetic/bin/python perception/synthetic/tools/generate_scene_matrix.py",
     "dataset:cad:plan:pilot": ".venv-synthetic/bin/python perception/synthetic/tools/build_pilot_plan.py",
     "dataset:cad:render:pilot": ".venv-synthetic/bin/python perception/synthetic/tools/render_plan_batch.py",

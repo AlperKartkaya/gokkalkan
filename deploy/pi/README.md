@@ -57,6 +57,19 @@ reconnect ve EMI HIL kabulü tamamlanmadan LIVE açılmamalıdır.
 karşılamaz. HEF model yolu ayrıca seçilmediği sürece health, donanımı hazır ama
 modeli hazır değil olarak raporlar.
 
+SAHI/Hailo batch inference için, seçilen HailoRT sürümüne uyumlu repo dışı
+runner factory `/etc/gokkalkan/perception.env` içinde bağlanır:
+
+```dotenv
+GOKKALKAN_HAILO_BATCH_RUNNER_FACTORY=kurulu_hailo_runner_modulu:create_batch_runner
+```
+
+Bu değer ve gerçek HEF olmadan `--require-detector` perception health'ini kasıtlı
+olarak kapalı tutar. Servis bridge'i `30 Hz` çalıştırır: SAHI aramasında ağır
+inference sürerken latest-wins kuyruk eski kareleri düşürür; kare ROI takibinde
+tek inference ile kamera hızına yaklaşılabilir. Gerçek hız AR-10 Pi/Hailo
+benchmark'ında ölçülmeden doğrulanmış sayılmaz.
+
 Kurulum sonunda aşağıdaki komut release kanıtı olarak saklanır:
 
 ```bash

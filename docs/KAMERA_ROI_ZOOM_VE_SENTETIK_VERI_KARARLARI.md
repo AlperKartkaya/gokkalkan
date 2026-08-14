@@ -1,34 +1,37 @@
 # Kamera ROI, Zoom ve Sentetik Veri Kararları
 
-> **Durum:** CAD/sentetik implementasyon için kesin karar; fiziksel performans
-> ölçümleri daha sonra doğrulanacak
+> **Durum:** 15 Ağustos 2026 tarihinde arama/takip bölümü ADR-006 ile güncellendi;
+> fiziksel performans ölçümleri daha sonra doğrulanacak
 > **Kamera:** Raspberry Pi Camera Module 3 Standard / Sony IMX708
-> **Model girdisi:** `640×640`, en-boy oranı korunmuş letterbox
+> **Model girdisi:** `640×640`; kare tile/ROI'de padding yok, legacy full-frame'de letterbox
+> **Bağlayıcı arama kararı:** [`adr/006-sahi-hailo-tiled-search.md`](adr/006-sahi-hailo-tiled-search.md)
 > **Güvenlik:** Zoom yalnız algı girdisini değiştirir; hareket veya atış yetkisi vermez.
 
 ## 1. Kısa cevap
 
-Evet, iki farklı görüntü ailesi üretmeliyiz:
+Üç farklı görüntü ailesi üretmeliyiz:
 
-1. **Tam görüş arama görüntüsü:** Parkurun tamamı görülür. Yüksek çözünürlüklü
-   sensör görünüşü önce `1280×720` arama akışına, sonra en-boy oranı bozulmadan
-   `640×640` YOLO tensoruna letterbox edilir.
-2. **Yüksek çözünürlüklü ROI görüntüsü:** Kararlı track oluştuktan sonra aynı
-   sensör karesinin yüksek çözünürlüklü `2304×1296` akışından hedef çevresi
-   `1.5×` veya `2×` görüş faktörüyle kırpılır. Crop doğrudan `640×640`
-   letterbox aşamasına gider; önce `1280×720`'ye küçültülüp tekrar büyütülmez.
+1. **SAHI arama tile'ı:** `2304×1296` main görüntü `%25` örtüşmeli sekiz
+   `768×768` kare tile'a ayrılır; her tile `640×640` modele gider.
+2. **Kare takip ROI'si:** Kararlı ilk tespitten sonra hedef çevresindeki
+   `768×768` main-stream crop'u `640×640` modele gider. Kayıpta `960×960` ve
+   `1152×1152` kurtarma pencereleri kullanılır.
+3. **Tam görüş legacy baseline:** `1280×720 → 640×360 letterbox` yalnız
+   ablation/teşhis için tutulur; ilk tespitin doğruluk kapısı değildir.
 
 İlk runtime tasarımında Picamera2 `ScalerCrop` kullanmak yerine aynı kamera
 isteğinden iki tam-FoV akış alınacaktır:
 
 ```text
 IMX708 / aynı capture request
-├─ main  : 2304×1296 RGB  → dinamik yüksek çözünürlüklü ROI
-└─ lores : 1280×720       → tam görüş arama/takip
+├─ main  : 2304×1296 RGB  → SAHI arama tile'ları + kare takip ROI'si
+└─ lores : 1280×720       → UI + motion/HSV hızlı adayları
 ```
 
-Bu karar, ROI açıkken tam parkur görüşünü kaybetmemizi önler. `ScalerCrop` ve
-düşük çözünürlüklü uygulama crop'u yalnız karşılaştırma profili olarak tutulur.
+Bu karar, ROI açıkken tam parkur görüşünü kaybetmemizi önler. Motion/HSV yalnız
+öncelikli aday üretir; periyodik SAHI sweep'in yerini almaz. `ScalerCrop`, eski
+full-frame letterbox ve düşük çözünürlüklü uygulama crop'u yalnız karşılaştırma
+profili olarak tutulur.
 
 ## 2. Camera Module 3 açısından bildiğimiz fiziksel sınırlar
 
@@ -70,7 +73,7 @@ kaybedilen ayrıntıyı geri getiremez.
 Dolayısıyla doğru sıra:
 
 ```text
-yüksek çözünürlüklü kare → ROI crop → model letterbox
+yüksek çözünürlüklü kare → kare ROI crop → 640×640 uniform resize
 ```
 
 Yanlış/fallback sıra:
@@ -93,10 +96,9 @@ eşitlemeyeceğiz.
 
 ROI penceresi:
 
-- daima `16:9` kalacak;
-- `2304×1296` main akışına göre `1.5×`, `2×`; yalnız araştırmada `3×` olacak;
-- `3×` durumunda bile `768×432` kalacak ve `640×360` model içeriğine
-  küçültülecek; model öncesi upsample yapılmayacak;
+- modelle aynı oranlı kare olacak;
+- normal takipte `768×768`, kayıp kurtarmada `960×960` ve `1152×1152` olacak;
+- `640×640` model girdisine yalnız küçültülecek; model öncesi upsample yapılmayacak;
 - hedef bbox'ı çevresinde bağlam payı bırakacak;
 - tracker'ın bir önceki karedeki/predicted merkeziyle hareket edecek;
 - ekran kenarında ölçüsü değişmeden clamp edilecek.
@@ -105,11 +107,11 @@ Hedefin `640×640` tensor içinde farklı büyüklükte görünmesi hata değild
 amacı zaten aynı fiziksel hedefi daha fazla model pikseliyle temsil etmektir.
 Model hem arama ölçeklerini hem ROI ölçeklerini eğitimde görmelidir.
 
-## 5. Neden 640×640 içinde 640×360 aktif görüntü var?
+## 5. Tam görüntü baseline'ında neden yalnız 640×360 aktif alan var?
 
-Kamera ve seçtiğimiz ROI `16:9`, model tensörü karedir. Görüntüyü kareye
-esnetmeyeceğiz; aksi halde hedef geometrisi bozulur. `1280×720` veya herhangi bir
-`16:9` ROI şu şekilde letterbox edilir:
+Kamera tam görüntüsü `16:9`, model tensörü karedir. Görüntüyü kareye esnetmek
+geometriyi bozar. Bu nedenle legacy `1280×720` full-frame baseline şu şekilde
+letterbox edilir:
 
 ```text
 640×640 tensor
@@ -118,29 +120,32 @@ esnetmeyeceğiz; aksi halde hedef geometrisi bozulur. `1280×720` veya herhangi 
 └─ alt padding: 140 px
 ```
 
-Bu padding, arama ve ROI yollarında aynıdır. İleride `640×384` model mimarisi
-ayrı bir performans deneyi olabilir; mevcut YOLO/Hailo sözleşmesi değiştirilmez.
+SAHI arama tile'ı ve kare track ROI'si doğal olarak karedir; bu yollarda padding
+yoktur ve `640×640` tensörün tamamı görüntü taşır. Full-frame baseline yalnız
+ablation/teşhis içindir.
 
 ## 6. Dinamik ROI çalışma akışı
 
 ```text
-SEARCH_FULL_FRAME
-  lores 1280×720 → letterbox 640×640 → YOLO
-        ↓ kararlı track (en az 3 kare)
-TRACK_ROI
-  model merkezi → letterbox ters dönüşümü → lores koordinatı
-  lores koordinatı → main 2304×1296 koordinatı
-  önceki/predicted merkez → 16:9 ROI crop
-  crop → letterbox 640×640 → aynı YOLO
-        ↓ track stale / düşük güven / crop dışı
-FULL_FRAME_FAILBACK
+SEARCH_SAHI_SWEEP
+  main 2304×1296 → 8× 768×768 overlap tile → 640×640 YOLO batch
+  tile sonuçları → main koordinatı → cross-tile merge
+        ↓ son 3 sweep'in en az 2'sinde tutarlı detection
+TRACK_SQUARE_ROI
+  önceki/predicted merkez → 768×768 kare crop → 640×640 YOLO
+        ↓ tek/çift kayıp
+TRACK_EXPANDED_ROI
+  960×960 → 1152×1152 kurtarma crop'u
+        ↓ stale / düşük güven / crop dışı
+SEARCH_SAHI_SWEEP
 ```
 
 İki YOLO yolu aynı ağırlıkları kullanabilir. Her detection şu alanlarla taşınır:
 
-- `frameMode`: `FULL_FRAME` veya `HIGH_RES_ROI`;
+- `frameMode`: `SEARCH_SAHI_TILE`, `TRACK_SQUARE_ROI` veya `FULL_FRAME_LEGACY`;
+- `sliceIndex`, `sweepId` ve `sliceRectFullFramePx`;
 - `cropRectHighResPx`;
-- `zoomFactor`;
+- `roiSourceSizePx`;
 - `modelContentRectPx` ve padding;
 - model bbox'ının tam görüş/main koordinatına geri dönüşümü;
 - capture sequence/timestamp;
@@ -153,27 +158,33 @@ hatasında kullanılamaz.
 
 Her temel CAD dünyası dört kat körlemesine çoğaltılmayacak. Seçimli üretim:
 
-### A. Tam görüş — zorunlu
+### A. SAHI arama tile'ı — zorunlu
 
 - Tüm pilot dünyalar.
 - Kaynak render `2304×1296`.
-- Tam FoV → `1280×720` arama görünüşü → `640×640` letterbox.
-- Arama, ilk tespit, çok küçük hedef ve false-positive davranışı için.
+- Kamera etkileri full frame'e uygulandıktan sonra `%25` overlap ile sekiz
+  `768×768` tile.
+- Tile → `640×640`; padding yok.
+- Tile sınırı, kırpılmış annotation ve boş/hard-negative davranışı için.
 
-### B. Yüksek çözünürlüklü ROI — zorunlu alt küme
+### B. Kare takip ROI'si — zorunlu
 
-- Pilot dünyaların dengeli `%40` alt kümesi: `1.5×` ve `2×`.
-- Uzak/küçük hedef ağırlıklı `%10` hard-case: ayrıca `3×`.
+- Normal `768×768`; kurtarma alt kümeleri `960×960` ve `1152×1152`.
 - Crop merkezi kusursuz değildir; tracker gecikmesi ve bounded merkez hatası vardır.
 - Model öncesi upsample yasaktır.
 
-### C. `ScalerCrop` proxy — araştırma alt kümesi
+### C. Tam görüş letterbox — legacy ablation
+
+- `1280×720 → 640×360` aktif alan.
+- Birincil arama datası değildir; küçük hedef kaybını ölçen baseline'dır.
+
+### D. `ScalerCrop` proxy — araştırma alt kümesi
 
 - Aynı sensör-koordinatlı crop'un ISP tarafından `1280×720` çıkışa ölçeklenmesini
   yaklaşıklar.
 - Fiziksel Pi testi kazanç gösterirse runtime adayı olur.
 
-### D. Düşük çözünürlüklü application crop — negatif baseline
+### E. Düşük çözünürlüklü application crop — negatif baseline
 
 - Önce `1280×720`, sonra crop ve büyütme.
 - Runtime varsayılanı değildir; yüksek çözünürlüklü ROI'nin gerçekten faydalı
@@ -198,7 +209,7 @@ ideal optik sahne
 → denoise/sharpen/tonemap
 → crop + scaler
 → yalnız gerçekten kullanılıyorsa codec
-→ YOLO letterbox
+→ model preprocess'i: kare tile/ROI için uniform resize, legacy 16:9 için letterbox
 ```
 
 İlk sentetik turda:
@@ -218,8 +229,8 @@ Her capture request için eşzamanlı olarak:
 
 1. `lores` tam görüş karesi kaydedilir.
 2. Gerekiyorsa `main` yüksek çözünürlüklü kare kaydedilir.
-3. Aynı sequence/timestamp altında track merkezinden ROI türetilir.
-4. Full-frame ve ROI inference girdileri birlikte saklanır.
+3. Aynı sequence/timestamp altında SAHI tile'ları ve track merkezinden kare ROI türetilir.
+4. Tile, full-frame legacy ve ROI inference girdileri birlikte saklanır.
 5. Picamera2 metadata'sından en az şu alanlar alınır:
    `ScalerCrop`, `SensorTimestamp`, `ExposureTime`, `AnalogueGain`,
    `DigitalGain`, `ColourGains`, `ColourTemperature`, `LensPosition`,
@@ -230,13 +241,12 @@ Her capture request için eşzamanlı olarak:
 
 ## 10. Kesin implementasyon kararı
 
-1. Varsayılan runtime yolu: `FULL_FOV_LORES + HIGH_RES_MAIN_SOFTWARE_ROI`.
-2. `ScalerCrop`: fiziksel benchmark sonrası seçilebilecek alternatif.
-3. `application_crop`: yalnız ablation baseline.
-4. `1.5×/2×`: runtime adayları; `3×`: araştırma/hard-case.
-5. Her yol `16:9` korunarak `640×640` letterbox edilir; stretch yoktur.
-6. ROI crop boyutu bbox boyutu değildir; zoom faktöründen hesaplanan guard-band'li
-   sabit oranlı penceredir.
+1. Varsayılan arama yolu: `2304×1296 MAIN + 8×768 SAHI SEARCH`.
+2. Varsayılan takip yolu: `768×768 SQUARE TRACK ROI`; kayıpta `960/1152`.
+3. Motion/HSV yalnız öncelikli aday üretir; SAHI sweep'i devre dışı bırakamaz.
+4. Full-frame letterbox, `ScalerCrop` ve `application_crop` yalnız ablation baseline'dır.
+5. Kare tile/ROI `640×640` tensörün tamamını kullanır; stretch ve upsample yoktur.
+6. ROI crop boyutu bbox boyutu değildir; hedef çevresinde takip bağlamı bırakır.
 7. Codec artefaktı yalnız gerçek runtime codec kullanırsa veri reçetesine girer.
 8. Sentetik ve fiziksel veri aynı koordinat dönüşümü ve preprocess sözleşmesini
    kullanır.
@@ -246,10 +256,14 @@ Her capture request için eşzamanlı olarak:
 
 ## 11. Sonraki kod sırası
 
-1. Sentetik full-frame ve `high_res_roi` varyantlarını batch üretecek runner.
-2. ROI/full-frame paired manifest ve koordinat geri-dönüş testleri.
-3. Aynı sentetik sahnede full-frame ↔ ROI detector replay.
-4. Pilot render ve B1/B4 karşılaştırması.
-5. Fiziksel kamera geldiğinde dual-stream capture ve metadata kaydı.
-6. Pi üzerinde main/lores FPS, bellek, latency ve dropped-frame ölçümü.
-7. Gerekirse `ScalerCrop` ile aynı benchmark'ın tekrarı.
+1. ✅ SAHI `0.11.36` offline exact lock ve dependency-light Hailo runtime adapterı.
+2. ✅ Sentetik `SEARCH_SAHI_TILE_768` ve `TRACK_SQUARE_ROI` runner'ı.
+3. ✅ Tile/ROI koordinat dönüşümü, padding ve upsample regresyon testleri.
+4. ✅ Cross-tile GREEDYNMM/IOS ve temporal `2-of-3` confirmation testleri.
+5. ✅ HSV konturundan bağımsız model izi, kararlı `MODEL-*` kimliği ve LiDAR
+   gelene kadar fail-closed `rangeM=0` taşıma sözleşmesi.
+6. ⏳ Aynı sentetik sahnede legacy full-frame ↔ SAHI ↔ ROI detector replay.
+7. ⏳ YOLOv8s ↔ YOLOv8n ve GREEDYNMM/IOS ↔ NMS/IOU ablation'ı.
+8. ✅ Picamera2 main/lores dual-stream capture ve metadata sözleşmesi.
+9. ⏳ Pi üzerinde main/lores FPS, bellek, latency ve dropped-frame ölçümü.
+10. ⏳ Gerekirse `ScalerCrop` ile aynı benchmark'ın tekrarı.

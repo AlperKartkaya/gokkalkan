@@ -1,2 +1,3 @@
 -r backend.lock
 ultralytics==8.4.116
+sahi==0.11.36

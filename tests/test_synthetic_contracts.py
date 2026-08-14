@@ -111,10 +111,19 @@ def test_camera_and_scene_profiles_lock_same_height_and_pose_buckets() -> None:
     assert camera["nativeSensorResolution"] == [4608, 2592]
     assert camera["highResolutionMainStream"] == [2304, 1296]
     assert camera["runtimeAcquisitionPath"] == (
-        "DUAL_STREAM_FULL_FOV_WITH_HIGH_RES_SOFTWARE_ROI"
+        "DUAL_STREAM_SAHI_SEARCH_AND_SQUARE_TRACK_ROI"
     )
-    assert camera["runtimeZoomModes"] == ["none", "high_res_roi"]
-    assert camera["researchOnlyZoomModes"] == [
+    assert camera["modelResizePolicy"] == "SQUARE_UNIFORM_RESIZE_NO_PADDING"
+    assert camera["searchSliceSize"] == [768, 768]
+    assert camera["searchOverlapRatio"] == [0.25, 0.25]
+    assert camera["searchTileCount"] == 8
+    assert camera["trackRoiSizesPx"] == [768, 960, 1152]
+    assert camera["runtimeViewFamilies"] == [
+        "SEARCH_SAHI_TILE_768",
+        "TRACK_SQUARE_ROI",
+    ]
+    assert camera["researchOnlyViewFamilies"] == [
+        "FULL_FRAME_LEGACY",
         "scaler_crop",
         "application_crop",
     ]
@@ -208,6 +217,27 @@ def test_render_record_schema_rejects_out_of_range_camera_pose() -> None:
     }
     render_validator = validator("render-record.schema.json")
 
+    render_validator.validate(record)
+    record["sourceFrameId"] = "REC-001"
+    record["inferenceView"] = {
+        "viewFamily": "SEARCH_SAHI_TILE_768",
+        "sourceResolution": [2304, 1296],
+        "sliceRectFullFramePx": [0, 0, 768, 768],
+        "roiRectFullFramePx": None,
+        "sliceIndex": 0,
+        "overlapWidthRatio": 0.25,
+        "overlapHeightRatio": 0.25,
+        "resizeScale": 640 / 768,
+        "bboxFullFramePx": [100, 100, 50, 40],
+        "bboxCropPx": [100, 100, 50, 40],
+        "bboxModelPx": [83, 83, 42, 34],
+        "visibleFraction": 1.0,
+        "truncatedBySlice": False,
+        "edgeDistancePx": 100,
+        "modelInputResolution": [640, 640],
+        "modelPaddingPx": [0, 0, 0, 0],
+        "upsampledBeforeModel": False,
+    }
     render_validator.validate(record)
     record["cameraElevationOffsetDeg"] = 4.0
 

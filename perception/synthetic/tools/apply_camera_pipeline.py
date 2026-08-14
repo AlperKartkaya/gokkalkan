@@ -18,6 +18,12 @@ from typing import Any
 import cv2
 import numpy as np
 
+PERCEPTION_SRC = Path(__file__).resolve().parents[2] / "src"
+if str(PERCEPTION_SRC) not in __import__("sys").path:
+    __import__("sys").path.insert(0, str(PERCEPTION_SRC))
+
+from sahi_geometry import generate_slice_windows  # noqa: E402
+
 
 class CameraPipelineError(ValueError):
     """Raised for invalid crop or image contracts."""
@@ -183,6 +189,193 @@ def letterbox(
         ],
         "upsampledBeforeModel": scale > 1.0,
     }
+
+
+def uniform_resize(
+    image: np.ndarray,
+    *,
+    output_size: tuple[int, int] = (640, 640),
+    is_mask: bool = False,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Resize a square tile/ROI without padding or aspect distortion."""
+
+    source_height, source_width = image.shape[:2]
+    output_width, output_height = output_size
+    if source_width != source_height or output_width != output_height:
+        raise CameraPipelineError("uniform model resize için kaynak ve çıktı kare olmalı")
+    if source_width < output_width or source_height < output_height:
+        raise CameraPipelineError("model öncesi upsample yasaktır")
+    interpolation = cv2.INTER_NEAREST if is_mask else cv2.INTER_AREA
+    resized = cv2.resize(image, output_size, interpolation=interpolation)
+    return resized, {
+        "modelContentRectPx": [0, 0, output_width, output_height],
+        "modelScale": output_width / source_width,
+        "modelPaddingPx": [0, 0, 0, 0],
+        "upsampledBeforeModel": False,
+    }
+
+
+def square_crop_rect(
+    *,
+    image_width: int,
+    image_height: int,
+    size_px: int,
+    center_px: tuple[float, float],
+) -> tuple[int, int, int, int]:
+    if size_px < 640:
+        raise CameraPipelineError("track ROI 640 pikselden küçük olamaz")
+    if size_px > min(image_width, image_height):
+        raise CameraPipelineError("track ROI görüntünün kısa kenarını aşamaz")
+    left = min(max(0, round(center_px[0] - size_px / 2)), image_width - size_px)
+    top = min(max(0, round(center_px[1] - size_px / 2)), image_height - size_px)
+    return left, top, size_px, size_px
+
+
+def _bbox_edge_distance(
+    bbox: tuple[int, int, int, int] | None,
+    *,
+    width: int,
+    height: int,
+) -> int | None:
+    if bbox is None:
+        return None
+    left, top, bbox_width, bbox_height = bbox
+    return min(left, top, width - left - bbox_width, height - top - bbox_height)
+
+
+def _inference_view(
+    *,
+    image: np.ndarray,
+    mask: np.ndarray,
+    rect: tuple[int, int, int, int],
+    full_bbox: tuple[int, int, int, int] | None,
+    full_target_pixels: int,
+    view_family: str,
+    slice_index: int | None = None,
+    overlap: tuple[float, float] | None = None,
+) -> dict[str, Any]:
+    left, top, width, height = rect
+    crop = image[top : top + height, left : left + width].copy()
+    crop_mask = mask[top : top + height, left : left + width].copy()
+    model_input, resize_meta = uniform_resize(crop)
+    model_mask, _ = uniform_resize(crop_mask, is_mask=True)
+    crop_bbox = bbox_from_mask(crop_mask)
+    model_bbox = bbox_from_mask(model_mask)
+    visible_pixels = int(np.count_nonzero(crop_mask))
+    visible_fraction = (
+        0.0 if full_target_pixels == 0 else visible_pixels / full_target_pixels
+    )
+    metadata: dict[str, Any] = {
+        "viewFamily": view_family,
+        "sourceResolution": [image.shape[1], image.shape[0]],
+        "sliceRectFullFramePx": list(rect) if slice_index is not None else None,
+        "roiRectFullFramePx": list(rect) if slice_index is None else None,
+        "sliceIndex": slice_index,
+        "overlapWidthRatio": None if overlap is None else overlap[0],
+        "overlapHeightRatio": None if overlap is None else overlap[1],
+        "resizeScale": resize_meta["modelScale"],
+        "bboxFullFramePx": list(full_bbox) if full_bbox else None,
+        "bboxCropPx": list(crop_bbox) if crop_bbox else None,
+        "bboxModelPx": list(model_bbox) if model_bbox else None,
+        "visibleFraction": visible_fraction,
+        "truncatedBySlice": 0.0 < visible_fraction < 0.999999,
+        "edgeDistancePx": _bbox_edge_distance(crop_bbox, width=width, height=height),
+        "modelInputResolution": [model_input.shape[1], model_input.shape[0]],
+        "modelPaddingPx": resize_meta["modelPaddingPx"],
+        "upsampledBeforeModel": resize_meta["upsampledBeforeModel"],
+    }
+    return {
+        "image": crop,
+        "mask": crop_mask,
+        "modelInput": model_input,
+        "modelMask": model_mask,
+        "metadata": metadata,
+    }
+
+
+def build_sahi_search_views(
+    image: np.ndarray,
+    mask: np.ndarray,
+    *,
+    slice_size: tuple[int, int] = (768, 768),
+    overlap: tuple[float, float] = (0.25, 0.25),
+) -> list[dict[str, Any]]:
+    """Slice an already-degraded full frame into deterministic model views."""
+
+    if image.shape[:2] != mask.shape[:2]:
+        raise CameraPipelineError("görüntü ve maske çözünürlükleri aynı olmalı")
+    height, width = image.shape[:2]
+    windows = generate_slice_windows(
+        image_width=width,
+        image_height=height,
+        slice_width=slice_size[0],
+        slice_height=slice_size[1],
+        overlap_width_ratio=overlap[0],
+        overlap_height_ratio=overlap[1],
+    )
+    full_bbox = bbox_from_mask(mask)
+    full_target_pixels = int(np.count_nonzero(mask))
+    return [
+        _inference_view(
+            image=image,
+            mask=mask,
+            rect=(window.left, window.top, window.width, window.height),
+            full_bbox=full_bbox,
+            full_target_pixels=full_target_pixels,
+            view_family="SEARCH_SAHI_TILE_768",
+            slice_index=index,
+            overlap=overlap,
+        )
+        for index, window in enumerate(windows)
+    ]
+
+
+def build_track_square_view(
+    image: np.ndarray,
+    mask: np.ndarray,
+    *,
+    roi_size_px: int = 768,
+    predicted_center_px: tuple[float, float] | None = None,
+    center_error_px: tuple[float, float] = (0.0, 0.0),
+) -> dict[str, Any]:
+    """Create a square tracking crop with bounded prediction error."""
+
+    if image.shape[:2] != mask.shape[:2]:
+        raise CameraPipelineError("görüntü ve maske çözünürlükleri aynı olmalı")
+    height, width = image.shape[:2]
+    full_bbox = bbox_from_mask(mask)
+    if predicted_center_px is None:
+        if full_bbox is None:
+            predicted_center_px = (width / 2, height / 2)
+        else:
+            left, top, bbox_width, bbox_height = full_bbox
+            predicted_center_px = (left + bbox_width / 2, top + bbox_height / 2)
+    center = (
+        predicted_center_px[0] + center_error_px[0],
+        predicted_center_px[1] + center_error_px[1],
+    )
+    rect = square_crop_rect(
+        image_width=width,
+        image_height=height,
+        size_px=roi_size_px,
+        center_px=center,
+    )
+    view = _inference_view(
+        image=image,
+        mask=mask,
+        rect=rect,
+        full_bbox=full_bbox,
+        full_target_pixels=int(np.count_nonzero(mask)),
+        view_family="TRACK_SQUARE_ROI",
+    )
+    view["metadata"].update(
+        {
+            "roiSourceSizePx": roi_size_px,
+            "predictedCenterPx": list(predicted_center_px),
+            "centerErrorPx": list(center_error_px),
+        }
+    )
+    return view
 
 
 def degrade_image(

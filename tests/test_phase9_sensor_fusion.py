@@ -99,10 +99,12 @@ def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy(
         assert sample is not None
         assert sample.camera_timestamp_ns > 0
         assert sample.receive_monotonic_ns > 0
+        assert sample.main_image.shape == (1296, 2304, 3)
         health = camera.health()
         assert health["status"] == "SIMULATED"
         assert health["healthy"] is False
         assert health["simulated"] is True
+        assert health["mainStreamAvailable"] is True
     finally:
         camera.stop()
 

@@ -45,9 +45,26 @@ from camera_stream_server import CameraStreamService
 from accelerator import AcceleratorProbe, Hailo8Accelerator
 from aim_alignment import AimCalibration
 from detector import LatestWinsDetector
+from detection_tracks import DetectionTrackProjector
 from hailo_detector import HailoDetector
+from hailo_sahi_adapter import HailoSahiAdapter
+from sahi_search import LatestWinsSahiSearch, SahiSearchConfig, SahiSearchEngine
 
 logger = logging.getLogger(__name__)
+
+TARGET_MODEL_LABELS = {
+    "dusman_drone_kirmizi", "dusman_helikopter_kirmizi",
+    "dusman_f16_kirmizi", "dusman_fuze_kirmizi",
+    "dost_helikopter_camgobegi", "dost_f16_camgobegi",
+}
+TARGET_TYPE_LABEL_MAP = {
+    "dusman_drone_kirmizi": "Mini/Micro İHA",
+    "dusman_helikopter_kirmizi": "Helikopter",
+    "dusman_f16_kirmizi": "F16",
+    "dusman_fuze_kirmizi": "Balistik Füze",
+    "dost_helikopter_camgobegi": "Helikopter",
+    "dost_f16_camgobegi": "F16",
+}
 
 
 def _utc_now() -> str:
@@ -102,6 +119,7 @@ class PerceptionBridge:
         self.accelerator_required = accelerator_required
         self.detector = detector
         self.detector_required = detector_required
+        self._model_tracks = DetectionTrackProjector()
         self.camera_stream = (
             CameraStreamService(camera_stream_host, camera_stream_port)
             if camera_stream_port is not None
@@ -195,21 +213,91 @@ class PerceptionBridge:
             candidates = self.processor.process(frame, stage=self.stage)
         tracks = [c.to_api_dict() for c in candidates]
         if self.detector is not None and sample is not None:
-            self.detector.submit(frame, sample.receive_monotonic_ns)
+            detector_health = self.detector.health()
+            uses_main_space = getattr(self.detector, "input_stream", None) == "sahi-main"
+            detector_frame = getattr(sample, "main_image", None) if uses_main_space else frame
+            if detector_frame is not None:
+                self.detector.submit(detector_frame, sample.receive_monotonic_ns)
             detections = self.detector.latest(now_monotonic_ns=sample.receive_monotonic_ns)
-            for track in tracks:
-                cx, cy, _width, _height = track.get("bboxPx", [0, 0, 0, 0])
-                matches = [
-                    detection for detection in detections
-                    if detection.bbox_xyxy[0] <= cx <= detection.bbox_xyxy[2]
-                    and detection.bbox_xyxy[1] <= cy <= detection.bbox_xyxy[3]
-                ]
-                if matches:
-                    best = max(matches, key=lambda item: item.confidence)
-                    track["targetType"] = best.label
-                    track["confidence"] = best.confidence
-                    track["modelSha256"] = self.detector.health().get("modelSha256")
+            if uses_main_space:
+                source_resolution = tuple(
+                    int(value)
+                    for value in detector_health.get("sourceResolution", [2304, 1296])
+                )
+                frame_height, frame_width = frame.shape[:2]
+                model_tracks = self._model_tracks.update(
+                    detections,
+                    stage=self.stage,
+                    source_size=source_resolution,
+                    output_size=(frame_width, frame_height),
+                    receive_monotonic_ns=sample.receive_monotonic_ns,
+                    model_sha256=detector_health.get("modelSha256"),
+                )
+                tracks = self._merge_model_and_legacy_tracks(model_tracks, tracks)
+            else:
+                self._enrich_legacy_tracks(tracks, detections, detector_health)
         self._enqueue_tracks(tracks)
+
+    @staticmethod
+    def _merge_model_and_legacy_tracks(
+        model_tracks: list[dict[str, Any]],
+        legacy_tracks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Use model tracks as canonical and retain only non-overlapping HSV tracks."""
+
+        result = list(model_tracks)
+        for legacy in legacy_tracks:
+            cx, cy, width, height = legacy.get("bboxPx", [0, 0, 0, 0])
+            overlapping_models = [
+                model
+                for model in model_tracks
+                if abs(cx - model["bboxPx"][0])
+                <= max(width, model["bboxPx"][2]) / 2
+                and abs(cy - model["bboxPx"][1])
+                <= max(height, model["bboxPx"][3]) / 2
+            ]
+            for model in overlapping_models:
+                for key in (
+                    "yawErrorDeg",
+                    "pitchErrorDeg",
+                    "aimCalibrationId",
+                    "aimCalibrationHash",
+                    "aimValid",
+                ):
+                    if key in legacy:
+                        model[key] = legacy[key]
+            overlaps_model = bool(overlapping_models)
+            if not overlaps_model:
+                result.append(legacy)
+        return result
+
+    @staticmethod
+    def _enrich_legacy_tracks(
+        tracks: list[dict[str, Any]],
+        detections: list[Any],
+        detector_health: dict[str, Any],
+    ) -> None:
+        for track in tracks:
+            cx, cy, _width, _height = track.get("bboxPx", [0, 0, 0, 0])
+            matches = [
+                detection
+                for detection in detections
+                if detection.bbox_xyxy[0] <= cx <= detection.bbox_xyxy[2]
+                and detection.bbox_xyxy[1] <= cy <= detection.bbox_xyxy[3]
+            ]
+            if not matches:
+                continue
+            best = max(matches, key=lambda item: item.confidence)
+            track["targetType"] = (
+                "Bilinmeyen"
+                if best.label == "AMBIGUOUS_CLASS"
+                else TARGET_TYPE_LABEL_MAP.get(best.label, best.label)
+            )
+            track["classificationState"] = (
+                "AMBIGUOUS_CLASS" if best.label == "AMBIGUOUS_CLASS" else "CONFIRMED"
+            )
+            track["confidence"] = best.confidence
+            track["modelSha256"] = detector_health.get("modelSha256")
 
     def _enqueue_tracks(self, tracks: list[dict[str, Any]]) -> None:
         """Keep the newest result without blocking the CPU-heavy producer."""
@@ -394,7 +482,7 @@ def main() -> None:
                         help="Backend API URL")
     parser.add_argument("--stage",    type=int, default=2, choices=[1, 2, 3],
                         help="Aktif yarışma aşaması (1/2/3)")
-    parser.add_argument("--poll-hz",  type=float, default=10.0,
+    parser.add_argument("--poll-hz",  type=float, default=30.0,
                         help="Saniyedeki işleme sayısı")
     parser.add_argument("--device",   type=int, default=0,
                         help="OpenCV kamera indeksi (Picamera2 kullanılırsa yok sayılır)")
@@ -434,11 +522,42 @@ def main() -> None:
         default="config/calibration/camera.toml",
         help="Versioned camera intrinsics/boresight calibration TOML",
     )
+    parser.add_argument(
+        "--search-config",
+        default="config/perception/search.toml",
+        help="SAHI search geometry, merge and temporal confirmation TOML",
+    )
     args = parser.parse_args()
 
     detector_worker = None
+    allowed_labels = TARGET_MODEL_LABELS
+    label_map = TARGET_TYPE_LABEL_MAP
+    batch_runner_spec = os.environ.get(
+        "GOKKALKAN_HAILO_BATCH_RUNNER_FACTORY", ""
+    ).strip()
     runner_spec = os.environ.get("GOKKALKAN_HAILO_RUNNER_FACTORY", "").strip()
-    if runner_spec and args.hailo_model:
+    if batch_runner_spec and args.hailo_model:
+        module_name, separator, attribute = batch_runner_spec.partition(":")
+        if not separator:
+            parser.error(
+                "GOKKALKAN_HAILO_BATCH_RUNNER_FACTORY module:function biçiminde olmalı"
+            )
+        factory = getattr(importlib.import_module(module_name), attribute)
+        search_config = SahiSearchConfig.from_toml(args.search_config)
+        detector_worker = LatestWinsSahiSearch(
+            SahiSearchEngine(
+                HailoSahiAdapter(
+                    args.hailo_model,
+                    factory(args.hailo_model),
+                    allowed_labels=allowed_labels,
+                    # Preserve friend/foe class identity through cross-tile merge.
+                    label_map=None,
+                    model_size=search_config.model_size,
+                ),
+                search_config,
+            )
+        )
+    elif runner_spec and args.hailo_model:
         module_name, separator, attribute = runner_spec.partition(":")
         if not separator:
             parser.error("GOKKALKAN_HAILO_RUNNER_FACTORY module:function biçiminde olmalı")
@@ -447,19 +566,8 @@ def main() -> None:
             HailoDetector(
                 args.hailo_model,
                 factory(args.hailo_model),
-                allowed_labels={
-                    "dusman_drone_kirmizi", "dusman_helikopter_kirmizi",
-                    "dusman_f16_kirmizi", "dusman_fuze_kirmizi",
-                    "dost_helikopter_camgobegi", "dost_f16_camgobegi",
-                },
-                label_map={
-                    "dusman_drone_kirmizi": "Mini/Micro İHA",
-                    "dusman_helikopter_kirmizi": "Helikopter",
-                    "dusman_f16_kirmizi": "F16",
-                    "dusman_fuze_kirmizi": "Balistik Füze",
-                    "dost_helikopter_camgobegi": "Helikopter",
-                    "dost_f16_camgobegi": "F16",
-                },
+                allowed_labels=allowed_labels,
+                label_map=label_map,
             )
         )
 
