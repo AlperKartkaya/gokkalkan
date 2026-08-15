@@ -368,6 +368,27 @@ class TestOperatorServiceHardwareIntegration(unittest.TestCase):
         self.assertEqual(self.service.tracks[0].trackId, "LIVE-A")
         self.assertEqual(self.service.tracks[0].source, "perception")
 
+    def test_balloon_track_is_preserved_as_non_fire_candidate(self) -> None:
+        result = self.service.update_tracks(
+            [
+                {
+                    "trackId": "BAL-1",
+                    "targetType": "Balon",
+                    "friendFoe": "Bilinmeyen",
+                    "rangeM": 8.0,
+                    "bearingDeg": 1.0,
+                    "confidence": 0.8,
+                    "objectRole": "balloon",
+                    "fireCandidate": True,
+                }
+            ]
+        )
+
+        self.assertTrue(result["ok"])
+        track = self.service.tracks[0].to_dict()
+        self.assertEqual(track["objectRole"], "balloon")
+        self.assertFalse(track["fireCandidate"])
+
     def test_update_tracks_with_invalid_data_returns_error(self) -> None:
         result = self.service.update_tracks("not-a-list")  # type: ignore[arg-type]
         self.assertFalse(result["ok"])

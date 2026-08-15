@@ -3,11 +3,6 @@
 The concrete HailoRT call is injected.  Tests therefore validate preprocessing,
 model identity and output normalization without pretending that physical Hailo
 inference occurred.
-
-Confidence threshold:
-  min_confidence=0.45 is the default for production.  0.20 generated excessive
-  false positives across SAHI tiles during development.  Override per-instance
-  for ablation or research runs that need lower thresholds.
 """
 
 from __future__ import annotations
@@ -33,7 +28,7 @@ class HailoSahiAdapter:
         *,
         allowed_labels: set[str],
         label_map: dict[str, str] | None = None,
-        min_confidence: float = 0.45,
+        min_confidence: float = 0.20,
         model_size: tuple[int, int] = (640, 640),
     ) -> None:
         self.model_path = Path(model_path)

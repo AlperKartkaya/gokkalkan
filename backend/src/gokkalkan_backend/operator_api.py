@@ -211,6 +211,8 @@ class DryRunTrack:
     aimCalibrationHash: str | None = None
     aimValid: bool = False
     courseState: dict[str, Any] | None = None
+    objectRole: Literal["target", "balloon"] = "target"
+    fireCandidate: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -231,6 +233,8 @@ class DryRunTrack:
             "aimCalibrationHash": self.aimCalibrationHash,
             "aimValid": self.aimValid,
             "courseState": self.courseState,
+            "objectRole": self.objectRole,
+            "fireCandidate": self.fireCandidate,
         }
 
 
@@ -1740,6 +1744,8 @@ class OperatorService:
                 str | None,
                 str | None,
                 bool,
+                Literal["target", "balloon"],
+                bool,
             ]
         ] = []
         for raw in tracks_data:
@@ -1769,6 +1775,16 @@ class OperatorService:
                     raise ValueError(
                         "rangeM negatif olamaz; confidence 0-1 arasında olmalıdır"
                     )
+                object_role_raw = str(raw.get("objectRole", "target"))
+                if object_role_raw not in {"target", "balloon"}:
+                    raise ValueError("objectRole target veya balloon olmalıdır")
+                object_role: Literal["target", "balloon"] = (
+                    "balloon" if object_role_raw == "balloon" else "target"
+                )
+                fire_candidate = (
+                    bool(raw.get("fireCandidate", True))
+                    and object_role == "target"
+                )
                 normalized.append(
                     (
                         track_id,
@@ -1788,6 +1804,8 @@ class OperatorService:
                             self.camera_calibration_hash is None
                             or str(raw.get("aimCalibrationHash", "")) == self.camera_calibration_hash
                         ),
+                        object_role,
+                        fire_candidate,
                     )
                 )
             except (TypeError, ValueError) as exc:
@@ -1809,6 +1827,8 @@ class OperatorService:
             aim_calibration_id,
             aim_calibration_hash,
             aim_valid,
+            object_role,
+            fire_candidate,
         ) in normalized:
             course_state = self.course_estimator.update(
                 track_id,
@@ -1834,6 +1854,8 @@ class OperatorService:
                 aimCalibrationHash=aim_calibration_hash,
                 aimValid=aim_valid,
                 courseState=course_state.to_dict(),
+                objectRole=object_role,
+                fireCandidate=fire_candidate,
             )
             updated.append(track)
 

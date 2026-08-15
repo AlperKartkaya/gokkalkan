@@ -6,7 +6,7 @@
   "researchArchitecture": "YOLOv8s",
   "fallbackArchitecture": "YOLOv8n",
   "deploymentTarget": "Raspberry Pi AI HAT+ 26 TOPS / Hailo-8 HEF",
-  "note": "Sentetik CAD render pipeline hazır (BlenderProc, 6930+ poz). Gerçek Camera Module 3 çekimleri olmadan model HEF'e dönüştürülmez ve canlı atış yetkisi verilmez. Model ağırlıkları (.pt/.onnx/.hef) bu repoya eklenmez; konumları evidence/ içinde hash ile kayıtlanır.",
+  "note": "Sentetik CAD render pipeline hazır (BlenderProc, 6930+ poz). Araştırma amaçlı HEF üretilebilir; gerçek Camera Module 3 verisiyle doğrulama tamamlanmadan canlı kullanım veya atış yetkisi verilmez. Model ağırlıkları (.pt/.onnx/.hef) bu repoya eklenmez; konumları evidence/ içinde hash ile kayıtlanır.",
   "input": {
     "colorOrder": "RGB",
     "nominalShape": [1, 3, 640, 640],
@@ -34,8 +34,8 @@
   },
   "calibration": {
     "cameraConfig": "config/calibration/camera.toml",
-    "status": "NOMINAL_UNVERIFIED",
-    "note": "Fiziksel checkerboard kalibrasyonu + boresight ölçümü tamamlanana kadar aimValid=false. aim_alignment.py distortion katsayıları boş olduğunda Brown-Conrady düzeltmesi atlanır."
+    "status": "UNVERIFIED",
+    "note": "Nişan koordinatları işleme hattındaki 1280x720 lores görüntü uzayındadır. Fiziksel checkerboard kalibrasyonu ve boresight ölçümü tamamlanana kadar aimValid=false; distortion katsayıları boş olduğunda Brown-Conrady düzeltmesi atlanır."
   },
   "releaseGates": [
     {"gate": "real_grouped_validation_sessions",      "status": "PENDING"},

@@ -13,6 +13,7 @@ Gerçek hedef görüntülerinden kalibrasyon için scripts/calibrate_hsv.py (TBD
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -118,97 +119,87 @@ class TrackCandidate:
 def _hungarian_match(
     cost: list[list[float]],
 ) -> list[tuple[int, int]]:
-    """Pure-Python Hungarian algorithm (Munkres) for rectangular cost matrices.
+    """Return the minimum-cost finite assignment for a rectangular matrix.
 
-    Returns a list of (row, col) assignments that minimise total cost.
-    Falls back to empty list on degenerate inputs.  O(N³) but N < 10 in
-    normal operation so this is faster than scipy import overhead.
+    This is the shortest augmenting-path form of the Hungarian algorithm.
+    Infinite entries represent forbidden track/detection pairs and are removed
+    from the returned assignment.
     """
     if not cost or not cost[0]:
         return []
     n_rows = len(cost)
     n_cols = len(cost[0])
-    n = max(n_rows, n_cols)
-    # Pad to square with a large sentinel
-    INF = float("inf")
-    big = max(c for row in cost for c in row if c != INF) * 10 + 1
-    c = [[big] * n for _ in range(n)]
-    for i in range(n_rows):
-        for j in range(n_cols):
-            c[i][j] = cost[i][j] if cost[i][j] != INF else big
+    if any(len(row) != n_cols for row in cost):
+        raise ValueError("cost matrix must be rectangular")
 
-    # Row / column reduction
-    for i in range(n):
-        m = min(c[i])
-        for j in range(n):
-            c[i][j] -= m
-    for j in range(n):
-        m = min(c[i][j] for i in range(n))
-        for i in range(n):
-            c[i][j] -= m
+    transposed = n_rows > n_cols
+    matrix = [list(row) for row in cost]
+    if transposed:
+        matrix = [list(column) for column in zip(*matrix, strict=True)]
 
-    assigned_col: list[int] = [-1] * n  # assigned_col[row] = col
-    covered_rows: set[int] = set()
-    covered_cols: set[int] = set()
-
-    def _find_zeros() -> list[tuple[int, int]]:
-        return [
-            (i, j)
-            for i in range(n)
-            for j in range(n)
-            if c[i][j] == 0
-        ]
-
-    def _cover() -> int:
-        """Greedily mark independent zeros; return count of covered assignments."""
-        covered_rows.clear()
-        covered_cols.clear()
-        starred: list[tuple[int, int]] = []
-        row_done: set[int] = set()
-        col_done: set[int] = set()
-        for i, j in _find_zeros():
-            if i not in row_done and j not in col_done:
-                starred.append((i, j))
-                row_done.add(i)
-                col_done.add(j)
-        for _, j in starred:
-            covered_cols.add(j)
-        return len(starred)
-
-    max_iter = n * n * 4
-    for _ in range(max_iter):
-        if _cover() == n:
-            break
-        # Find smallest uncovered value
-        mn = min(
-            c[i][j]
-            for i in range(n)
-            for j in range(n)
-            if i not in covered_rows and j not in covered_cols
-        )
-        # Subtract from uncovered, add to double-covered
-        for i in range(n):
-            for j in range(n):
-                if i not in covered_rows and j not in covered_cols:
-                    c[i][j] -= mn
-                elif i in covered_rows and j in covered_cols:
-                    c[i][j] += mn
-
-    # Extract assignment from zeroed matrix
-    result: list[tuple[int, int]] = []
-    row_taken: set[int] = set()
-    col_taken: set[int] = set()
-    zeros = sorted(_find_zeros())
-    for i, j in zeros:
-        if i not in row_taken and j not in col_taken:
-            result.append((i, j))
-            row_taken.add(i)
-            col_taken.add(j)
-    return [
-        (r, col)
-        for r, col in result
-        if r < n_rows and col < n_cols
+    finite = [value for row in matrix for value in row if math.isfinite(value)]
+    if not finite:
+        return []
+    row_count, column_count = len(matrix), len(matrix[0])
+    forbidden_cost = (max(finite) + 1.0) * (row_count + column_count + 1)
+    matrix = [
+        [value if math.isfinite(value) else forbidden_cost for value in row]
+        for row in matrix
     ]
+
+    potentials_row = [0.0] * (row_count + 1)
+    potentials_column = [0.0] * (column_count + 1)
+    matched_row = [0] * (column_count + 1)
+    predecessor = [0] * (column_count + 1)
+
+    for row_index in range(1, row_count + 1):
+        matched_row[0] = row_index
+        minimum = [float("inf")] * (column_count + 1)
+        used = [False] * (column_count + 1)
+        column = 0
+        while True:
+            used[column] = True
+            active_row = matched_row[column]
+            delta = float("inf")
+            next_column = 0
+            for candidate in range(1, column_count + 1):
+                if used[candidate]:
+                    continue
+                reduced_cost = (
+                    matrix[active_row - 1][candidate - 1]
+                    - potentials_row[active_row]
+                    - potentials_column[candidate]
+                )
+                if reduced_cost < minimum[candidate]:
+                    minimum[candidate] = reduced_cost
+                    predecessor[candidate] = column
+                if minimum[candidate] < delta:
+                    delta = minimum[candidate]
+                    next_column = candidate
+            for candidate in range(column_count + 1):
+                if used[candidate]:
+                    potentials_row[matched_row[candidate]] += delta
+                    potentials_column[candidate] -= delta
+                else:
+                    minimum[candidate] -= delta
+            column = next_column
+            if matched_row[column] == 0:
+                break
+        while True:
+            previous = predecessor[column]
+            matched_row[column] = matched_row[previous]
+            column = previous
+            if column == 0:
+                break
+
+    assignments = [
+        (row - 1, column - 1)
+        for column, row in enumerate(matched_row[1:], start=1)
+        if row > 0 and matrix[row - 1][column - 1] < forbidden_cost
+    ]
+    if transposed:
+        assignments = [(column, row) for row, column in assignments]
+    return sorted(assignments)
 
 
 class CentroidTracker:
@@ -320,8 +311,6 @@ class CentroidTracker:
             for tid, track in self.tracks.items()
             if self.disappeared.get(tid, 0) == 0
         }
-
-
     def _register(
         self,
         det: tuple[float, float, float, float, float, str],

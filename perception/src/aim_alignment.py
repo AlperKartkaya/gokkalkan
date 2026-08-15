@@ -90,9 +90,8 @@ def _apply_distortion_correction(
     pixel space.  Skips correction if distortion tuple is empty or has
     fewer than 4 coefficients - safe before physical calibration.
 
-    The IMX708 wide-angle lens exhibits barrel distortion that can cause
-    ~2-4 deg error at the image edges.  Without this correction, boresight
-    error accumulates on distant targets near the frame boundary.
+    This correction prevents calibrated lens distortion from being interpreted
+    as a turret pointing error near the image boundary.
     """
     dist = calibration.distortion
     if len(dist) < 4:
@@ -101,29 +100,37 @@ def _apply_distortion_correction(
     k1, k2, p1, p2 = dist[0], dist[1], dist[2], dist[3]
     k3 = dist[4] if len(dist) >= 5 else 0.0
 
-    # Normalize to focal-length units
-    # focal_length_px ~ (pi/180) / yaw_deg_per_px
-    focal_px = (math.pi / 180.0) / calibration.yaw_deg_per_px
-    xn = (cx - calibration.principal_x_px) / focal_px
-    yn = (cy - calibration.principal_y_px) / focal_px
+    # Around the principal point, radians-per-pixel is approximately 1/focal.
+    focal_x_px = (180.0 / math.pi) / calibration.yaw_deg_per_px
+    focal_y_px = (180.0 / math.pi) / calibration.pitch_deg_per_px
+    distorted_x = (cx - calibration.principal_x_px) / focal_x_px
+    distorted_y = (cy - calibration.principal_y_px) / focal_y_px
 
-    r2 = xn * xn + yn * yn
-    r4 = r2 * r2
-    r6 = r2 * r4
+    # OpenCV coefficients map ideal coordinates to distorted coordinates.
+    # Invert that mapping iteratively because the detector gives us an observed,
+    # already-distorted pixel. Eight iterations are ample for calibrated camera
+    # coefficients and avoid adding OpenCV as a hard dependency here.
+    corrected_x, corrected_y = distorted_x, distorted_y
+    for _ in range(8):
+        r2 = corrected_x * corrected_x + corrected_y * corrected_y
+        radial = 1.0 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2
+        if not math.isfinite(radial) or abs(radial) < 1e-9:
+            return cx, cy
+        tangential_x = (
+            2.0 * p1 * corrected_x * corrected_y
+            + p2 * (r2 + 2.0 * corrected_x * corrected_x)
+        )
+        tangential_y = (
+            p1 * (r2 + 2.0 * corrected_y * corrected_y)
+            + 2.0 * p2 * corrected_x * corrected_y
+        )
+        corrected_x = (distorted_x - tangential_x) / radial
+        corrected_y = (distorted_y - tangential_y) / radial
 
-    # Radial scale factor
-    radial = 1.0 + k1 * r2 + k2 * r4 + k3 * r6
-
-    # Tangential components
-    dx_tangential = 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
-    dy_tangential = p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
-
-    xn_corr = xn * radial + dx_tangential
-    yn_corr = yn * radial + dy_tangential
-
-    # Back to pixel space
-    cx_corr = xn_corr * focal_px + calibration.principal_x_px
-    cy_corr = yn_corr * focal_px + calibration.principal_y_px
+    cx_corr = corrected_x * focal_x_px + calibration.principal_x_px
+    cy_corr = corrected_y * focal_y_px + calibration.principal_y_px
+    if not math.isfinite(cx_corr) or not math.isfinite(cy_corr):
+        return cx, cy
     return cx_corr, cy_corr
 
 

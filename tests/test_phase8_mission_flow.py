@@ -69,6 +69,25 @@ class MissionFlowUnitTest(unittest.TestCase):
         )
         self.assertEqual(flow.selected_target_id, "UNKNOWN-NEAR")
 
+    def test_non_fire_candidate_is_never_selected_in_any_stage(self) -> None:
+        for stage in (1, 2, 3):
+            flow = MissionFlow()
+            flow.start_stage(
+                stage,
+                1,
+                [
+                    {
+                        "trackId": "BALLOON",
+                        "targetType": "F16",
+                        "friendFoe": "Düşman",
+                        "rangeM": 10,
+                        "fireCandidate": False,
+                    }
+                ],
+                reason="TEST",
+            )
+            self.assertEqual(flow.target_order, [])
+
     def test_stage_three_requires_enemy_type_and_type_specific_range(self) -> None:
         flow = MissionFlow()
         flow.start_stage(

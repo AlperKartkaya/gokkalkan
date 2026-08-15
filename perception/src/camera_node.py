@@ -41,7 +41,7 @@ try:
 except ImportError:
     np = None       # type: ignore[assignment]
     _NUMPY_OK = False
-    logger.warning("numpy not found; CameraNode running in mock mode.")
+    logger.warning("numpy bulunamadı; CameraNode mock modda çalışır.")
 
 
 def _try_picamera2() -> bool:
@@ -116,7 +116,7 @@ class CameraNode:
         else:
             self._backend = "mock"
             logger.warning(
-                "CameraNode: Picamera2 and OpenCV not found; running in mock mode. "
+                "CameraNode: Picamera2 ve OpenCV bulunamadı; mock modda çalışır. "
                 "Kurulum: pip install picamera2  veya  pip install opencv-python"
             )
 

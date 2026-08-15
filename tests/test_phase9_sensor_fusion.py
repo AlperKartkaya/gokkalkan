@@ -8,10 +8,19 @@ import pytest
 
 sys.path.insert(0, str(Path("perception/src").resolve()))
 
-from aim_alignment import AimCalibration, calibrated_aim_error
+from aim_alignment import (
+    AimCalibration,
+    _apply_distortion_correction,
+    calibrated_aim_error,
+)
 from camera_node import CameraNode
 from evaluate_dataset import evaluate_records
-from frame_processor import CentroidTracker, FrameProcessor, is_probable_balloon_shape
+from frame_processor import (
+    CentroidTracker,
+    FrameProcessor,
+    _hungarian_match,
+    is_probable_balloon_shape,
+)
 from gokkalkan_backend.lidar_adapter import TFA50LSerialAdapter, TFA50LSerialConfig
 from gokkalkan_backend.calibration_workflow import evaluate_lidar_observations
 from gokkalkan_backend.range_fusion import (
@@ -82,7 +91,12 @@ def test_stage3_does_not_classify_red_balloon_as_enemy_target() -> None:
         min_area_px=100,
     ).process(frame, stage=3)
 
-    assert [candidate.friend_foe for candidate in candidates] == ["Dost"]
+    targets = [item for item in candidates if item.object_role == "target"]
+    balloons = [item for item in candidates if item.object_role == "balloon"]
+    assert [candidate.friend_foe for candidate in targets] == ["Dost"]
+    assert len(balloons) == 1
+    assert balloons[0].friend_foe == "Bilinmeyen"
+    assert balloons[0].fire_candidate is False
 
 
 def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy() -> None:
@@ -280,6 +294,51 @@ def test_aim_alignment_is_calibrated_and_rejects_stale_track() -> None:
     assert fresh["yawErrorDeg"] == 0.5
     assert fresh["pitchErrorDeg"] == 0.4
     assert stale["reason"] == "TRACK_STALE"
+
+
+def test_distortion_correction_inverts_observed_brown_conrady_pixel() -> None:
+    calibration = AimCalibration(
+        "AIM-CAL-DISTORTION",
+        640,
+        360,
+        0.05,
+        0.04,
+        status="ACTIVE",
+        evidence_sha256="b" * 64,
+        distortion=(-0.2, 0.03, 0.001, -0.001, 0.0),
+    )
+    focal_x = (180.0 / 3.141592653589793) / calibration.yaw_deg_per_px
+    focal_y = (180.0 / 3.141592653589793) / calibration.pitch_deg_per_px
+    ideal_x, ideal_y = 0.35, -0.18
+    radius2 = ideal_x * ideal_x + ideal_y * ideal_y
+    radial = 1 - 0.2 * radius2 + 0.03 * radius2 * radius2
+    distorted_x = (
+        ideal_x * radial
+        + 2 * 0.001 * ideal_x * ideal_y
+        - 0.001 * (radius2 + 2 * ideal_x * ideal_x)
+    )
+    distorted_y = (
+        ideal_y * radial
+        + 0.001 * (radius2 + 2 * ideal_y * ideal_y)
+        - 2 * 0.001 * ideal_x * ideal_y
+    )
+
+    corrected = _apply_distortion_correction(
+        calibration.principal_x_px + distorted_x * focal_x,
+        calibration.principal_y_px + distorted_y * focal_y,
+        calibration,
+    )
+
+    assert corrected[0] == pytest.approx(640 + ideal_x * focal_x, abs=1e-4)
+    assert corrected[1] == pytest.approx(360 + ideal_y * focal_y, abs=1e-4)
+
+
+def test_hungarian_assignment_is_complete_and_globally_minimal() -> None:
+    cost = [[17.0, 17.0], [1.0, 19.0]]
+    assignments = _hungarian_match(cost)
+
+    assert assignments == [(0, 1), (1, 0)]
+    assert sum(cost[row][column] for row, column in assignments) == 18.0
 
 
 def test_dataset_report_exposes_confusion_precision_recall_latency_and_fps() -> None:

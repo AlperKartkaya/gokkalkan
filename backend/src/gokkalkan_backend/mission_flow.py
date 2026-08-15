@@ -204,6 +204,8 @@ class MissionFlow:
         )
 
     def _eligible(self, track: Mapping[str, Any]) -> bool:
+        if not bool(track.get("fireCandidate", True)):
+            return False
         try:
             range_m = float(track.get("rangeM", -1))
         except (TypeError, ValueError):

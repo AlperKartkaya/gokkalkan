@@ -62,6 +62,9 @@ class AutonomousController:
         if not track:
             self.reset("NO_SELECTED_TARGET")
             return None
+        if not bool(track.get("fireCandidate", True)):
+            self.reset("TRACK_NOT_FIRE_CANDIDATE")
+            return None
         track_id = str(track["trackId"])
         age = now_monotonic_ns - int(track.get("receiveMonotonicNs", 0))
         if age < 0 or age > self.max_track_age_ns:

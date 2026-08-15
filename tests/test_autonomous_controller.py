@@ -59,6 +59,19 @@ def test_controller_fails_closed_on_stale_uncalibrated_or_unsettled_track() -> N
     assert controller.reason == "ENCODER_NOT_SETTLED"
 
 
+def test_controller_rejects_non_fire_candidate_track() -> None:
+    now = 2_500_000_000
+    controller = AutonomousController(settle_ticks=1)
+
+    assert (
+        controller.tick(
+            snapshot(now, fireCandidate=False), now_monotonic_ns=now
+        )
+        is None
+    )
+    assert controller.reason == "TRACK_NOT_FIRE_CANDIDATE"
+
+
 def test_controller_respects_attempt_and_cooldown_limits() -> None:
     now = 3_000_000_000
     controller = AutonomousController(settle_ticks=1, max_attempts=1)
