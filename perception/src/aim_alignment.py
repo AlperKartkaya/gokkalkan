@@ -17,7 +17,6 @@ from pathlib import Path
 import tomllib
 from typing import Any
 
-
 @dataclass(frozen=True, slots=True)
 class AimCalibration:
     calibration_id: str
@@ -89,21 +88,21 @@ def _apply_distortion_correction(
     Corrects the raw pixel position using the OpenCV distortion model
     [k1, k2, p1, p2, k3].  Returns undistorted (cx, cy) in the same
     pixel space.  Skips correction if distortion tuple is empty or has
-    fewer than 4 coefficients — safe before physical calibration.
+    fewer than 4 coefficients - safe before physical calibration.
 
-    IMX708 geniş açılı lensin barrel distorsiyonu görüntü kenarında
-    ~2-4° hata yaratabilir; bu düzeltme olmadan uzak hedeflere boresight
-    hatası birikerek ateş noktasını kaçırır.
+    The IMX708 wide-angle lens exhibits barrel distortion that can cause
+    ~2-4 deg error at the image edges.  Without this correction, boresight
+    error accumulates on distant targets near the frame boundary.
     """
     dist = calibration.distortion
     if len(dist) < 4:
-        return cx, cy  # distortion verisi yok, geç
+        return cx, cy  # no distortion data - skip
 
     k1, k2, p1, p2 = dist[0], dist[1], dist[2], dist[3]
     k3 = dist[4] if len(dist) >= 5 else 0.0
 
-    # Normalize koordinatlar (focal length cinsinden)
-    # focal_length_px ≈ 1 / yaw_deg_per_px * (180/π)
+    # Normalize to focal-length units
+    # focal_length_px ~ (pi/180) / yaw_deg_per_px
     focal_px = (math.pi / 180.0) / calibration.yaw_deg_per_px
     xn = (cx - calibration.principal_x_px) / focal_px
     yn = (cy - calibration.principal_y_px) / focal_px
@@ -112,17 +111,17 @@ def _apply_distortion_correction(
     r4 = r2 * r2
     r6 = r2 * r4
 
-    # Radyal çarpan
+    # Radial scale factor
     radial = 1.0 + k1 * r2 + k2 * r4 + k3 * r6
 
-    # Teğetsel bileşenler
+    # Tangential components
     dx_tangential = 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
     dy_tangential = p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
 
     xn_corr = xn * radial + dx_tangential
     yn_corr = yn * radial + dy_tangential
 
-    # Piksel uzayına geri dönüştür
+    # Back to pixel space
     cx_corr = xn_corr * focal_px + calibration.principal_x_px
     cy_corr = yn_corr * focal_px + calibration.principal_y_px
     return cx_corr, cy_corr
@@ -166,14 +165,14 @@ def calibrated_aim_error(
             "calibrationHash": calibration.digest(),
         }
 
-    # Nişan noktasını belirle: açık override > track merkezi
+    # Determine aim point: explicit override > track centroid
     if aim_point_px is not None:
         raw_cx, raw_cy = float(aim_point_px[0]), float(aim_point_px[1])
     else:
         raw_cx = float(getattr(track, "cx"))
         raw_cy = float(getattr(track, "cy"))
 
-    # Lens distorsiyon düzeltmesi (IMX708 geniş açılı; katsayılar boşsa atlanır)
+    # Lens distortion correction (IMX708 wide-angle; skipped when coefficients empty)
     corr_cx, corr_cy = _apply_distortion_correction(raw_cx, raw_cy, calibration)
 
     yaw_error = (

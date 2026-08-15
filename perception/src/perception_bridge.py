@@ -49,6 +49,7 @@ from detection_tracks import DetectionTrackProjector
 from hailo_detector import HailoDetector
 from hailo_sahi_adapter import HailoSahiAdapter
 from sahi_search import LatestWinsSahiSearch, SahiSearchConfig, SahiSearchEngine
+from zoom_controller import ZoomController, ZoomObservation, ZoomDecision
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,8 @@ class PerceptionBridge:
         self.detector = detector
         self.detector_required = detector_required
         self._model_tracks = DetectionTrackProjector()
+        self._zoom_controller = ZoomController()
+        self._last_zoom_decision: ZoomDecision | None = None
         self.camera_stream = (
             CameraStreamService(camera_stream_host, camera_stream_port)
             if camera_stream_port is not None
@@ -237,6 +240,35 @@ class PerceptionBridge:
             else:
                 self._enrich_legacy_tracks(tracks, detections, detector_health)
         self._enqueue_tracks(tracks)
+        self._update_zoom_state(tracks)
+
+    def _update_zoom_state(self, tracks: list[dict[str, Any]]) -> None:
+        """Feed the best current track into ZoomController and store the decision.
+
+        Picks the target track (objectRole='target') with the highest confidence.
+        Balloon tracks (objectRole='balloon') are excluded from zoom driving.
+        Result is surfaced in health() for the operator UI.
+        """
+        best: dict[str, Any] | None = None
+        for t in tracks:
+            if t.get("objectRole", "target") == "balloon":
+                continue  # balloons don't drive zoom
+            if best is None or t.get("confidence", 0.0) > best.get("confidence", 0.0):
+                best = t
+
+        if best is None:
+            obs = None
+        else:
+            bbox = best.get("bboxPx", [0.0, 0.0, 0.0, 0.0])
+            obs = ZoomObservation(
+                track_id=str(best.get("trackId", "")),
+                confidence=float(best.get("confidence", 0.0)),
+                freshness_ms=float(best.get("freshnessMs", 0.0)),
+                target_pixels=int(max(bbox[2], bbox[3])) if len(bbox) >= 4 else 0,
+                center_px=(float(bbox[0]), float(bbox[1])) if len(bbox) >= 2 else None,
+                bbox_size_px=(float(bbox[2]), float(bbox[3])) if len(bbox) >= 4 else None,
+            )
+        self._last_zoom_decision = self._zoom_controller.update(obs)
 
     @staticmethod
     def _merge_model_and_legacy_tracks(
@@ -464,6 +496,22 @@ class PerceptionBridge:
             "detectorRequired": self.detector_required,
             "detector": None if self.detector is None else self.detector.health(),
             "processor":     self.processor.stats(),
+            "zoomState": (
+                self._last_zoom_decision.state
+                if self._last_zoom_decision is not None
+                else "SEARCH_SAHI_SWEEP"
+            ),
+            "zoomDecision": (
+                {
+                    "state": self._last_zoom_decision.state,
+                    "roiSizePx": self._last_zoom_decision.roi_size_px,
+                    "factor": self._last_zoom_decision.factor,
+                    "cropCenterPx": self._last_zoom_decision.crop_center_px,
+                    "reason": self._last_zoom_decision.reason,
+                }
+                if self._last_zoom_decision is not None
+                else None
+            ),
         }
 
 

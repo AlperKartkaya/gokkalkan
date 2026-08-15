@@ -31,7 +31,7 @@ def is_probable_balloon_shape(*, area: float, perimeter: float, width: float, he
     aspect_ratio = width / height
     return circularity >= 0.86 and 0.72 <= aspect_ratio <= 1.28
 
-# numpy ve opencv isteğe bağlı
+# numpy and opencv are optional
 try:
     import numpy as np
     import cv2
@@ -40,7 +40,7 @@ except ImportError:
     np = None   # type: ignore[assignment]
     cv2 = None  # type: ignore[assignment]
     _CV_OK = False
-    logger.warning("numpy/opencv bulunamadı; FrameProcessor mock modda çalışır.")
+    logger.warning("numpy/opencv not found; FrameProcessor running in mock mode.")
 
 
 # ---------------------------------------------------------------------------
@@ -115,11 +115,107 @@ class TrackCandidate:
 # Centroid Tracker
 # ---------------------------------------------------------------------------
 
-class CentroidTracker:
-    """Basit mesafe tabanlı centroid takipçisi.
+def _hungarian_match(
+    cost: list[list[float]],
+) -> list[tuple[int, int]]:
+    """Pure-Python Hungarian algorithm (Munkres) for rectangular cost matrices.
 
-    Tespit edilen konturları kareler arası eşleştirir; ID sürekliliği sağlar.
-    Mevcut frame'de görülmeyen izler `max_disappeared` sonra silinir.
+    Returns a list of (row, col) assignments that minimise total cost.
+    Falls back to empty list on degenerate inputs.  O(N³) but N < 10 in
+    normal operation so this is faster than scipy import overhead.
+    """
+    if not cost or not cost[0]:
+        return []
+    n_rows = len(cost)
+    n_cols = len(cost[0])
+    n = max(n_rows, n_cols)
+    # Pad to square with a large sentinel
+    INF = float("inf")
+    big = max(c for row in cost for c in row if c != INF) * 10 + 1
+    c = [[big] * n for _ in range(n)]
+    for i in range(n_rows):
+        for j in range(n_cols):
+            c[i][j] = cost[i][j] if cost[i][j] != INF else big
+
+    # Row / column reduction
+    for i in range(n):
+        m = min(c[i])
+        for j in range(n):
+            c[i][j] -= m
+    for j in range(n):
+        m = min(c[i][j] for i in range(n))
+        for i in range(n):
+            c[i][j] -= m
+
+    assigned_col: list[int] = [-1] * n  # assigned_col[row] = col
+    covered_rows: set[int] = set()
+    covered_cols: set[int] = set()
+
+    def _find_zeros() -> list[tuple[int, int]]:
+        return [
+            (i, j)
+            for i in range(n)
+            for j in range(n)
+            if c[i][j] == 0
+        ]
+
+    def _cover() -> int:
+        """Greedily mark independent zeros; return count of covered assignments."""
+        covered_rows.clear()
+        covered_cols.clear()
+        starred: list[tuple[int, int]] = []
+        row_done: set[int] = set()
+        col_done: set[int] = set()
+        for i, j in _find_zeros():
+            if i not in row_done and j not in col_done:
+                starred.append((i, j))
+                row_done.add(i)
+                col_done.add(j)
+        for _, j in starred:
+            covered_cols.add(j)
+        return len(starred)
+
+    max_iter = n * n * 4
+    for _ in range(max_iter):
+        if _cover() == n:
+            break
+        # Find smallest uncovered value
+        mn = min(
+            c[i][j]
+            for i in range(n)
+            for j in range(n)
+            if i not in covered_rows and j not in covered_cols
+        )
+        # Subtract from uncovered, add to double-covered
+        for i in range(n):
+            for j in range(n):
+                if i not in covered_rows and j not in covered_cols:
+                    c[i][j] -= mn
+                elif i in covered_rows and j in covered_cols:
+                    c[i][j] += mn
+
+    # Extract assignment from zeroed matrix
+    result: list[tuple[int, int]] = []
+    row_taken: set[int] = set()
+    col_taken: set[int] = set()
+    zeros = sorted(_find_zeros())
+    for i, j in zeros:
+        if i not in row_taken and j not in col_taken:
+            result.append((i, j))
+            row_taken.add(i)
+            col_taken.add(j)
+    return [
+        (r, col)
+        for r, col in result
+        if r < n_rows and col < n_cols
+    ]
+
+
+class CentroidTracker:
+    """Distance-based centroid tracker with Hungarian optimal assignment.
+
+    Matches detected contours across frames and maintains stable IDs.
+    Tracks absent for more than *max_disappeared* frames are dropped.
     """
 
     def __init__(self, max_disappeared: int = 10, max_distance_px: float = 80.0) -> None:
@@ -135,17 +231,17 @@ class CentroidTracker:
         *,
         timestamp_ns: int | None = None,
     ) -> dict[str, dict[str, Any]]:
-        """Tespitlerle izleri güncelle.
+        """Update tracks with new detections using Hungarian optimal matching.
 
         Args:
-            detections: (cx, cy, w, h, area, color) tuple listesi
+            detections: (cx, cy, w, h, area, color) tuple list
 
         Returns:
-            Aktif izler: {track_id: {cx, cy, w, h, area, color, age}}
+            Active tracks: {track_id: {cx, cy, w, h, area, color, age}}
         """
         now_ns = time.monotonic_ns() if timestamp_ns is None else timestamp_ns
         if not detections:
-            # Tüm izlerin kaybolma sayacını artır
+            # Increment miss counter for all tracks; prune stale ones
             for tid in list(self.disappeared):
                 self.disappeared[tid] += 1
                 if self.disappeared[tid] > self.max_disappeared:
@@ -158,48 +254,55 @@ class CentroidTracker:
             }
 
         if not self.tracks:
-            # İlk kare: hepsini yeni iz olarak kaydet
+            # First frame: register all detections as new tracks
             for det in detections:
                 self._register(det, now_ns)
         else:
-            # Mevcut iz merkezleri ile tespitler arasında min-dist eşleştirmesi
             track_ids = list(self.tracks.keys())
             track_centers = [
                 (self.tracks[tid]["cx"], self.tracks[tid]["cy"])
                 for tid in track_ids
             ]
+
+            # Build Euclidean distance cost matrix [tracks × detections]
+            cost: list[list[float]] = []
+            for tx, ty in track_centers:
+                row: list[float] = []
+                for det in detections:
+                    dist = ((det[0] - tx) ** 2 + (det[1] - ty) ** 2) ** 0.5
+                    # Distances beyond max_distance are treated as infeasible
+                    row.append(dist if dist < self.max_distance else float("inf"))
+                cost.append(row)
+
+            # Optimal assignment via Hungarian algorithm
+            assignments = _hungarian_match(cost)
+
             used_dets: set[int] = set()
             used_tracks: set[int] = set()
 
-            for ti, (tx, ty) in enumerate(track_centers):
-                best_di, best_dist = -1, float("inf")
-                for di, det in enumerate(detections):
-                    if di in used_dets:
-                        continue
-                    dist = ((det[0] - tx) ** 2 + (det[1] - ty) ** 2) ** 0.5
-                    if dist < best_dist:
-                        best_dist, best_di = dist, di
-                if best_di >= 0 and best_dist < self.max_distance:
-                    tid = track_ids[ti]
-                    det = detections[best_di]
-                    previous = self.tracks[tid]
-                    elapsed_s = max(
-                        1e-9, (now_ns - int(previous.get("last_seen_ns", now_ns))) / 1e9
-                    )
-                    self.tracks[tid].update({
-                        "cx": det[0], "cy": det[1],
-                        "w": det[2], "h": det[3],
-                        "area": det[4], "color": det[5],
-                        "age": self.tracks[tid].get("age", 0) + 1,
-                        "velocity_x_px_s": (det[0] - float(previous["cx"])) / elapsed_s,
-                        "velocity_y_px_s": (det[1] - float(previous["cy"])) / elapsed_s,
-                        "last_seen_ns": now_ns,
-                    })
-                    self.disappeared[tid] = 0
-                    used_dets.add(best_di)
-                    used_tracks.add(ti)
+            for ti, di in assignments:
+                if cost[ti][di] >= self.max_distance:
+                    continue  # infeasible pair — skip
+                tid = track_ids[ti]
+                det = detections[di]
+                previous = self.tracks[tid]
+                elapsed_s = max(
+                    1e-9, (now_ns - int(previous.get("last_seen_ns", now_ns))) / 1e9
+                )
+                self.tracks[tid].update({
+                    "cx": det[0], "cy": det[1],
+                    "w": det[2], "h": det[3],
+                    "area": det[4], "color": det[5],
+                    "age": self.tracks[tid].get("age", 0) + 1,
+                    "velocity_x_px_s": (det[0] - float(previous["cx"])) / elapsed_s,
+                    "velocity_y_px_s": (det[1] - float(previous["cy"])) / elapsed_s,
+                    "last_seen_ns": now_ns,
+                })
+                self.disappeared[tid] = 0
+                used_dets.add(di)
+                used_tracks.add(ti)
 
-            # Eşleşmeyen izleri kayboldu say
+            # Increment miss counter for unmatched tracks
             for ti, tid in enumerate(track_ids):
                 if ti not in used_tracks:
                     self.disappeared[tid] += 1
@@ -207,7 +310,7 @@ class CentroidTracker:
                         del self.tracks[tid]
                         del self.disappeared[tid]
 
-            # Eşleşmeyen tespitler → yeni iz
+            # Unmatched detections become new tracks
             for di, det in enumerate(detections):
                 if di not in used_dets:
                     self._register(det, now_ns)
@@ -217,6 +320,7 @@ class CentroidTracker:
             for tid, track in self.tracks.items()
             if self.disappeared.get(tid, 0) == 0
         }
+
 
     def _register(
         self,
@@ -395,11 +499,11 @@ class FrameProcessor:
                 clr = color_label
 
             if stage == 3 and clr == "red":
-                # Bütün maketlerin altında kırmızı ve yaklaşık dairesel bir
-                # imha balonu bulunur. Balon rengi dost/düşman kanıtı değildir;
-                # bu yüzden bağımsız düşman izi olarak yayınlanmaz.
-                # Ancak balon_association.py'nin çalışabilmesi için
-                # ayrı bir 'balloon' track olarak saklanır; ateş yetkisi yoktur.
+                # All target makets have a red balloon attached below them.
+                # The balloon colour alone is not IFF evidence; it must not be
+                # published as an independent enemy track (friendly fire risk).
+                # Instead, Stage 3 publishes it as a separate 'balloon' role
+                # track so balloon_association.py can link it to its maket.
                 perimeter = float(cv2.arcLength(cnt, True))
                 if is_probable_balloon_shape(
                     area=area,
@@ -415,7 +519,7 @@ class FrameProcessor:
         # Tracker güncelle
         active_tracks = self._tracker.update(detections, timestamp_ns=timestamp_ns)
 
-        # Balon tracker güncelle (Aşama 3)
+        # Update balloon tracker (Stage 3)
         balloon_active: dict[str, dict[str, Any]] = {}
         if stage == 3 and _CV_OK:
             balloon_active = self._balloon_tracker.update(
@@ -484,9 +588,9 @@ class FrameProcessor:
                     candidate.pitch_error_deg = float(aim["pitchErrorDeg"])
             candidates.append(candidate)
 
-        # Balon TrackCandidate'lerini ekle (Aşama 3)
-        # fire_candidate=False: balon hiçbir zaman doğrudan ateş hedefi değildir.
-        # balloon_association.py bu track'leri maketlerle ilişkilendirecek.
+        # Balloon TrackCandidates (Stage 3 only)
+        # fire_candidate=False: balloon tracks can never be direct fire targets.
+        # balloon_association.py will link them to their parent maket track.
         for tid, tr in balloon_active.items():
             area_px = max(1.0, tr.get("area", 1.0))
             bearing_deg = (
@@ -514,13 +618,14 @@ class FrameProcessor:
                 ),
                 receive_monotonic_ns=timestamp_ns,
                 object_role="balloon",
-                fire_candidate=False,  # balon doğrudan ateş hedefi olamaz
+                fire_candidate=False,  # balloon cannot be a direct fire target
             )
             candidates.append(balloon_candidate)
 
         return candidates
 
     def stats(self) -> dict[str, Any]:
+        """Return live frame processing statistics."""
         return {
             "framesProcessed": self._frames_processed,
             "activeTracks":    len(self._tracker.tracks),

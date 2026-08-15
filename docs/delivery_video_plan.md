@@ -3,7 +3,7 @@
 Bu dosya şartname v1.4 §2.2 ve §2.4.4.1–2.4.4.2'yi yazılım test/telemetri
 kimliklerine bağlar. Güncel kısa takvim `TARIHLER.md` dosyasındadır.
 
-> **⚠️ ACİL — Video teslim tarihi: 17.08.2026 17:00 (BUGÜN)**
+> **⚠️ ACİL — Video teslim tarihi: 20.08.2026 17:00 — 5 gün kaldı)**
 > Zorunlu Y1–Y6 sırasının fiziksel kabul sütunları için gerçek donanım kanıtı gerekmektedir.
 > Yalnız simülasyon + yazılım kanıtı yeterli değildir — şartname §2.4.4.1 gereği.
 > Hazırlanan yazılım kanıtları ve simülasyon KTR kanıtı olarak saklanır.
@@ -17,7 +17,7 @@ kimliklerine bağlar. Güncel kısa takvim `TARIHLER.md` dosyasındadır.
 | Ön Tasarım Raporu sonucu | 13.04.2026 | ✅ |
 | KTR teslim | 02.06.2026 17:00 | ✅ |
 | KTR sonucu | **25.06.2026** | ✅ |
-| **Sistem Kabiliyeti Videoları teslim** | **17.08.2026 17:00** | ⚠️ BUGÜN |
+| **Sistem Kabiliyeti Videoları teslim** | **20.08.2026 17:00 — 5 gün kaldı |
 | Finalist açıklama | 31.08.2026 | — |
 | Yarışma finalleri / TEKNOFEST | 30.09.2026–04.10.2026 | — |
 
