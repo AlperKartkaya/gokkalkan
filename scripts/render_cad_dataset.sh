@@ -8,6 +8,7 @@ PLAN="${PLAN:-perception/synthetic/generated/render_plans/cad_pilot_378.json}"
 OUTPUT="${OUTPUT:-perception/synthetic/generated/render_batches/cad_pilot_378}"
 WORKERS="${WORKERS:-0}"
 RENDER_DEVICE="${RENDER_DEVICE:-auto}"
+RETRIES="${RETRIES:-2}"
 
 exec .venv-synthetic/bin/python \
   perception/synthetic/tools/render_plan_batch.py \
@@ -15,4 +16,5 @@ exec .venv-synthetic/bin/python \
   --output "$OUTPUT" \
   --workers "$WORKERS" \
   --render-device "$RENDER_DEVICE" \
+  --retries "$RETRIES" \
   "$@"

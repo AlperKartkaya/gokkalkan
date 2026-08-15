@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,3 +54,45 @@ def test_worker_defaults_fit_current_machine() -> None:
     module = load_module("dataset_pipeline_for_test", "perception/tools/dataset_pipeline.py")
     assert module._auto_workers(2) == 2
     assert 1 <= module._auto_workers(0) <= min(8, max(1, (os.cpu_count() or 2) - 1))
+
+
+def test_render_retries_one_blender_failure_and_cleans_partial_batch(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    module = load_module(
+        "render_plan_batch_retry_for_test",
+        "perception/synthetic/tools/render_plan_batch.py",
+    )
+    record = {"recordId": "REC-retry"}
+    batch_dir = tmp_path / "REC-retry"
+    calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if "validate_render_batch.py" in " ".join(map(str, command)):
+            return None
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        if calls == 1:
+            (batch_dir / "partial.tmp").write_text("partial", encoding="utf-8")
+            raise subprocess.CalledProcessError(250, command)
+        assert not (batch_dir / "partial.tmp").exists()
+        (batch_dir / "record.json").write_text("{}", encoding="utf-8")
+        (batch_dir / "0.hdf5").write_bytes(b"test")
+        return None
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
+
+    result = module._render_one(
+        record=record,
+        plan_path=tmp_path / "plan.json",
+        output=tmp_path,
+        blender=tmp_path / "Blender.app",
+        render_device="auto",
+        cpu_threads=2,
+        retries=2,
+    )
+
+    assert result == "REC-retry"
+    assert calls == 3

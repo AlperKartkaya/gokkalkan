@@ -6,7 +6,9 @@ import argparse
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import json
 import os
+import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path(os.environ.get("GOKKALKAN_BLENDER", str(BLENDER))),
     )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=int(os.environ.get("GOKKALKAN_RENDER_RETRIES", "2")),
+        help="Tekil Blender çökmesinde yeniden deneme sayısı",
+    )
     return parser.parse_args()
 
 
@@ -70,26 +78,44 @@ def _render_one(
     blender: Path,
     render_device: str,
     cpu_threads: int,
+    retries: int,
 ) -> str:
     batch_dir = output / str(record["recordId"])
-    command = [
-        str(BLENDERPROC),
-        "run",
-        "--custom-blender-path",
-        str(blender),
-        str(RENDER_SCRIPT),
-        "--plan",
-        str(plan_path),
-        "--record-id",
-        str(record["recordId"]),
-        "--output",
-        str(batch_dir),
-        "--render-device",
-        render_device,
-        "--cpu-threads",
-        str(cpu_threads),
-    ]
-    subprocess.run(command, cwd=ROOT, check=True)
+    if retries < 0:
+        raise ValueError("retries negatif olamaz")
+    for attempt in range(retries + 1):
+        if batch_dir.exists() and not _is_complete(batch_dir):
+            shutil.rmtree(batch_dir)
+        command = [
+            str(BLENDERPROC),
+            "run",
+            "--custom-blender-path",
+            str(blender),
+            str(RENDER_SCRIPT),
+            "--plan",
+            str(plan_path),
+            "--record-id",
+            str(record["recordId"]),
+            "--output",
+            str(batch_dir),
+            "--render-device",
+            render_device,
+            "--cpu-threads",
+            str(cpu_threads),
+        ]
+        try:
+            subprocess.run(command, cwd=ROOT, check=True)
+            break
+        except subprocess.CalledProcessError:
+            if attempt >= retries:
+                raise
+            delay = 2 * (attempt + 1)
+            print(
+                f"{record['recordId']} Blender çöktü; "
+                f"{delay}s sonra yeniden deneniyor ({attempt + 1}/{retries})",
+                flush=True,
+            )
+            time.sleep(delay)
     subprocess.run(
         [
             str(ROOT / ".venv-synthetic/bin/python"),
@@ -108,6 +134,8 @@ def _render_one(
 def main() -> int:
     args = parse_args()
     workers = auto_worker_count(args.workers)
+    if args.retries < 0:
+        raise ValueError("retries negatif olamaz")
     if not BLENDERPROC.is_file():
         raise RuntimeError(f"BlenderProc bulunamadı: {BLENDERPROC}")
     if not args.blender.exists():
@@ -138,6 +166,7 @@ def main() -> int:
                 blender=args.blender,
                 render_device=args.render_device,
                 cpu_threads=cpu_threads,
+                retries=args.retries,
             ): record
             for record in pending
         }
@@ -163,6 +192,7 @@ def main() -> int:
         "workers": workers,
         "renderDevice": args.render_device,
         "cpuThreadsPerWorker": cpu_threads,
+        "retries": args.retries,
     }
     (args.output / "batch-summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

@@ -75,7 +75,9 @@ Her worker farklı `recordId` dizinine yazar; mevcut `record.json + tek HDF5`
 kaydı resume sırasında atlanır. BlenderProc/Cycles uygun cihaz varsa GPU'yu,
 render koordinasyonu için ayrılmış CPU thread'lerini kullanır. Çoklu GPU süreci
 bellek baskısı yaparsa `WORKERS=1`; yalnız CPU istenirse `RENDER_DEVICE=cpu`
-kullanılır.
+kullanılır. Tekil Blender/GPU süreci çökerse kayıt varsayılan olarak iki kez
+yeniden denenir; yarım batch dizini denemeden önce temizlenir. Bu sayı
+`RETRIES=3` gibi değiştirilebilir.
 
 ```bash
 uv venv .venv-synthetic --python 3.11
