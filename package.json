@@ -40,6 +40,11 @@
     "dataset:cad:filter": ".venv-synthetic/bin/python perception/synthetic/tools/filter_render_plan.py",
     "dataset:cad:render:smoke": ".venv-synthetic/bin/blenderproc run --custom-blender-path .tools/blender-4.2.1/Blender.app perception/synthetic/tools/render_smoke.py",
     "dataset:cad:render:record": ".venv-synthetic/bin/blenderproc run --custom-blender-path .tools/blender-4.2.1/Blender.app perception/synthetic/tools/render_dataset.py",
-    "model:train:smoke": ".venv-training/bin/python perception/tools/train_yolo.py --allow-unverified --epochs 1 --name target-smoke"
+    "model:train:smoke": ".venv-training/bin/python perception/tools/train_yolo.py --allow-unverified --epochs 1 --name target-smoke",
+    "ml:setup": "bash scripts/setup_ml_pipeline.sh",
+    "cad:render": "bash scripts/render_cad_dataset.sh",
+    "cad:ingest": "bash scripts/ingest_cad_dataset.sh",
+    "model:train": "bash scripts/train_target_detector.sh",
+    "model:predict:val": "bash scripts/predict_target_val.sh"
   }
 }

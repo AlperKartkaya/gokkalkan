@@ -16,13 +16,18 @@ sys.path.insert(0, str(ROOT / "perception/tools"))
 from dataset_pipeline import PipelineError, ingest_cad_render_batches
 
 
-def write_batch(root: Path, *, split: str = "train") -> None:
-    batch = root / "batch-001"
+def write_batch(
+    root: Path,
+    *,
+    split: str = "train",
+    suffix: str = "001",
+) -> None:
+    batch = root / f"batch-{suffix}"
     batch.mkdir(parents=True)
     record = {
-        "recordId": "REC-001",
-        "worldId": "WORLD-001",
-        "groupId": "WORLD-001",
+        "recordId": f"REC-{suffix}",
+        "worldId": f"WORLD-{suffix}",
+        "groupId": f"WORLD-{suffix}",
         "sourceKind": "synthetic_cad_pbr",
         "split": split,
         "presentationClass": "dusman_f16_kirmizi",
@@ -95,3 +100,28 @@ def test_cad_ingest_rejects_synthetic_test_split(tmp_path: Path) -> None:
             output=tmp_path / "dataset",
             config_path=config,
         )
+
+
+def test_cad_ingest_parallel_workers_preserve_deterministic_record_order(
+    tmp_path: Path,
+) -> None:
+    batch_root = tmp_path / "batches"
+    write_batch(batch_root, suffix="002")
+    write_batch(batch_root, suffix="001")
+    config = tmp_path / "config.json"
+    write_config(config)
+    output = tmp_path / "dataset"
+
+    result = ingest_cad_render_batches(
+        batch_root=batch_root,
+        output=output,
+        config_path=config,
+        workers=2,
+    )
+
+    manifest = json.loads(
+        (output / "dataset-manifest.json").read_text(encoding="utf-8")
+    )
+    assert result["records"] == 2
+    assert [item["id"] for item in manifest["records"]] == ["cad_001", "cad_002"]
+    assert manifest["inputs"]["ingestWorkers"] == 2

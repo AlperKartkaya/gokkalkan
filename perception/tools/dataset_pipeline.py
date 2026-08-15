@@ -8,9 +8,12 @@ captures are never deleted and uncertain auto-labels fail closed.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
 import math
+import multiprocessing
+import os
 import random
 import shutil
 import sys
@@ -360,15 +363,82 @@ def _bbox_for_class(np: Any, class_map: Any, class_id: int) -> tuple[int, int, i
     return left, top, right - left + 1, bottom - top + 1
 
 
+def _auto_workers(requested: int, *, ceiling: int = 8) -> int:
+    if requested < 0:
+        raise PipelineError("workers negatif olamaz")
+    if requested > 0:
+        return requested
+    return max(1, min(ceiling, (os.cpu_count() or 2) - 1))
+
+
+def _ingest_cad_one(task: tuple[Path, Path, dict[str, Any], list[str]]) -> dict[str, Any]:
+    """Read, label and write one isolated CAD batch in a worker process."""
+
+    hdf5_path, output, record, classes = task
+    try:
+        import cv2  # type: ignore
+        import h5py  # type: ignore
+        import numpy as np  # type: ignore
+    except ImportError as exc:  # pragma: no cover - parent checks the environment
+        raise RuntimeError("CAD ingest worker bağımlılıkları eksik") from exc
+
+    batch_dir = hdf5_path.parent
+    with h5py.File(hdf5_path, "r") as handle:
+        if "colors" not in handle or "class_segmaps" not in handle:
+            raise RuntimeError(f"RGB/class segmentation eksik: {batch_dir}")
+        rgb = handle["colors"][:]
+        class_map = handle["class_segmaps"][:]
+    height, width = rgb.shape[:2]
+    if class_map.shape[:2] != (height, width):
+        raise RuntimeError(f"RGB/mask çözünürlük uyuşmazlığı: {batch_dir}")
+    target_bbox = _bbox_for_class(np, class_map, 1)
+    balloon_bbox = _bbox_for_class(np, class_map, 7)
+    if target_bbox is None or balloon_bbox is None:
+        raise RuntimeError(f"hedef veya bağlı balon görünür değil: {batch_dir}")
+
+    split = str(record["split"])
+    presentation_class = str(record["presentationClass"])
+    stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
+    image_path = output / "images" / split / f"{stem}.png"
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    if not cv2.imwrite(str(image_path), bgr):
+        raise RuntimeError(f"CAD görüntüsü yazılamadı: {image_path}")
+    labels = [
+        yolo_line(classes.index(presentation_class), target_bbox, width, height),
+        yolo_line(classes.index("balon"), balloon_bbox, width, height),
+    ]
+    (output / "labels" / split / f"{stem}.txt").write_text(
+        "\n".join(labels) + "\n", encoding="utf-8"
+    )
+    return {
+        "id": stem,
+        "sourceKind": record["sourceKind"],
+        "split": split,
+        "worldId": str(record["worldId"]),
+        "groupId": record["groupId"],
+        "presentationClass": presentation_class,
+        "routeId": record["routeId"],
+        "longitudinalDistanceM": record["longitudinalDistanceM"],
+        "lateralDistanceM": record["lateralDistanceM"],
+        "viewYawDeg": record["viewYawDeg"],
+        "topSurfaceViewDeg": record["topSurfaceViewDeg"],
+        "appearanceProfileId": record["appearanceProfileId"],
+        "targetBalloonLinked": True,
+        "imageSha256": sha256(image_path),
+        "sourceBatchSha256": sha256(hdf5_path),
+    }
+
+
 def ingest_cad_render_batches(
     *,
     batch_root: Path,
     output: Path,
     config_path: Path,
+    workers: int = 1,
 ) -> dict[str, Any]:
     """Convert validated BlenderProc HDF5 batches into a research-only YOLO set."""
 
-    cv2, np = _cv()
+    _cv()
     try:
         import h5py  # type: ignore
     except ImportError as exc:
@@ -379,7 +449,7 @@ def ingest_cad_render_batches(
     if output.exists():
         shutil.rmtree(output)
     _ensure_layout(output)
-    records: list[dict[str, Any]] = []
+    tasks: list[tuple[Path, Path, dict[str, Any], list[str]]] = []
     seen_world_splits: dict[str, str] = {}
 
     for record_path in sorted(batch_root.rglob("record.json")):
@@ -400,51 +470,18 @@ def ingest_cad_render_batches(
         presentation_class = str(record["presentationClass"])
         if presentation_class not in classes:
             raise PipelineError(f"bilinmeyen CAD presentationClass: {presentation_class}")
+        tasks.append((hdf5_files[0], output, record, classes))
 
-        with h5py.File(hdf5_files[0], "r") as handle:
-            if "colors" not in handle or "class_segmaps" not in handle:
-                raise PipelineError(f"RGB/class segmentation eksik: {batch_dir}")
-            rgb = handle["colors"][:]
-            class_map = handle["class_segmaps"][:]
-        height, width = rgb.shape[:2]
-        if class_map.shape[:2] != (height, width):
-            raise PipelineError(f"RGB/mask çözünürlük uyuşmazlığı: {batch_dir}")
-        target_bbox = _bbox_for_class(np, class_map, 1)
-        balloon_bbox = _bbox_for_class(np, class_map, 7)
-        if target_bbox is None or balloon_bbox is None:
-            raise PipelineError(f"hedef veya bağlı balon görünür değil: {batch_dir}")
-
-        stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
-        image_path = output / "images" / split / f"{stem}.png"
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        if not cv2.imwrite(str(image_path), bgr):
-            raise PipelineError(f"CAD görüntüsü yazılamadı: {image_path}")
-        labels = [
-            yolo_line(classes.index(presentation_class), target_bbox, width, height),
-            yolo_line(classes.index("balon"), balloon_bbox, width, height),
-        ]
-        (output / "labels" / split / f"{stem}.txt").write_text(
-            "\n".join(labels) + "\n", encoding="utf-8"
-        )
-        records.append(
-            {
-                "id": stem,
-                "sourceKind": record["sourceKind"],
-                "split": split,
-                "worldId": world_id,
-                "groupId": record["groupId"],
-                "presentationClass": presentation_class,
-                "routeId": record["routeId"],
-                "longitudinalDistanceM": record["longitudinalDistanceM"],
-                "lateralDistanceM": record["lateralDistanceM"],
-                "viewYawDeg": record["viewYawDeg"],
-                "topSurfaceViewDeg": record["topSurfaceViewDeg"],
-                "appearanceProfileId": record["appearanceProfileId"],
-                "targetBalloonLinked": True,
-                "imageSha256": sha256(image_path),
-                "sourceBatchSha256": sha256(hdf5_files[0]),
-            }
-        )
+    workers = _auto_workers(workers)
+    try:
+        if workers == 1:
+            records = [_ingest_cad_one(task) for task in tasks]
+        else:
+            context = multiprocessing.get_context("spawn")
+            with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+                records = list(pool.map(_ingest_cad_one, tasks, chunksize=1))
+    except Exception as exc:
+        raise PipelineError(f"CAD ingest başarısız: {exc}") from exc
 
     if not records:
         raise PipelineError(f"içe aktarılabilir CAD render batch bulunamadı: {batch_root}")
@@ -457,6 +494,7 @@ def ingest_cad_render_batches(
             "configSha256": sha256(config_path),
             "cadBatchRoot": str(batch_root.resolve()),
             "cadBatchCount": len(records),
+            "ingestWorkers": workers,
         },
     )
     manifest["status"] = "SYNTHETIC_RESEARCH_ONLY"
@@ -513,6 +551,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cad.add_argument("--batch-root", type=Path, default=DEFAULT_CAD_BATCH_ROOT)
     cad.add_argument("--output", type=Path, default=DEFAULT_CAD_OUTPUT)
+    cad.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Paralel CAD dönüştürme süreci; 0 CPU'ya göre otomatik",
+    )
     return parser
 
 
@@ -528,6 +572,7 @@ def main(argv: list[str] | None = None) -> int:
                 batch_root=args.batch_root,
                 output=args.output,
                 config_path=args.config,
+                workers=args.workers,
             )
     except PipelineError as exc:
         print(json.dumps({"status": "ERROR", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)

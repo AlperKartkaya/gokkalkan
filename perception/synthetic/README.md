@@ -38,6 +38,45 @@ npm run dataset:cad:filter -- \
 
 ## Kurulum ve çalışma sırası
 
+Yeni bir geliştirme makinesinde yalnız ML/sentetik veri ortamlarını hazırlamak için:
+
+```bash
+./scripts/setup_ml_pipeline.sh
+```
+
+Günlük iterasyonda gereken kısa komutlar:
+
+```bash
+./scripts/render_cad_dataset.sh
+./scripts/ingest_cad_dataset.sh
+./scripts/train_target_detector.sh
+./scripts/predict_target_val.sh
+```
+
+Scriptler parametresiz çalışır ve ek CLI argümanlarını aynen alta iletir. En sık
+değiştirilen değerler ortam değişkeniyle verilebilir:
+
+```bash
+# Dört bağımsız Blender süreci ve yalnız ilk 40 kayıt
+WORKERS=4 ./scripts/render_cad_dataset.sh --limit 40
+
+# CPU render veya belirli NVIDIA backend'i
+RENDER_DEVICE=cpu ./scripts/render_cad_dataset.sh --limit 4
+RENDER_DEVICE=optix WORKERS=2 ./scripts/render_cad_dataset.sh
+
+# Farklı plan/batch dizini
+PLAN=perception/synthetic/generated/render_plans/selection_10_18_deg.json \
+OUTPUT=perception/synthetic/generated/render_batches/selection_10_18_deg \
+./scripts/render_cad_dataset.sh
+```
+
+Render varsayılanında worker sayısı güvenli otomatik seçimle en fazla `2` olur.
+Her worker farklı `recordId` dizinine yazar; mevcut `record.json + tek HDF5`
+kaydı resume sırasında atlanır. BlenderProc/Cycles uygun cihaz varsa GPU'yu,
+render koordinasyonu için ayrılmış CPU thread'lerini kullanır. Çoklu GPU süreci
+bellek baskısı yaparsa `WORKERS=1`; yalnız CPU istenirse `RENDER_DEVICE=cpu`
+kullanılır.
+
 ```bash
 uv venv .venv-synthetic --python 3.11
 uv pip install --python .venv-synthetic/bin/python \
@@ -56,6 +95,10 @@ npm run dataset:cad:validate:batch -- \
 npm run dataset:cad:render:pilot -- --limit 1
 npm run dataset:cad:ingest
 ```
+
+CAD ingest bağımsız HDF5 kayıtlarını spawn edilmiş süreçlerde işler; otomatik
+worker sayısı CPU'ya göre en fazla `8`'dir. Seri ve hata ayıklamaya uygun eşdeğer
+komut `WORKERS=1 ./scripts/ingest_cad_dataset.sh` biçimindedir.
 
 Bir render ve tek kanallı hedef maskesinden runtime ile aynı search tile'larını
 üretmek için:

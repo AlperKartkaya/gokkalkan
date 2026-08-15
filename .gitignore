@@ -75,6 +75,9 @@ perception/dataset/generated/*
 perception/dataset/model_runs/*
 !perception/dataset/model_runs/.gitkeep
 
+# Ultralytics CLI'nin project verilmediğinde oluşturduğu prediction/val çıktıları.
+runs/
+
 # ==========================================
 # PySide6 / Qt Build Files
 # ==========================================

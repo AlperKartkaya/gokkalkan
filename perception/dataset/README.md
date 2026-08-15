@@ -68,6 +68,35 @@ uv pip install --python .venv-training/bin/python -r requirements/training-dev.l
 npm run model:train:smoke
 ```
 
+CAD araştırma veri setiyle tekrarlı kullanım için kısa akış:
+
+```bash
+./scripts/train_target_detector.sh
+./scripts/predict_target_val.sh
+```
+
+Eğitim scripti varsayılan olarak `yolov8s.pt`, `30 epoch`, `640 px`, batch `8`
+ve disk dataset cache kullanır. `DEVICE=auto`, CUDA varsa `0`, Apple Silicon
+MPS varsa `mps`, aksi halde `cpu` seçer. Ultralytics DataLoader worker sayısı
+CPU'ya göre en fazla `8` olarak açıkça geçirilir; eğitim zaten bu worker'larla
+paralel veri hazırlar. Örnekler:
+
+```bash
+# Daha kısa YOLOv8n deneyi
+MODEL=yolov8n.pt EPOCHS=10 NAME=cad-v8n-e10 ./scripts/train_target_detector.sh
+
+# Bellek kısıtlı makine
+BATCH=4 CACHE=none WORKERS=2 ./scripts/train_target_detector.sh
+
+# Belirli ağırlıkla val görsellerini üret
+WEIGHTS=perception/dataset/model_runs/cad-v8n-e10/weights/best.pt \
+NAME=cad-v8n-e10-val ./scripts/predict_target_val.sh
+```
+
+Prediction çıktıları `perception/dataset/model_runs/predictions/` altında tutulur.
+Ultralytics komutu project belirtilmeden çalıştırılmışsa oluşan kök `runs/`
+dizini de Git tarafından yok sayılır.
+
 Bu komut bir epoch smoke eğitimi yapar. Gerçek, grup ayrılmış val/test oturumları
 yokken çıktı release modeli değildir. Ultralytics ve temel ağırlık lisansı
 ürün/release kullanımından önce ayrıca değerlendirilmelidir. `.pt`, `.onnx` ve

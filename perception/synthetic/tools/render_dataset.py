@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
+    parser.add_argument(
+        "--render-device",
+        choices=("auto", "cpu", "metal", "optix", "cuda", "hip"),
+        default="auto",
+    )
+    parser.add_argument("--cpu-threads", type=int, default=0)
     return parser.parse_args()
 
 
@@ -62,6 +68,13 @@ def material_rgb(profile: dict, record: dict) -> list[float]:
 def main() -> None:
     args = parse_args()
     bproc.init()
+    if args.render_device == "cpu":
+        bproc.renderer.set_render_devices(use_only_cpu=True)
+    elif args.render_device != "auto":
+        bproc.renderer.set_render_devices(
+            desired_gpu_device_type=args.render_device.upper()
+        )
+    bproc.renderer.set_cpu_threads(args.cpu_threads)
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     record = select_record(
         plan["records"], record_id=args.record_id, index=args.record_index
