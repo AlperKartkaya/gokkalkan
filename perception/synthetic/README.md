@@ -57,6 +57,14 @@ Günlük iterasyonda gereken kısa komutlar:
 ./scripts/predict_target_val.sh
 ```
 
+Üretim render komutu varsayılan olarak Camera Module 3 main-stream sözleşmesiyle
+`2304×1296` HDF5 üretir. Ingest, tam kareyi doğrudan eğitim setine koymaz:
+hedef/balon içeren SAHI tile'larını, kare track ROI'larını ve kare başına en çok
+iki boş arama tile'ını `640×640` model girdisine dönüştürür. Böylece eğitim ve
+sahadaki Hailo giriş geometrisi aynıdır. Eski `640×360` batch'ler ingest sırasında
+açık hata verir ve render çözünürlüğü fingerprint'e dahil olduğu için otomatik
+olarak yeniden render edilir.
+
 Scriptler parametresiz çalışır ve ek CLI argümanlarını aynen alta iletir. En sık
 değiştirilen değerler ortam değişkeniyle verilebilir:
 
@@ -83,6 +91,9 @@ kullanılır. Tekil Blender/GPU süreci çökerse kayıt varsayılan olarak iki 
 yeniden denenir; yarım batch dizini denemeden önce temizlenir. Bu sayı
 `RETRIES=3` gibi değiştirilebilir.
 
+`RENDER_WIDTH/RENDER_HEIGHT` yalnız teşhis içindir; ana dataset ingest sözleşmesi
+kesin olarak `2304×1296` bekler.
+
 ```bash
 uv venv .venv-synthetic --python 3.11
 uv pip install --python .venv-synthetic/bin/python \
@@ -104,7 +115,10 @@ npm run dataset:cad:ingest
 
 CAD ingest bağımsız HDF5 kayıtlarını spawn edilmiş süreçlerde işler; otomatik
 worker sayısı CPU'ya göre en fazla `8`'dir. Seri ve hata ayıklamaya uygun eşdeğer
-komut `WORKERS=1 ./scripts/ingest_cad_dataset.sh` biçimindedir.
+komut `WORKERS=1 ./scripts/ingest_cad_dataset.sh` biçimindedir. Her temel dünya
+aynı `worldId/groupId/split` içinde şu türevlere ayrılır: hedef içeren tüm
+`768×768` SAHI tile'ları, en fazla iki kolay negatif tile, her kayıtta `768×768`
+track ROI ve deterministik seyrek alt kümelerde `960×960/1152×1152` recovery ROI.
 
 Bir render ve tek kanallı hedef maskesinden runtime ile aynı search tile'larını
 üretmek için:

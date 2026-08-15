@@ -16,7 +16,7 @@ TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-from render_provenance import render_fingerprint
+from render_provenance import PRODUCTION_RENDER_RESOLUTION, render_fingerprint
 
 ROOT = Path(__file__).resolve().parents[3]
 SYNTHETIC = ROOT / "perception/synthetic"
@@ -30,8 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--record-id")
     parser.add_argument("--record-index", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--width", type=int, default=PRODUCTION_RENDER_RESOLUTION[0])
+    parser.add_argument("--height", type=int, default=PRODUCTION_RENDER_RESOLUTION[1])
     parser.add_argument(
         "--render-device",
         choices=("auto", "cpu", "metal", "optix", "cuda", "hip"),
@@ -177,7 +177,10 @@ def main() -> None:
         json.dumps(
             {
                 "schemaVersion": 1,
-                "renderFingerprint": render_fingerprint(plan, record),
+                "renderFingerprint": render_fingerprint(
+                    plan, record, resolution=(args.width, args.height)
+                ),
+                "renderResolution": [args.width, args.height],
                 "assetManifestSha256": plan["assetManifestSha256"],
                 "sourceCadSha256": plan["sourceCadSha256"],
             },

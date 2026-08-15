@@ -8,7 +8,7 @@ import pytest
 
 h5py = pytest.importorskip("h5py")
 np = pytest.importorskip("numpy")
-pytest.importorskip("cv2")
+cv2 = pytest.importorskip("cv2")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "perception/tools"))
@@ -39,11 +39,11 @@ def write_batch(
         "appearanceProfileId": "nominal",
     }
     (batch / "record.json").write_text(json.dumps(record), encoding="utf-8")
-    colors = np.zeros((60, 80, 3), dtype=np.uint8)
-    colors[10:30, 20:60] = [245, 10, 10]
-    classes = np.zeros((60, 80), dtype=np.int64)
-    classes[10:30, 20:60] = 1
-    classes[35:45, 36:46] = 7
+    colors = np.zeros((1296, 2304, 3), dtype=np.uint8)
+    colors[540:660, 1080:1320] = [245, 10, 10]
+    classes = np.zeros((1296, 2304), dtype=np.uint8)
+    classes[540:660, 1080:1320] = 1
+    classes[680:760, 1160:1240] = 7
     with h5py.File(batch / "0.hdf5", "w") as handle:
         handle.create_dataset("colors", data=colors)
         handle.create_dataset("class_segmaps", data=classes)
@@ -82,9 +82,21 @@ def test_cad_ingest_preserves_world_split_and_stays_research_only(
     assert result["status"] == "SYNTHETIC_RESEARCH_ONLY"
     assert result["trainingAuthorized"] is False
     assert result["releaseCandidate"] is False
-    assert manifest["records"][0]["worldId"] == "WORLD-001"
-    assert manifest["records"][0]["split"] == "train"
-    assert len((output / "labels/train/cad_001.txt").read_text().splitlines()) == 2
+    assert all(item["worldId"] == "WORLD-001" for item in manifest["records"])
+    assert all(item["split"] == "train" for item in manifest["records"])
+    assert {item["viewFamily"] for item in manifest["records"]} == {
+        "SEARCH_SAHI_TILE_768",
+        "TRACK_SQUARE_ROI",
+    }
+    assert all(
+        cv2.imread(str(path)).shape[:2] == (640, 640)
+        for path in (output / "images/train").glob("*.png")
+    )
+    assert not (output / "images/train/cad_001.png").exists()
+    assert any(
+        len(path.read_text().splitlines()) == 2
+        for path in (output / "labels/train").glob("cad_001__*.txt")
+    )
     assert not any((output / "images/test").iterdir())
 
 
@@ -122,6 +134,26 @@ def test_cad_ingest_parallel_workers_preserve_deterministic_record_order(
     manifest = json.loads(
         (output / "dataset-manifest.json").read_text(encoding="utf-8")
     )
-    assert result["records"] == 2
-    assert [item["id"] for item in manifest["records"]] == ["cad_001", "cad_002"]
+    assert result["records"] > 2
+    source_frames = [item["sourceFrameId"] for item in manifest["records"]]
+    assert source_frames == sorted(source_frames)
+    assert set(source_frames) == {"cad_001", "cad_002"}
     assert manifest["inputs"]["ingestWorkers"] == 2
+
+
+def test_cad_ingest_rejects_legacy_low_resolution_render(tmp_path: Path) -> None:
+    batch_root = tmp_path / "batches"
+    write_batch(batch_root)
+    batch = next(batch_root.iterdir())
+    with h5py.File(batch / "0.hdf5", "w") as handle:
+        handle.create_dataset("colors", data=np.zeros((360, 640, 3), dtype=np.uint8))
+        handle.create_dataset("class_segmaps", data=np.zeros((360, 640), dtype=np.uint8))
+    config = tmp_path / "config.json"
+    write_config(config)
+
+    with pytest.raises(PipelineError, match="2304x1296"):
+        ingest_cad_render_batches(
+            batch_root=batch_root,
+            output=tmp_path / "dataset",
+            config_path=config,
+        )

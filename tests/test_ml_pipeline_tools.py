@@ -124,3 +124,18 @@ def test_render_cache_requires_matching_provenance(tmp_path: Path) -> None:
         json.dumps({"renderFingerprint": "new"}), encoding="utf-8"
     )
     assert module._is_complete(batch, "new") is True
+
+
+def test_render_fingerprint_changes_with_resolution() -> None:
+    module = load_module(
+        "render_provenance_resolution_for_test",
+        "perception/synthetic/tools/render_provenance.py",
+    )
+    plan = {"sourceCadSha256": "cad", "assetManifestSha256": "assets"}
+    record = {"recordId": "REC-resolution"}
+
+    production = module.render_fingerprint(plan, record)
+    legacy = module.render_fingerprint(plan, record, resolution=(640, 360))
+
+    assert production != legacy
+    assert module.PRODUCTION_RENDER_RESOLUTION == (2304, 1296)

@@ -461,7 +461,8 @@ küçük hedef temsilini doğrulamak; 5–15 m şartname aralığını ayrıca r
   Pi runtime'ında parity-testli dependency-light geometri kullan.
 - [x] `768×768`, `%25` overlap ile sekiz arama tile'ı ve annotation dönüşümü üret.
 - [x] `768/960/1152` kare track ROI türevlerini üret.
-- [ ] Easy-negative örneklemesini ve tile-boundary hard-case korumasını uygula.
+- [x] Hedef/balon içeren tüm tile'ları (tile-boundary parçaları dahil) koru ve
+  kolay boş tile sayısını temel kare başına en fazla iki ile sınırla.
 - [x] Eski full-frame/16:9 zoom state machine'ini ADR-006 durumlarıyla değiştir.
 
 ### Kesin runtime başlangıç politikası
@@ -566,6 +567,9 @@ Bu faz CAD/sentetik implementasyonundan sonra gerçek kamera erişimiyle yürüt
 - [x] CAD kayıtlarında `worldId` tabanlı stable split uygula.
 - [x] Sentetik CAD için yalnız train/val üret; gerçek test'i sentetikle doldurma.
 - [x] CAD ingest için `trainingAuthorized=false` ve `releaseCandidate=false` değerlerini zorunlu tut.
+- [x] Üretim render çözünürlüğünü `2304×1296` olarak cache fingerprint'ine bağla;
+  eski `640×360` batch'leri reddet ve tam kare yerine runtime-equivalent
+  `640×640` SAHI/track türevlerini YOLO dataset'ine yaz.
 - [ ] Gerçek veri geldikten sonra genel `trainingAuthorized` hesabını şu koşullara bağla:
   - bağımsız gerçek val ve test session;
   - boş review queue;

@@ -31,6 +31,11 @@ DEFAULT_OUTPUT = ROOT / "perception/dataset/generated/yolo_current"
 DEFAULT_CAD_BATCH_ROOT = ROOT / "perception/synthetic/generated/render_batches"
 DEFAULT_CAD_OUTPUT = ROOT / "perception/dataset/generated/yolo_cad_research"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+CAD_BASE_RESOLUTION = (2304, 1296)
+MODEL_INPUT_RESOLUTION = (640, 640)
+SEARCH_TILE_SIZE = 768
+SEARCH_TILE_OVERLAP = (0.25, 0.25)
+TRACK_ROI_SIZES = (768, 960, 1152)
 
 
 class PipelineError(RuntimeError):
@@ -371,8 +376,18 @@ def _auto_workers(requested: int, *, ceiling: int = 8) -> int:
     return max(1, min(ceiling, (os.cpu_count() or 2) - 1))
 
 
-def _ingest_cad_one(task: tuple[Path, Path, dict[str, Any], list[str]]) -> dict[str, Any]:
-    """Read, label and write one isolated CAD batch in a worker process."""
+def _deterministic_subset(record_id: str, roi_size: int) -> bool:
+    """Keep recovery ROI families sparse without making ingest non-repeatable."""
+
+    divisor = {960: 4, 1152: 8}.get(roi_size, 1)
+    bucket = int(hashlib.sha256(f"{record_id}:{roi_size}".encode()).hexdigest()[:8], 16)
+    return bucket % divisor == 0
+
+
+def _ingest_cad_one(
+    task: tuple[Path, Path, dict[str, Any], list[str]],
+) -> list[dict[str, Any]]:
+    """Convert one high-resolution CAD frame into runtime-equivalent views."""
 
     hdf5_path, output, record, classes = task
     try:
@@ -381,6 +396,14 @@ def _ingest_cad_one(task: tuple[Path, Path, dict[str, Any], list[str]]) -> dict[
         import numpy as np  # type: ignore
     except ImportError as exc:  # pragma: no cover - parent checks the environment
         raise RuntimeError("CAD ingest worker bağımlılıkları eksik") from exc
+
+    synthetic_tools = ROOT / "perception/synthetic/tools"
+    if str(synthetic_tools) not in sys.path:
+        sys.path.insert(0, str(synthetic_tools))
+    from apply_camera_pipeline import (  # type: ignore
+        build_sahi_search_views,
+        build_track_square_view,
+    )
 
     batch_dir = hdf5_path.parent
     with h5py.File(hdf5_path, "r") as handle:
@@ -391,6 +414,11 @@ def _ingest_cad_one(task: tuple[Path, Path, dict[str, Any], list[str]]) -> dict[
     height, width = rgb.shape[:2]
     if class_map.shape[:2] != (height, width):
         raise RuntimeError(f"RGB/mask çözünürlük uyuşmazlığı: {batch_dir}")
+    if (width, height) != CAD_BASE_RESOLUTION:
+        raise RuntimeError(
+            f"CAD taban render çözünürlüğü {CAD_BASE_RESOLUTION[0]}x"
+            f"{CAD_BASE_RESOLUTION[1]} olmalı, alınan {width}x{height}: {batch_dir}"
+        )
     target_bbox = _bbox_for_class(np, class_map, 1)
     balloon_bbox = _bbox_for_class(np, class_map, 7)
     if target_bbox is None or balloon_bbox is None:
@@ -398,35 +426,121 @@ def _ingest_cad_one(task: tuple[Path, Path, dict[str, Any], list[str]]) -> dict[
 
     split = str(record["split"])
     presentation_class = str(record["presentationClass"])
-    stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
-    image_path = output / "images" / split / f"{stem}.png"
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    if not cv2.imwrite(str(image_path), bgr):
-        raise RuntimeError(f"CAD görüntüsü yazılamadı: {image_path}")
-    labels = [
-        yolo_line(classes.index(presentation_class), target_bbox, width, height),
-        yolo_line(classes.index("balon"), balloon_bbox, width, height),
-    ]
-    (output / "labels" / split / f"{stem}.txt").write_text(
-        "\n".join(labels) + "\n", encoding="utf-8"
+    target_mask = (class_map == 1).astype(np.uint8) * 255
+    balloon_mask = (class_map == 7).astype(np.uint8) * 255
+    union_mask = cv2.bitwise_or(target_mask, balloon_mask)
+    views: list[dict[str, Any]] = []
+    search_views = build_sahi_search_views(
+        rgb,
+        union_mask,
+        slice_size=(SEARCH_TILE_SIZE, SEARCH_TILE_SIZE),
+        overlap=SEARCH_TILE_OVERLAP,
     )
-    return {
-        "id": stem,
-        "sourceKind": record["sourceKind"],
-        "split": split,
-        "worldId": str(record["worldId"]),
-        "groupId": record["groupId"],
-        "presentationClass": presentation_class,
-        "routeId": record["routeId"],
-        "longitudinalDistanceM": record["longitudinalDistanceM"],
-        "lateralDistanceM": record["lateralDistanceM"],
-        "viewYawDeg": record["viewYawDeg"],
-        "topSurfaceViewDeg": record["topSurfaceViewDeg"],
-        "appearanceProfileId": record["appearanceProfileId"],
-        "targetBalloonLinked": True,
-        "imageSha256": sha256(image_path),
-        "sourceBatchSha256": sha256(hdf5_path),
-    }
+    positive_search = [
+        view for view in search_views if np.count_nonzero(view["modelMask"]) > 0
+    ]
+    easy_negatives = [
+        view for view in search_views if np.count_nonzero(view["modelMask"]) == 0
+    ][:2]
+    views.extend(positive_search)
+    views.extend(easy_negatives)
+    target_center = (
+        target_bbox[0] + target_bbox[2] / 2,
+        target_bbox[1] + target_bbox[3] / 2,
+    )
+    for roi_size in TRACK_ROI_SIZES:
+        if roi_size == 768 or _deterministic_subset(str(record["recordId"]), roi_size):
+            views.append(
+                build_track_square_view(
+                    rgb,
+                    union_mask,
+                    roi_size_px=roi_size,
+                    predicted_center_px=target_center,
+                )
+            )
+
+    base_stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
+    source_batch_sha = sha256(hdf5_path)
+    records: list[dict[str, Any]] = []
+    for view_index, view in enumerate(views):
+        metadata = dict(view["metadata"])
+        rect_value = metadata.get("sliceRectFullFramePx") or metadata.get(
+            "roiRectFullFramePx"
+        )
+        if not rect_value:
+            raise RuntimeError(f"CAD inference crop sözleşmesi eksik: {batch_dir}")
+        left, top, crop_width, crop_height = map(int, rect_value)
+        target_crop = target_mask[top : top + crop_height, left : left + crop_width]
+        balloon_crop = balloon_mask[top : top + crop_height, left : left + crop_width]
+        target_model = cv2.resize(
+            target_crop, MODEL_INPUT_RESOLUTION, interpolation=cv2.INTER_NEAREST
+        )
+        balloon_model = cv2.resize(
+            balloon_crop, MODEL_INPUT_RESOLUTION, interpolation=cv2.INTER_NEAREST
+        )
+        target_view_bbox = _bbox_for_class(np, target_model, 255)
+        balloon_view_bbox = _bbox_for_class(np, balloon_model, 255)
+        suffix = (
+            f"search_{int(metadata['sliceIndex']):02d}"
+            if metadata["viewFamily"] == "SEARCH_SAHI_TILE_768"
+            else f"track_{int(metadata['roiSourceSizePx'])}"
+        )
+        stem = f"{base_stem}__{suffix}"
+        image_path = output / "images" / split / f"{stem}.png"
+        bgr = cv2.cvtColor(view["modelInput"], cv2.COLOR_RGB2BGR)
+        if not cv2.imwrite(str(image_path), bgr):
+            raise RuntimeError(f"CAD görüntüsü yazılamadı: {image_path}")
+        labels = []
+        if target_view_bbox is not None:
+            labels.append(
+                yolo_line(
+                    classes.index(presentation_class),
+                    target_view_bbox,
+                    MODEL_INPUT_RESOLUTION[0],
+                    MODEL_INPUT_RESOLUTION[1],
+                )
+            )
+        if balloon_view_bbox is not None:
+            labels.append(
+                yolo_line(
+                    classes.index("balon"),
+                    balloon_view_bbox,
+                    MODEL_INPUT_RESOLUTION[0],
+                    MODEL_INPUT_RESOLUTION[1],
+                )
+            )
+        (output / "labels" / split / f"{stem}.txt").write_text(
+            "\n".join(labels) + ("\n" if labels else ""), encoding="utf-8"
+        )
+        records.append(
+            {
+                "id": stem,
+                "sourceFrameId": base_stem,
+                "sourceKind": record["sourceKind"],
+                "split": split,
+                "worldId": str(record["worldId"]),
+                "groupId": record["groupId"],
+                "presentationClass": presentation_class,
+                "routeId": record["routeId"],
+                "longitudinalDistanceM": record["longitudinalDistanceM"],
+                "lateralDistanceM": record["lateralDistanceM"],
+                "viewYawDeg": record["viewYawDeg"],
+                "topSurfaceViewDeg": record["topSurfaceViewDeg"],
+                "appearanceProfileId": record["appearanceProfileId"],
+                "viewFamily": metadata["viewFamily"],
+                "viewIndex": view_index,
+                "cropRectFullFramePx": list(map(int, rect_value)),
+                "roiSourceSizePx": metadata.get("roiSourceSizePx"),
+                "sliceIndex": metadata.get("sliceIndex"),
+                "targetVisible": target_view_bbox is not None,
+                "balloonVisible": balloon_view_bbox is not None,
+                "truncatedByView": bool(metadata["truncatedBySlice"]),
+                "targetBalloonLinked": True,
+                "imageSha256": sha256(image_path),
+                "sourceBatchSha256": source_batch_sha,
+            }
+        )
+    return records
 
 
 def ingest_cad_render_batches(
@@ -475,14 +589,15 @@ def ingest_cad_render_batches(
     workers = _auto_workers(workers)
     try:
         if workers == 1:
-            records = [_ingest_cad_one(task) for task in tasks]
+            record_groups = [_ingest_cad_one(task) for task in tasks]
         else:
             context = multiprocessing.get_context("spawn")
             with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
-                records = list(pool.map(_ingest_cad_one, tasks, chunksize=1))
+                record_groups = list(pool.map(_ingest_cad_one, tasks, chunksize=1))
     except Exception as exc:
         raise PipelineError(f"CAD ingest başarısız: {exc}") from exc
 
+    records = [record for group in record_groups for record in group]
     if not records:
         raise PipelineError(f"içe aktarılabilir CAD render batch bulunamadı: {batch_root}")
     manifest = write_dataset_contract(
@@ -493,7 +608,10 @@ def ingest_cad_render_batches(
         {
             "configSha256": sha256(config_path),
             "cadBatchRoot": str(batch_root.resolve()),
-            "cadBatchCount": len(records),
+            "cadBatchCount": len(tasks),
+            "derivedViewCount": len(records),
+            "baseRenderResolution": list(CAD_BASE_RESOLUTION),
+            "modelInputResolution": list(MODEL_INPUT_RESOLUTION),
             "ingestWorkers": workers,
         },
     )

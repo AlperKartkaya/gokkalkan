@@ -224,9 +224,9 @@ def test_render_record_schema_rejects_out_of_range_camera_pose() -> None:
         "zoom": {
             "mode": "none",
             "factor": 1.0,
-            "cropRectPx": [0, 0, 1280, 720],
-            "preCropResolution": [1280, 720],
-            "postCropResolution": [1280, 720],
+            "cropRectPx": [0, 0, 2304, 1296],
+            "preCropResolution": [2304, 1296],
+            "postCropResolution": [2304, 1296],
             "modelInputResolution": [640, 640],
             "interpolation": "INTER_AREA",
             "targetPixelsBeforeZoom": 500,

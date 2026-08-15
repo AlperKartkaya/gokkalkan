@@ -17,7 +17,7 @@ TOOLS_DIR = Path(__file__).resolve().parent
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
-from render_provenance import render_fingerprint
+from render_provenance import PRODUCTION_RENDER_RESOLUTION, render_fingerprint
 
 ROOT = Path(__file__).resolve().parents[3]
 SYNTHETIC_ROOT = ROOT / "perception/synthetic"
@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--width", type=int, default=PRODUCTION_RENDER_RESOLUTION[0]
+    )
+    parser.add_argument(
+        "--height", type=int, default=PRODUCTION_RENDER_RESOLUTION[1]
+    )
     parser.add_argument(
         "--workers",
         type=int,
@@ -92,6 +98,8 @@ def _render_one(
     cpu_threads: int,
     retries: int,
     expected_fingerprint: str,
+    width: int = PRODUCTION_RENDER_RESOLUTION[0],
+    height: int = PRODUCTION_RENDER_RESOLUTION[1],
 ) -> str:
     batch_dir = output / str(record["recordId"])
     if retries < 0:
@@ -115,6 +123,10 @@ def _render_one(
             render_device,
             "--cpu-threads",
             str(cpu_threads),
+            "--width",
+            str(width),
+            "--height",
+            str(height),
         ]
         try:
             subprocess.run(command, cwd=ROOT, check=True)
@@ -162,7 +174,7 @@ def main() -> int:
         if args.force
         or not _is_complete(
             args.output / str(record["recordId"]),
-            render_fingerprint(plan, record),
+            render_fingerprint(plan, record, resolution=(args.width, args.height)),
         )
     ]
     skipped = len(records) - len(pending)
@@ -184,7 +196,11 @@ def main() -> int:
                 render_device=args.render_device,
                 cpu_threads=cpu_threads,
                 retries=args.retries,
-                expected_fingerprint=render_fingerprint(plan, record),
+                expected_fingerprint=render_fingerprint(
+                    plan, record, resolution=(args.width, args.height)
+                ),
+                width=args.width,
+                height=args.height,
             ): record
             for record in pending
         }
@@ -211,6 +227,7 @@ def main() -> int:
         "renderDevice": args.render_device,
         "cpuThreadsPerWorker": cpu_threads,
         "retries": args.retries,
+        "renderResolution": [args.width, args.height],
     }
     (args.output / "batch-summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
