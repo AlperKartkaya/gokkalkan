@@ -918,8 +918,33 @@ function RawCameraDiagnosticPage({ streamUrl, onBack }: { streamUrl: string; onB
             OPERATÖR PANELİNE DÖN
           </button>
         </header>
-        <section className="p-4 md:p-6 bg-black/60">
-          <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain border border-[#48a8ff]/10 shadow-inner`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
+        <section className="p-4 md:p-6 bg-black/60 relative">
+          <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain border border-[#48a8ff]/10 shadow-inner relative z-0`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
+          
+          {/* Nişangâh Katmanı */}
+          {!failed && (
+            <div className="absolute inset-0 pointer-events-none flex justify-center items-center z-10" style={{ padding: '1.5rem' /* md:p-6 padding compensation */ }}>
+              <div className="relative w-full h-full max-w-[calc(100vh*(16/9))] max-h-[calc(100vw*(9/16))] flex justify-center items-center">
+                {/* Mavi Merkez Nişangâhı (Kamera Ekseni) */}
+                <svg width="80" height="80" viewBox="0 0 60 60" className="absolute opacity-80" style={{ transform: 'translate(0, 0)' }}>
+                  <circle cx="30" cy="30" r="2" fill="#48a8ff" />
+                  <line x1="30" y1="5" x2="30" y2="20" stroke="#48a8ff" strokeWidth="1.5" />
+                  <line x1="30" y1="40" x2="30" y2="55" stroke="#48a8ff" strokeWidth="1.5" />
+                  <line x1="5" y1="30" x2="20" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
+                  <line x1="40" y1="30" x2="55" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
+                </svg>
+                
+                {/* Sarı Darbe Noktası (Tahmini Balistik Holdover) */}
+                <svg width="50" height="50" viewBox="0 0 40 40" className="absolute opacity-90 transition-transform duration-300" style={{ transform: 'translate(0, 60px)' }}>
+                  <circle cx="20" cy="20" r="10" fill="none" stroke="#ffbb42" strokeWidth="1.5" strokeDasharray="4 2" />
+                  <circle cx="20" cy="20" r="1.5" fill="#ffbb42" />
+                  <line x1="20" y1="10" x2="20" y2="30" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
+                  <line x1="10" y1="20" x2="30" y2="20" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
+                </svg>
+              </div>
+            </div>
+          )}
+
           {failed && (
             <div className="grid aspect-video w-full place-items-center rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/8 p-8 text-center" data-testid="raw-camera-offline">
               <div>
@@ -1658,7 +1683,26 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
             ) : (
               <div className="absolute inset-0 bg-black flex flex-col justify-center items-center">
                 <img src={cameraStreamUrl} className="w-full h-full object-contain" alt="Canlı Kamera Akışı" />
-                <div className="absolute bottom-4 left-4 z-10">
+                <div className="absolute inset-0 pointer-events-none flex justify-center items-center">
+                  {/* Mavi Merkez Nişangâhı (Kamera Ekseni) */}
+                  <svg width="60" height="60" viewBox="0 0 60 60" className="absolute opacity-80" style={{ transform: 'translate(0, 0)' }}>
+                    <circle cx="30" cy="30" r="2" fill="#48a8ff" />
+                    <line x1="30" y1="5" x2="30" y2="20" stroke="#48a8ff" strokeWidth="1.5" />
+                    <line x1="30" y1="40" x2="30" y2="55" stroke="#48a8ff" strokeWidth="1.5" />
+                    <line x1="5" y1="30" x2="20" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
+                    <line x1="40" y1="30" x2="55" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
+                  </svg>
+                  
+                  {/* Sarı Darbe Noktası (Tahmini Balistik Holdover) */}
+                  <svg width="40" height="40" viewBox="0 0 40 40" className="absolute opacity-90 transition-transform duration-300" style={{ transform: 'translate(0, 45px)' }}>
+                    <circle cx="20" cy="20" r="10" fill="none" stroke="#ffbb42" strokeWidth="1.5" strokeDasharray="4 2" />
+                    <circle cx="20" cy="20" r="1.5" fill="#ffbb42" />
+                    <line x1="20" y1="10" x2="20" y2="30" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
+                    <line x1="10" y1="20" x2="30" y2="20" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
+                  </svg>
+                </div>
+                
+                <div className="absolute bottom-4 left-4 z-10 pointer-events-auto">
                   <ManualAimController
                     apiBusy={apiBusy}
                     manualAimReady={Boolean(
