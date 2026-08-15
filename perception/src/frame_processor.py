@@ -53,6 +53,8 @@ class TrackCandidate:
 
     rangeM: kameradan mesafe tahmini (şimdilik bbox alanından; LiDAR entegrasyonu sonra)
     bearingDeg: kamera görüntüsünde yatay açı tahmini (piksel merkezden)
+    object_role: 'target' (maket) veya 'balloon' (imha balonu)
+    fire_candidate: False → ateş yetkisi asla verilmez (balon, ilişkisiz nesne)
     """
     track_id:    str
     cx:          float           # görüntü piksel X merkezi
@@ -60,7 +62,7 @@ class TrackCandidate:
     width_px:    float           # bounding box genişliği (piksel)
     height_px:   float           # bounding box yüksekliği (piksel)
     area_px:     float           # kontur alanı (piksel²)
-    color:       str             # "red" | "blue" | "unknown"
+    color:       str             # "red" | "blue" | "red_balloon" | "unknown"
     friend_foe:  str             # "Düşman" | "Dost" | "Bilinmeyen"
     target_type: str             # "Bilinmeyen" (Aşama 2) veya sınıf (Aşama 3)
     confidence:  float           # 0.0–1.0
@@ -77,6 +79,8 @@ class TrackCandidate:
     aim_calibration_id: str | None = None
     aim_calibration_hash: str | None = None
     aim_valid: bool = False
+    object_role: str = "target"   # "target" | "balloon"
+    fire_candidate: bool = True    # balon track'lerinde False
 
     def to_api_dict(self) -> dict[str, Any]:
         """Backend /tracks/update sözleşmesiyle uyumlu dict."""
@@ -102,6 +106,8 @@ class TrackCandidate:
             "aimCalibrationId": self.aim_calibration_id,
             "aimCalibrationHash": self.aim_calibration_hash,
             "aimValid": self.aim_valid,
+            "objectRole": self.object_role,
+            "fireCandidate": self.fire_candidate,
         }
 
 
@@ -292,6 +298,10 @@ class FrameProcessor:
             max_disappeared=tracker_max_disappeared,
             max_distance_px=tracker_max_dist_px,
         )
+        self._balloon_tracker = CentroidTracker(
+            max_disappeared=max(4, tracker_max_disappeared),
+            max_distance_px=tracker_max_dist_px * 1.2,
+        )
         self._frames_processed = 0
 
     # ------------------------------------------------------------------
@@ -363,6 +373,7 @@ class FrameProcessor:
         )
 
         detections: list[tuple[float, float, float, float, float, str]] = []
+        balloon_detections: list[tuple[float, float, float, float, float, str]] = []
         for cnt in contours:
             area = float(cv2.contourArea(cnt))
             if area < self.min_area_px:
@@ -386,9 +397,9 @@ class FrameProcessor:
             if stage == 3 and clr == "red":
                 # Bütün maketlerin altında kırmızı ve yaklaşık dairesel bir
                 # imha balonu bulunur. Balon rengi dost/düşman kanıtı değildir;
-                # onu bağımsız bir düşman izi olarak yayınlamak dost hedefe
-                # ateş riski doğurur. Doğrulanmış maket+balon ilişkilendiricisi
-                # gelene kadar dairesel kırmızı blob fail-closed elenir.
+                # bu yüzden bağımsız düşman izi olarak yayınlanmaz.
+                # Ancak balon_association.py'nin çalışabilmesi için
+                # ayrı bir 'balloon' track olarak saklanır; ateş yetkisi yoktur.
                 perimeter = float(cv2.arcLength(cnt, True))
                 if is_probable_balloon_shape(
                     area=area,
@@ -396,12 +407,20 @@ class FrameProcessor:
                     width=float(w),
                     height=float(h),
                 ):
+                    balloon_detections.append((cx, cy, float(w), float(h), area, "red_balloon"))
                     continue
 
             detections.append((cx, cy, float(w), float(h), area, clr))
 
         # Tracker güncelle
         active_tracks = self._tracker.update(detections, timestamp_ns=timestamp_ns)
+
+        # Balon tracker güncelle (Aşama 3)
+        balloon_active: dict[str, dict[str, Any]] = {}
+        if stage == 3 and _CV_OK:
+            balloon_active = self._balloon_tracker.update(
+                balloon_detections, timestamp_ns=timestamp_ns
+            )
 
         # TrackCandidate listesi üret
         candidates: list[TrackCandidate] = []
@@ -455,6 +474,7 @@ class FrameProcessor:
                     candidate,
                     self.aim_calibration,
                     now_monotonic_ns=timestamp_ns,
+                    aim_point_px=None,  # Future: pass balloon center here
                 )
                 candidate.aim_valid = bool(aim["valid"])
                 candidate.aim_calibration_id = str(aim["calibrationId"])
@@ -463,6 +483,41 @@ class FrameProcessor:
                     candidate.yaw_error_deg = float(aim["yawErrorDeg"])
                     candidate.pitch_error_deg = float(aim["pitchErrorDeg"])
             candidates.append(candidate)
+
+        # Balon TrackCandidate'lerini ekle (Aşama 3)
+        # fire_candidate=False: balon hiçbir zaman doğrudan ateş hedefi değildir.
+        # balloon_association.py bu track'leri maketlerle ilişkilendirecek.
+        for tid, tr in balloon_active.items():
+            area_px = max(1.0, tr.get("area", 1.0))
+            bearing_deg = (
+                (tr["cx"] - self.image_width / 2) / self.image_width * self.hfov_deg
+            )
+            age_bonus = min(0.3, tr.get("age", 1) * 0.03)
+            balloon_candidate = TrackCandidate(
+                track_id    = f"{tid}-BAL",
+                cx          = tr["cx"],
+                cy          = tr["cy"],
+                width_px    = tr.get("w", 0.0),
+                height_px   = tr.get("h", 0.0),
+                area_px     = area_px,
+                color       = "red_balloon",
+                friend_foe  = "Bilinmeyen",
+                target_type = "Balon",
+                confidence  = min(0.9, 0.3 + age_bonus),
+                range_m     = min(15.0, self.range_area_k / (area_px ** 0.5)),
+                bearing_deg = bearing_deg,
+                velocity_x_px_s=float(tr.get("velocity_x_px_s", 0.0)),
+                velocity_y_px_s=float(tr.get("velocity_y_px_s", 0.0)),
+                freshness_ms=max(
+                    0.0,
+                    (timestamp_ns - int(tr.get("last_seen_ns", timestamp_ns))) / 1e6,
+                ),
+                receive_monotonic_ns=timestamp_ns,
+                object_role="balloon",
+                fire_candidate=False,  # balon doğrudan ateş hedefi olamaz
+            )
+            candidates.append(balloon_candidate)
+
         return candidates
 
     def stats(self) -> dict[str, Any]:

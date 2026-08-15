@@ -1,37 +1,49 @@
 {
   "schemaVersion": 1,
   "modelId": "GOKKALKAN-TARGET-DETECTOR-R1",
-  "status": "TRAINING_PIPELINE_READY_REAL_DATA_PENDING",
+  "status": "SYNTHETIC_PIPELINE_READY_REAL_DATA_REQUIRED",
   "task": "object-detection",
-  "researchArchitecture": "YOLOv8n",
+  "researchArchitecture": "YOLOv8s",
+  "fallbackArchitecture": "YOLOv8n",
   "deploymentTarget": "Raspberry Pi AI HAT+ 26 TOPS / Hailo-8 HEF",
+  "note": "Sentetik CAD render pipeline hazır (BlenderProc, 6930+ poz). Gerçek Camera Module 3 çekimleri olmadan model HEF'e dönüştürülmez ve canlı atış yetkisi verilmez. Model ağırlıkları (.pt/.onnx/.hef) bu repoya eklenmez; konumları evidence/ içinde hash ile kayıtlanır.",
   "input": {
     "colorOrder": "RGB",
     "nominalShape": [1, 3, 640, 640],
-    "source": "Raspberry Pi Camera Module 3 Standard"
+    "source": "Raspberry Pi Camera Module 3 Standard",
+    "operatingResolution": "2304x1296 (SAHI tile: 768x768)",
+    "sahiTileCount": 8,
+    "sahiOverlapRatio": 0.25
   },
   "classes": {
-    "0": {"presentationClass": "dusman_drone_kirmizi", "targetType": "Mini/Micro İHA", "friendFoe": "Düşman", "objectRole": "maket"},
-    "1": {"presentationClass": "dusman_helikopter_kirmizi", "targetType": "Helikopter", "friendFoe": "Düşman", "objectRole": "maket"},
-    "2": {"presentationClass": "dusman_f16_kirmizi", "targetType": "F16", "friendFoe": "Düşman", "objectRole": "maket"},
-    "3": {"presentationClass": "dusman_fuze_kirmizi", "targetType": "Balistik Füze", "friendFoe": "Düşman", "objectRole": "maket"},
-    "4": {"presentationClass": "dost_helikopter_camgobegi", "targetType": "Helikopter", "friendFoe": "Dost", "objectRole": "maket"},
-    "5": {"presentationClass": "dost_f16_camgobegi", "targetType": "F16", "friendFoe": "Dost", "objectRole": "maket"},
-    "6": {"presentationClass": "balon", "targetType": "Bilinmeyen", "friendFoe": "Bilinmeyen", "objectRole": "balon"}
+    "0": {"presentationClass": "dusman_drone_kirmizi",      "targetType": "Mini/Micro İHA", "friendFoe": "Düşman", "objectRole": "maket"},
+    "1": {"presentationClass": "dusman_helikopter_kirmizi", "targetType": "Helikopter",    "friendFoe": "Düşman", "objectRole": "maket"},
+    "2": {"presentationClass": "dusman_f16_kirmizi",        "targetType": "F16",           "friendFoe": "Düşman", "objectRole": "maket"},
+    "3": {"presentationClass": "dusman_fuze_kirmizi",       "targetType": "Balistik Füze", "friendFoe": "Düşman", "objectRole": "maket"},
+    "4": {"presentationClass": "dost_helikopter_camgobegi", "targetType": "Helikopter",    "friendFoe": "Dost",   "objectRole": "maket"},
+    "5": {"presentationClass": "dost_f16_camgobegi",        "targetType": "F16",           "friendFoe": "Dost",   "objectRole": "maket"},
+    "6": {"presentationClass": "balon",                     "targetType": "Bilinmeyen",    "friendFoe": "Bilinmeyen", "objectRole": "balon",
+          "associationNote": "Balon, maket–balon ilişkilendirici (balloon_association.py) tarafından üst makete bağlanır. İlişkisiz veya dost makete bağlı balon fireCandidate=false olarak işaretlenir."}
   },
   "association": {
     "rule": "balloon must be below and track-linked to exactly one maket",
     "inheritsFriendFoeFromMaket": true,
     "unlinkedBalloonFireAuthorized": false,
-    "friendlyLinkedBalloonFireAuthorized": false
+    "friendlyLinkedBalloonFireAuthorized": false,
+    "associationModule": "perception/src/balloon_association.py (PLANNED — Faz 1)"
+  },
+  "calibration": {
+    "cameraConfig": "config/calibration/camera.toml",
+    "status": "NOMINAL_UNVERIFIED",
+    "note": "Fiziksel checkerboard kalibrasyonu + boresight ölçümü tamamlanana kadar aimValid=false. aim_alignment.py distortion katsayıları boş olduğunda Brown-Conrady düzeltmesi atlanır."
   },
   "releaseGates": [
-    "real grouped validation and test sessions",
-    "human-reviewed target and balloon annotations",
-    "false-positive-per-minute and association-error metrics",
-    "ONNX equivalence",
-    "Hailo HEF equivalence and Pi 5 latency",
-    "backend Safety Gate integration",
-    "Ultralytics and pretrained-weight license review"
+    {"gate": "real_grouped_validation_sessions",      "status": "PENDING"},
+    {"gate": "human_reviewed_annotations",            "status": "PENDING"},
+    {"gate": "false_positive_per_minute_metric",      "status": "PENDING"},
+    {"gate": "onnx_equivalence",                      "status": "PENDING"},
+    {"gate": "hailo_hef_equivalence_and_pi5_latency", "status": "PENDING"},
+    {"gate": "backend_safety_gate_integration",       "status": "PARTIAL — fireCandidate flag propagated"},
+    {"gate": "ultralytics_license_review",            "status": "PENDING"}
   ]
 }

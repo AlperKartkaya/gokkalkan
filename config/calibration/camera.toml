@@ -1,12 +1,57 @@
-# Fiziksel checkerboard ve boresight ölçümü tamamlanana kadar LIVE için geçersizdir.
+# Raspberry Pi Camera Module 3 Standard (Sony IMX708) — Nominal Kalibrasyon
+#
+# Çalışma çözünürlüğü: 2304 × 1296 piksel (2× binning, ana SAHI yayını)
+# Sensör: IMX708, 12 MP, kare piksel (1.4 µm × 1.4 µm)
+# Üretici nominal HFoV: 66.0° @ 2304 piksel genişlik
+#
+# Hesap yöntemi (üretici nominal):
+#   focal_length_px = (width / 2) / tan(HFoV / 2)
+#                   = 1152 / tan(33°) = 1152 / 0.64941 ≈ 1773.9 px
+#   yaw_deg_per_px  = (180 / π) / focal_length_px ≈ 0.03230 °/px
+#   VFoV            = 2 × atan(tan(33°) × 1296 / 2304) ≈ 40.1°
+#   pitch_deg_per_px = same (kare piksel, aynı focal length)
+#
+# STATUS UNVERIFIED: aim_alignment.py bu durumda aimValid=False döndürür.
+# Fiziksel checkerboard + boresight ölçümü sonrası:
+#   - id        → oturum tarihi / donanım revizyonu
+#   - status    → "ACTIVE"
+#   - evidence_sha256 → kalibrasyon run JSONL hash'i (64 hex)
+#   - distortion → OpenCV [k1, k2, p1, p2, k3] radyal/teğetsel katsayılar
+#
+# Bu dosyayı pipeline test ve sentetik render'da kullanmak güvenlidir;
+# canlı ateş kararlarında kullanılmaz.
+
 [calibration]
-id = "UNVERIFIED"
+id = "NOMINAL-IMX708-2304x1296-v1"
 status = "UNVERIFIED"
-principal_x_px = 640.0
-principal_y_px = 360.0
-yaw_deg_per_px = 0.0515625
-pitch_deg_per_px = 0.0515625
-yaw_offset_deg = 0.0
+
+# Ana yayın çalışma çözünürlüğü (piksel)
+image_width_px  = 2304
+image_height_px = 1296
+
+# Optik merkez — nominal sensör merkezi
+principal_x_px  = 1152.0
+principal_y_px  = 648.0
+
+# Açısal çözünürlük (°/piksel) — üretici HFoV'dan türetildi
+# Kare piksel varsayımı; fiziksel kalibrasyon değerler arasındaki küçük farkı ortaya çıkarır
+yaw_deg_per_px   = 0.03230
+pitch_deg_per_px = 0.03230
+
+# Boresight ofseti — fiziksel ölçüm öncesi sıfır
+yaw_offset_deg   = 0.0
 pitch_offset_deg = 0.0
+
+# Lens distorsiyonu — OpenCV [k1, k2, p1, p2, k3] formatı
+# IMX708 geniş açılı lens; checkerboard kalibrasyonundan sonra doldurulacak.
+# aim_alignment.py bu dizi boş olduğunda distorsyon düzeltmesi atlar.
 distortion = []
+
+# Kanıt: fiziksel checkerboard run JSONL dosyasının SHA-256'sı (64 hex)
+# Boş bırakıldığında AimCalibration.active → False
 evidence_sha256 = ""
+
+# Referans kaynaklar:
+#   - IMX708 datasheet (Sony Semiconductor): sensör piksel boyutu 1.4 µm
+#   - Raspberry Pi Camera Module 3 product brief: 66° HFoV, CSI-2 4-lane
+#   - docs/taret_mekanik_ve_sensor_yerlesimi.md: LiDAR yüksekliği 700 mm
