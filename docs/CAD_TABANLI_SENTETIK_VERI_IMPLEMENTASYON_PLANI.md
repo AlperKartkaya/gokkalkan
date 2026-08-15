@@ -43,15 +43,22 @@
 
 ### 1.2. Geometri ve görüş sözleşmesi
 
-Bambu Studio sunum çerçevesi korunur: `Front` kamera yönü kaynak `-Y`, ekran
-sağı `+X`, ekran yukarısı `+Z`'dir. Kamera-merkezli dünyada kamera
-`[0, 0, 1.30] m`, hedef referans merkezi `1.30 m` yüksekliğindedir.
+Normalize edilmiş render çerçevesinde yatay hedeflerin burnu kameraya doğru
+`-Y`, üst yüzeyi `+Z`'dir. Kaynak F16 mesh'inin burnu gerçekte `+Y` olduğu için
+normalize aşamasında `Rz(180°)` uygulanır; diğer yatay hedefler zaten `-Y`
+yönündedir. Böylece F16 kuyruğu değil burnu kameraya bakar. Kamera-merkezli
+dünyada kamera `[0, 0, 1.30] m`, hedef referans merkezi `1.30 m`
+yüksekliğindedir.
 
 Hedefin fiziksel dönüşü yalnız burun eğimidir:
 
 ```text
 R_target = Rx(topSurfaceViewDeg)
 ```
+
+Pozitif `topSurfaceViewDeg`, normalize edilmiş `-Y` burun vektörünü `-Z`
+yönüne taşır. Dolayısıyla hedefin burnu aşağı iner ve kamera üst yüzeyi görür;
+burun yukarı kaldırılmaz.
 
 Sağ/sol görünüş için hedefe ikinci kez yaw rotasyonu uygulanmaz. Rota geometrisi
 bu görünüşü zaten oluşturur:

@@ -96,9 +96,9 @@
             "sourceToPresentationRotation3x3"
           ],
           "properties": {
-            "status": {"const": "VERIFIED_BAMBU_FRONT_CONVENTION"},
-            "frontViewCameraAxisSource": {"const": "-Y"},
-            "screenRightAxisSource": {"const": "+X"},
+            "status": {"enum": ["VERIFIED_BAMBU_FRONT_CONVENTION", "VERIFIED_RENDER_FRONT_CORRECTION_R2"]},
+            "frontViewCameraAxisSource": {"enum": ["-Y", "+Y"]},
+            "screenRightAxisSource": {"enum": ["+X", "-X"]},
             "screenUpAxisSource": {"const": "+Z"},
             "longitudinalNoseAxisSource": {"$ref": "#/$defs/axis"},
             "sourceToPresentationRotation3x3": {

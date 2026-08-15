@@ -12,12 +12,16 @@ Kamera/ROI kararı:
 ## Geometri sözleşmesi
 
 - 3MF ölçüleri kesindir; dört varlığın render ölçeği `1.0`'dır.
-- Bambu Studio `Front`: kamera kaynak `-Y`; ekran sağı `+X`, ekran yukarısı `+Z`.
+- Normalize edilmiş render uzayında hedef burnu kameraya doğru `-Y`, üst yüzey `+Z`'dir.
+- F16 kaynak mesh'i diğer yatay hedeflerden ters yöndedir (`burun=+Y`). Dönüştürme
+  sırasında `Z` etrafında `180°` çevrilerek `burun=-Y` yapılır; bu düzeltme render
+  planında ek yaw üretmez.
 - Boylamasına uzaklıklar `3–17 m` arasında her tam metredir.
 - Rota 1/3 enlemesine ofsetleri `±2.75`, `±2.87`, `±3.00 m`; Rota 2 `0 m`'dir.
 - `viewYawDeg = degrees(atan2(signedLateralDistanceM, longitudinalDistanceM))`.
 - Yaw hedefe ayrıca rotasyon olarak uygulanmaz; kamera-hedef geometrisinden doğar.
-- Burun eğimi `4/6/8/10/12/14/16/18/20/24/28°`, jitter `±0.5°`'dir.
+- Burun eğimi `4/6/8/10/12/14/16/18/20/24/28°`, jitter `±0.5°`'dir. Pozitif değer,
+  normalize edilmiş `-Y` burun eksenini `-Z` yönüne indirir; burnu yukarı kaldırmaz.
 - Nominal, hafif soluk, hafif karanlık ve hafif aydınlık görünüm profilleri pozlara
   `%40/%20/%20/%20` oranıyla deterministik atanır; veri hacmini dört katına çıkarmaz.
 - Arama yolu `2304×1296` main görüntüden `%25` örtüşmeli sekiz `768×768` SAHI

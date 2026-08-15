@@ -77,20 +77,20 @@
         "manifoldAndOriented": true
       },
       "orientation": {
-        "status": "VERIFIED_BAMBU_FRONT_CONVENTION",
-        "frontViewCameraAxisSource": "-Y",
-        "screenRightAxisSource": "+X",
+        "status": "VERIFIED_RENDER_FRONT_CORRECTION_R2",
+        "frontViewCameraAxisSource": "+Y",
+        "screenRightAxisSource": "-X",
         "screenUpAxisSource": "+Z",
-        "longitudinalNoseAxisSource": "-Y",
+        "longitudinalNoseAxisSource": "+Y",
         "sourceToPresentationRotation3x3": [
           [
-            1.0,
+            -1.0,
             0.0,
             0.0
           ],
           [
             0.0,
-            1.0,
+            -1.0,
             0.0
           ],
           [

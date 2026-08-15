@@ -53,15 +53,34 @@ def test_asset_manifest_has_exactly_four_front_aligned_assets() -> None:
     assert len({asset["sourceResourceId"] for asset in assets}) == 4
     for asset in assets:
         orientation = asset["orientation"]
-        assert orientation["status"] == "VERIFIED_BAMBU_FRONT_CONVENTION"
-        assert orientation["frontViewCameraAxisSource"] == "-Y"
-        assert orientation["screenRightAxisSource"] == "+X"
+        assert orientation["status"].startswith("VERIFIED_")
         assert orientation["screenUpAxisSource"] == "+Z"
-        assert orientation["sourceToPresentationRotation3x3"] == [
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
+        source_nose = {
+            "+Y": [0.0, 1.0, 0.0],
+            "-Y": [0.0, -1.0, 0.0],
+            "+Z": [0.0, 0.0, 1.0],
+        }[orientation["longitudinalNoseAxisSource"]]
+        matrix = orientation["sourceToPresentationRotation3x3"]
+        presentation_nose = [
+            sum(matrix[row][column] * source_nose[column] for column in range(3))
+            for row in range(3)
         ]
+        if asset["assetKey"] != "missile":
+            assert presentation_nose == pytest.approx([0.0, -1.0, 0.0])
+
+    f16 = next(asset for asset in manifest["assets"] if asset["assetKey"] == "f16")
+    assert f16["orientation"] == {
+        "status": "VERIFIED_RENDER_FRONT_CORRECTION_R2",
+        "frontViewCameraAxisSource": "+Y",
+        "screenRightAxisSource": "-X",
+        "screenUpAxisSource": "+Z",
+        "longitudinalNoseAxisSource": "+Y",
+        "sourceToPresentationRotation3x3": [
+            [-1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+    }
     assert all(asset["scale"]["status"] == "VERIFIED" for asset in assets)
     assert all(asset["scale"]["factor"] == 1.0 for asset in assets)
     assert {

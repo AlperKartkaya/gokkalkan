@@ -8,9 +8,16 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
+
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from render_provenance import render_fingerprint
 
 ROOT = Path(__file__).resolve().parents[3]
 SYNTHETIC_ROOT = ROOT / "perception/synthetic"
@@ -64,10 +71,15 @@ def auto_worker_count(requested: int) -> int:
     return max(1, min(2, (os.cpu_count() or 2) // 4))
 
 
-def _is_complete(batch_dir: Path) -> bool:
-    return (batch_dir / "record.json").is_file() and len(
-        list(batch_dir.glob("*.hdf5"))
-    ) == 1
+def _is_complete(batch_dir: Path, expected_fingerprint: str) -> bool:
+    provenance_path = batch_dir / "render-provenance.json"
+    if not (batch_dir / "record.json").is_file() or len(list(batch_dir.glob("*.hdf5"))) != 1:
+        return False
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    return provenance.get("renderFingerprint") == expected_fingerprint
 
 
 def _render_one(
@@ -79,12 +91,13 @@ def _render_one(
     render_device: str,
     cpu_threads: int,
     retries: int,
+    expected_fingerprint: str,
 ) -> str:
     batch_dir = output / str(record["recordId"])
     if retries < 0:
         raise ValueError("retries negatif olamaz")
     for attempt in range(retries + 1):
-        if batch_dir.exists() and not _is_complete(batch_dir):
+        if batch_dir.exists() and not _is_complete(batch_dir, expected_fingerprint):
             shutil.rmtree(batch_dir)
         command = [
             str(BLENDERPROC),
@@ -146,7 +159,11 @@ def main() -> int:
     pending = [
         record
         for record in records
-        if args.force or not _is_complete(args.output / str(record["recordId"]))
+        if args.force
+        or not _is_complete(
+            args.output / str(record["recordId"]),
+            render_fingerprint(plan, record),
+        )
     ]
     skipped = len(records) - len(pending)
     rendered = 0
@@ -167,6 +184,7 @@ def main() -> int:
                 render_device=args.render_device,
                 cpu_threads=cpu_threads,
                 retries=args.retries,
+                expected_fingerprint=render_fingerprint(plan, record),
             ): record
             for record in pending
         }

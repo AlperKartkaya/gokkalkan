@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,7 @@ def test_render_retries_one_blender_failure_and_cleans_partial_batch(
         "perception/synthetic/tools/render_plan_batch.py",
     )
     record = {"recordId": "REC-retry"}
+    expected_fingerprint = "a" * 64
     batch_dir = tmp_path / "REC-retry"
     calls = 0
 
@@ -79,6 +81,10 @@ def test_render_retries_one_blender_failure_and_cleans_partial_batch(
         assert not (batch_dir / "partial.tmp").exists()
         (batch_dir / "record.json").write_text("{}", encoding="utf-8")
         (batch_dir / "0.hdf5").write_bytes(b"test")
+        (batch_dir / "render-provenance.json").write_text(
+            json.dumps({"renderFingerprint": expected_fingerprint}),
+            encoding="utf-8",
+        )
         return None
 
     monkeypatch.setattr(module.subprocess, "run", fake_run)
@@ -92,7 +98,29 @@ def test_render_retries_one_blender_failure_and_cleans_partial_batch(
         render_device="auto",
         cpu_threads=2,
         retries=2,
+        expected_fingerprint=expected_fingerprint,
     )
 
     assert result == "REC-retry"
     assert calls == 3
+
+
+def test_render_cache_requires_matching_provenance(tmp_path: Path) -> None:
+    module = load_module(
+        "render_plan_batch_cache_for_test",
+        "perception/synthetic/tools/render_plan_batch.py",
+    )
+    batch = tmp_path / "REC-cache"
+    batch.mkdir()
+    (batch / "record.json").write_text("{}", encoding="utf-8")
+    (batch / "0.hdf5").write_bytes(b"render")
+
+    assert module._is_complete(batch, "new") is False
+    (batch / "render-provenance.json").write_text(
+        json.dumps({"renderFingerprint": "old"}), encoding="utf-8"
+    )
+    assert module._is_complete(batch, "new") is False
+    (batch / "render-provenance.json").write_text(
+        json.dumps({"renderFingerprint": "new"}), encoding="utf-8"
+    )
+    assert module._is_complete(batch, "new") is True

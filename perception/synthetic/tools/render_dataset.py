@@ -5,11 +5,18 @@ import blenderproc as bproc
 import argparse
 import colorsys
 import json
+import sys
 import tomllib
 from pathlib import Path
 
 import bpy
 import numpy as np
+
+TOOLS_DIR = Path(__file__).resolve().parent
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from render_provenance import render_fingerprint
 
 ROOT = Path(__file__).resolve().parents[3]
 SYNTHETIC = ROOT / "perception/synthetic"
@@ -164,6 +171,21 @@ def main() -> None:
     bproc.writer.write_hdf5(str(args.output), data)
     (args.output / "record.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (args.output / "render-provenance.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "renderFingerprint": render_fingerprint(plan, record),
+                "assetManifestSha256": plan["assetManifestSha256"],
+                "sourceCadSha256": plan["sourceCadSha256"],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
