@@ -17,9 +17,6 @@ describe('MissionHeader', () => {
       <MissionHeader
         apiBusy={false}
         config={mockConfig}
-        stage={1}
-        mode="autonomous"
-        round={1}
         onRawCameraOpen={vi.fn()}
         onReset={vi.fn()}
         missionRemainingSeconds={45}
@@ -40,9 +37,6 @@ describe('MissionHeader', () => {
       <MissionHeader
         apiBusy={false}
         config={mockConfig}
-        stage={1}
-        mode="autonomous"
-        round={1}
         onRawCameraOpen={vi.fn()}
         onReset={vi.fn()}
         missionRemainingSeconds={29}
@@ -64,9 +58,6 @@ describe('MissionHeader', () => {
       <MissionHeader
         apiBusy={false}
         config={mockConfig}
-        stage={1}
-        mode="autonomous"
-        round={1}
         onRawCameraOpen={vi.fn()}
         onReset={mockReset}
         missionRemainingSeconds={300}

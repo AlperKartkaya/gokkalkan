@@ -1,4 +1,7 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import AIPanel from './components/AIPanel';
+import { useOperatorBackendState } from './hooks/useOperatorBackendState';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
 import { COMPETITION_COURSE, displayXForRangeBand } from './competitionCourse';
 import {
@@ -1247,9 +1250,35 @@ function initialSurface(): AppSurface {
   return 'operator';
 }
 
+function Layout() {
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
+  const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
+  const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
+
+  const backendState = useOperatorBackendState(apiBaseUrl);
+
+  return (
+    <div className="app-layout min-h-screen bg-[#05070a]">
+      <Outlet context={{ apiBaseUrl, ...backendState }} />
+    </div>
+  );
+}
+
 export default function App() {
   const [surface, setSurface] = useState<AppSurface>(initialSurface);
   if (surface === 'simulator') return <Console />;
-  if (surface === 'operator') return <OperatorPanel onBack={() => setSurface('landing')} onOpenSimulator={() => setSurface('simulator')} />;
-  return <Landing onEnter={() => setSurface('simulator')} onOperatorPanel={() => setSurface('operator')} />;
+  if (surface === 'landing') return <Landing onEnter={() => setSurface('simulator')} onOperatorPanel={() => setSurface('operator')} />;
+  
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/ai" replace />} />
+          <Route path="/operator" element={<OperatorPanel onBack={() => setSurface('landing')} onOpenSimulator={() => setSurface('simulator')} />} />
+          <Route path="/ai" element={<AIPanel />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
 }

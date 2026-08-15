@@ -9,9 +9,9 @@ function commandLabel(result: CommandResult) {
 
 export function EventStream({ commandResults }: { commandResults: CommandResult[] }) {
   return (
-    <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4" aria-label="Olay akışı">
+    <section className="rounded-xl border border-white/[.08] bg-[rgba(7,10,14,.94)] p-4 flex flex-col min-h-0 h-full" aria-label="Olay akışı">
       <h2 className="m-0 text-xl font-black">Olay akışı</h2>
-      <div className="mt-3 grid max-h-80 gap-2 overflow-auto pr-1">
+      <div className="mt-3 grid gap-2 overflow-auto pr-1 flex-1 min-h-0 h-full content-start">
         {commandResults.length === 0 && <p className="m-0 rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm text-[#91a6b7]">Henüz komut sonucu yok.</p>}
         {commandResults.map((result) => (
           <article key={result.commandId} className="rounded-lg border border-white/[.07] bg-white/[.04] p-3 text-sm">

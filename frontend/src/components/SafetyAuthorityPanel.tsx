@@ -51,7 +51,7 @@ export function SafetyAuthorityPanel({
               : 'border-[#ff4757] bg-[#ff4757] text-white shadow-[0_0_10px_#ff475766] hover:bg-[#ff2233] hover:shadow-[0_0_22px_#ff4757aa] active:scale-95',
           ].join(' ')}
         >
-          {estopActive ? '🔴 DURDURULDU' : '🛑 ACIL DURDUR'}
+          {estopActive ? 'DURDURULDU' : 'ACİL DURDUR'}
         </button>
       </div>
 

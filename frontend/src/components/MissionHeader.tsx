@@ -1,21 +1,16 @@
-import type { Mode, Stage } from '../types';
+
 import type { OperatorPanelConfig } from '../operatorContracts';
 
 export function MissionHeader({
   apiBusy,
   config,
-  stage,
-  mode,
-  round,
+
   onRawCameraOpen,
   onReset,
   missionRemainingSeconds,
 }: {
   apiBusy: boolean;
   config: OperatorPanelConfig;
-  stage: Stage;
-  mode: Mode;
-  round: number;
   onRawCameraOpen: () => void;
   onReset: () => void;
   missionRemainingSeconds?: number;
@@ -28,22 +23,17 @@ export function MissionHeader({
         <p className="m-0 text-xs font-black uppercase tracking-[.18em] text-[#ffbb42]">Operasyon</p>
         <h1 className="m-0 mt-1 text-3xl font-black tracking-[.04em] text-white min-[760px]:text-4xl">GÖKKALKAN OPERATÖR PANELİ</h1>
       </div>
-      <div className="flex gap-2">
-        <div className="flex flex-col text-right">
-          <span className="text-xs text-[#25d8ff] font-bold">MOD: {mode.toUpperCase()}</span>
-          <span className="text-xs text-[#25d8ff] font-bold">AŞAMA: {stage} TUR: {round}</span>
-        </div>
-        
+      <div className="flex gap-3 items-center">
         {missionRemainingSeconds !== undefined && (
-          <div className={`flex flex-col text-right justify-center rounded-lg px-2 border ${isTimeCritical ? 'border-[#ff4757]/60 bg-[#ff4757]/20 animate-pulse' : 'border-[#48a8ff]/30 bg-[#48a8ff]/10'}`}>
+          <div className={`flex flex-col text-center justify-center rounded-lg px-3 py-1 border ${isTimeCritical ? 'border-[#ff4757]/60 bg-[#ff4757]/20 animate-pulse' : 'border-[#48a8ff]/30 bg-[#48a8ff]/10'}`}>
             <span className={`text-[10px] font-black uppercase tracking-widest ${isTimeCritical ? 'text-[#ffbdc4]' : 'text-[#bfe7ff]'}`}>Süre</span>
-            <span className={`text-sm font-black ${isTimeCritical ? 'text-[#ff4757]' : 'text-white'}`}>{missionRemainingSeconds}s</span>
+            <span className={`text-lg leading-none font-black ${isTimeCritical ? 'text-[#ff4757]' : 'text-white'}`}>{missionRemainingSeconds}s</span>
           </div>
         )}
 
-        <div className="flex flex-col text-right">
-          <span className="text-xs font-bold text-[#ffbb42]">{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
-          <span className="text-xs font-bold text-[#bfffe0]">BAĞLANTI: {config.connectionState}</span>
+        <div className="flex flex-col gap-1">
+          <span className={`inline-flex items-center justify-center rounded px-2 py-0.5 text-[10px] font-black tracking-wider border ${config.dryRun ? 'bg-[#ffbb42]/10 border-[#ffbb42]/30 text-[#ffbb42]' : 'bg-[#ff4757]/10 border-[#ff4757]/30 text-[#ff4757]'}`}>{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
+          <span className={`inline-flex items-center justify-center rounded bg-[#33e68c]/10 border border-[#33e68c]/30 px-2 py-0.5 text-[10px] font-black tracking-wider text-[#bfffe0]`}>{config.connectionState.toUpperCase()}</span>
         </div>
       </div>
       <div className="operator-header-actions">

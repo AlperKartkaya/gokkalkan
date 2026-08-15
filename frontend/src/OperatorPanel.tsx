@@ -1,6 +1,6 @@
 import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
-import { COMPETITION_COURSE, displayXForRangeBand, toDisplayCourseMeters } from './competitionCourse';
+import { COMPETITION_COURSE, displayXForRangeBand, systemReference, toDisplayCourseMeters } from './competitionCourse';
 import {
   canSendFireIntent,
   makeCommandResult,
@@ -28,15 +28,17 @@ import {
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
 import type { Mode, Stage, TargetType } from './types';
-import { MissionHeader } from './components/MissionHeader';
+import Navigation from './components/Navigation';
 import { CommandConsole } from './components/CommandConsole';
 import { ReadinessDashboard } from './components/ReadinessDashboard';
 import { EventStream } from './components/EventStream';
 import { SafetyAuthorityPanel } from './components/SafetyAuthorityPanel';
 import { HardwareHealthBadge } from './components/HardwareHealthBadge';
 import { TrackList } from './components/TrackList';
+import { ManualAimController } from './components/ManualAimController';
+import { StageRoundSelector } from './components/StageRoundSelector';
 import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendMissionStop, sendOperatorManualAimCommand } from './operatorApiClient';
-import { useOperatorBackendState } from './hooks/useOperatorBackendState';
+import { type OperatorBackendState } from './hooks/useOperatorBackendState';
 
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
@@ -345,15 +347,12 @@ function projectSensorPoint(matrix: number[], point: Vec3) {
   };
 }
 
-function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number, total: number): Vec3 {
+function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number): Vec3 {
   const bearingRadians = (frame.bearingDeg * Math.PI) / 180;
-  const normalizedRange = clampNumber(frame.rangeM / 15, 0.08, 1);
-  const lateral = Math.sin(bearingRadians);
-  const rowBias = index - (total - 1) / 2;
   return [
-    clampNumber(SENSOR_DOME_POSITION[0] - normalizedRange * 10.7 + lateral * 2.35, -7.9, 5.2),
+    SENSOR_DOME_POSITION[0] - Math.cos(bearingRadians) * frame.rangeM,
     0.72 + clampNumber(frame.elevationDeg ?? 0.4, -4, 12) * 0.06 + index * 0.12,
-    clampNumber(lateral * 5 + rowBias * 0.78, -5.8, 5.8),
+    SENSOR_DOME_POSITION[2] + Math.sin(bearingRadians) * frame.rangeM,
   ];
 }
 
@@ -503,29 +502,45 @@ function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: O
 }
 
 function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: OperatorSensorFrame[], selectedTrackId: string) {
-  for (let x = -8; x <= 8; x += 2) {
-    pushLine(lines, [x, 0, -6.2], [x, 0, 6.2], sensorPalette.grid);
+  // Draw grid shifted by SENSOR_DOME_POSITION
+  for (let x = -18; x <= 0; x += 2) {
+    pushLine(lines, [SENSOR_DOME_POSITION[0] + x, 0, -8], [SENSOR_DOME_POSITION[0] + x, 0, 8], sensorPalette.grid);
   }
-  for (let z = -6; z <= 6; z += 2) {
-    pushLine(lines, [-8.2, 0, z], [8.4, 0, z], sensorPalette.grid);
+  for (let z = -8; z <= 8; z += 2) {
+    pushLine(lines, [SENSOR_DOME_POSITION[0] - 18, 0, z], [SENSOR_DOME_POSITION[0], 0, z], sensorPalette.grid);
   }
+  
+  COMPETITION_COURSE.lanes.forEach((lane) => {
+    // Draw each lane as a series of connected lines on the floor
+    for (let i = 0; i < lane.points.length - 1; i++) {
+      const p1 = lane.points[i];
+      const p2 = lane.points[i + 1];
+      const x1 = SENSOR_DOME_POSITION[0] + (p1.courseXM - systemReference.course_x_m);
+      const z1 = SENSOR_DOME_POSITION[2] + (systemReference.course_y_m - p1.courseYM);
+      const x2 = SENSOR_DOME_POSITION[0] + (p2.courseXM - systemReference.course_x_m);
+      const z2 = SENSOR_DOME_POSITION[2] + (systemReference.course_y_m - p2.courseYM);
+      
+      // Use a distinct neon cyan color for the parkour layout
+      pushLine(lines, [x1, 0.015, z1], [x2, 0.015, z2], [0.14, 0.85, 1.0]);
+    }
+  });
   [5, 10, 15].forEach((range) => {
-    const radius = (range / 15) * 9.6;
+    const radius = range;
     const segments = 44;
     for (let index = 0; index < segments; index += 1) {
       const angle = -Math.PI / 2 + (index / segments) * Math.PI;
       const nextAngle = -Math.PI / 2 + ((index + 1) / segments) * Math.PI;
       pushLine(
         lines,
-        [SENSOR_DOME_POSITION[0] - Math.cos(angle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(angle) * radius * 0.64],
-        [SENSOR_DOME_POSITION[0] - Math.cos(nextAngle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(nextAngle) * radius * 0.64],
+        [SENSOR_DOME_POSITION[0] - Math.cos(angle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(angle) * radius],
+        [SENSOR_DOME_POSITION[0] - Math.cos(nextAngle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(nextAngle) * radius],
         sensorPalette.ring,
       );
     }
   });
 
   const selectedFrame = frames.find((frame) => frame.trackId === selectedTrackId) ?? frames[0];
-  const selectedPoint = selectedFrame ? sensorFrameWorldPoint(selectedFrame, Math.max(0, frames.indexOf(selectedFrame)), frames.length) : undefined;
+  const selectedPoint = selectedFrame ? sensorFrameWorldPoint(selectedFrame, Math.max(0, frames.indexOf(selectedFrame))) : undefined;
   const turretYaw = selectedPoint
     ? Math.atan2(-(selectedPoint[2] - SENSOR_DOME_POSITION[2]), selectedPoint[0] - SENSOR_DOME_POSITION[0])
     : Math.PI;
@@ -539,7 +554,7 @@ function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: Ope
   }
 
   frames.forEach((frame, index) => {
-    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index, frames.length));
+    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index));
   });
 }
 
@@ -648,7 +663,7 @@ function renderSensorWebGlScene(gl: WebGLRenderingContext, resources: SensorGlRe
   return {
     matrix,
     overlayPoints: frames.map((frame, index) => {
-      const projected = projectSensorPoint(matrix, sensorFrameWorldPoint(frame, index, frames.length));
+      const projected = projectSensorPoint(matrix, sensorFrameWorldPoint(frame, index));
       const fallback = sensorFrame3DPoint(frame, index);
       return {
         frameId: frame.frameId,
@@ -892,32 +907,34 @@ function OperatorTrackScene({
 function RawCameraDiagnosticPage({ streamUrl, onBack }: { streamUrl: string; onBack: () => void }) {
   const [failed, setFailed] = useState(false);
   return (
-    <main className="raw-camera-page min-h-screen bg-[#05070a] p-4 text-[#ecf7ff]" data-testid="raw-camera-page">
-      <header className="flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4 max-[760px]:flex-col max-[760px]:items-stretch">
-        <div><p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Fiziksel sensör akışı</p><h1 className="m-0 mt-1 text-3xl font-black tracking-[.05em] text-white">HAM KAMERA</h1></div>
-        <button type="button" className="min-h-12 rounded-full border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-4 text-xs font-black tracking-[.12em] text-[#ffe4ad] max-[760px]:w-full" data-testid="raw-camera-back-button" onClick={onBack}>OPERATÖR PANELİNE DÖN</button>
-      </header>
-      <section className="mt-4 rounded-xl border border-[#48a8ff]/25 bg-black/40 p-3">
-        <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
-        {failed && <div className="grid aspect-video place-items-center rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/8 p-8 text-center" data-testid="raw-camera-offline"><div><b>FİZİKSEL KAMERA AKIŞI YOK</b><p className="mt-2 text-sm text-[#ffbdc4]">Sentetik görüntü üretilmedi. Perception bridge ve MJPEG servisini doğrulayın.</p></div></div>}
-        <p className="mb-0 mt-3 break-all text-xs text-[#91a6b7]">Kaynak: {streamUrl}</p>
-      </section>
+    <main className="raw-camera-page min-h-screen bg-[#05070a] p-4 md:p-8 text-[#ecf7ff] overflow-y-auto flex flex-col items-center justify-start" data-testid="raw-camera-page">
+      <div className="w-full max-w-[1400px] mt-4 md:mt-8 rounded-xl border border-[#25d8ff]/20 bg-[rgba(7,10,14,.94)] overflow-hidden shadow-2xl">
+        <header className="flex items-center justify-between gap-3 bg-black/40 border-b border-[#25d8ff]/20 p-5 md:p-6 max-[760px]:flex-col max-[760px]:items-stretch">
+          <div>
+            <p className="m-0 text-xs font-black uppercase tracking-[.22em] text-[#48a8ff]">Fiziksel sensör akışı</p>
+            <h1 className="m-0 mt-1 text-2xl md:text-3xl font-black tracking-[.05em] text-white">HAM KAMERA</h1>
+          </div>
+          <button type="button" className="min-h-12 rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-6 text-xs md:text-sm font-black tracking-[.12em] text-[#ffe4ad] max-[760px]:w-full transition-colors hover:bg-[#ffbb42]/20 shadow-[0_0_15px_rgba(255,187,66,.15)]" data-testid="raw-camera-back-button" onClick={onBack}>
+            OPERATÖR PANELİNE DÖN
+          </button>
+        </header>
+        <section className="p-4 md:p-6 bg-black/60">
+          <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain border border-[#48a8ff]/10 shadow-inner`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
+          {failed && (
+            <div className="grid aspect-video w-full place-items-center rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/8 p-8 text-center" data-testid="raw-camera-offline">
+              <div>
+                <b className="text-lg">FİZİKSEL KAMERA AKIŞI YOK</b>
+                <p className="mt-2 text-sm text-[#ffbdc4]">Sentetik görüntü üretilmedi. Perception bridge ve MJPEG servisini doğrulayın.</p>
+              </div>
+            </div>
+          )}
+          <p className="mb-0 mt-4 break-all text-xs text-[#91a6b7] text-center font-mono">Kaynak: {streamUrl}</p>
+        </section>
+      </div>
     </main>
   );
 }
 
-function Stage1CameraSupport({ streamUrl, lidarRangeM, lidarLive, correctionDeg, calibrationActive }: { streamUrl: string; lidarRangeM?: number; lidarLive: boolean; correctionDeg?: number | null; calibrationActive: boolean }) {
-  const [failed, setFailed] = useState(false);
-  const holdoverTop = correctionDeg == null ? 50 : clampNumber(50 + correctionDeg * 4, 50, 78);
-  return (
-    <section className="relative min-h-[520px] overflow-hidden rounded-xl bg-black" data-testid="stage1-camera-support">
-      {!failed ? <img src={streamUrl} alt="Aşama 1 canlı nişan kamerası" className="absolute inset-0 h-full w-full object-contain" onError={() => setFailed(true)} data-testid="stage1-camera-stream" /> : <div className="absolute inset-0 grid place-items-center text-center text-[#ffbdc4]" data-testid="stage1-camera-offline"><div><b>KAMERA AKIŞI BEKLENİYOR</b><p className="text-sm">Sentetik hedef gösterilmez.</p></div></div>}
-      <div className="pointer-events-none absolute inset-0" aria-label="Nişangâh katmanı"><span className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#25d8ff] shadow-[0_0_14px_#25d8ff]" /><span className="absolute left-1/2 top-1/2 h-px w-20 -translate-x-1/2 bg-[#25d8ff]" /><span className="absolute left-1/2 top-1/2 h-20 w-px -translate-y-1/2 bg-[#25d8ff]" />{correctionDeg != null && <span className="absolute left-1/2 h-6 w-6 -translate-x-1/2 rounded-full border-2 border-[#ffbb42]" style={{ top: `${holdoverTop}%` }} data-testid="stage1-impact-reticle" />}</div>
-      <div className="absolute left-3 top-3 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono" data-testid="stage1-lidar-range"><span className="block text-[10px] text-[#91a6b7]">1D LİDAR · BORESIGHT · {lidarLive ? 'CANLI' : 'REPLAY/BEKLEME'}</span><b className="text-xl text-white">{lidarRangeM == null ? '---' : `${lidarRangeM.toFixed(2)} m`}</b></div>
-      <div className="absolute bottom-3 left-3 right-3 flex justify-between gap-3 rounded-lg bg-black/75 px-3 py-2 text-xs"><span>Merkez: kamera/taret ekseni</span><span data-testid="stage1-ballistic-state">{correctionDeg != null ? `Sarı: tahmini darbe noktası · +${correctionDeg.toFixed(2)}°` : calibrationActive ? 'Menzil atış tablosu dışında' : 'Balistik kalibrasyon aktif değil'}</span></div>
-    </section>
-  );
-}
 
 function SensorFusion3DView({
   stage,
@@ -1150,7 +1167,7 @@ function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; fra
   const hostilityDetection = stageHasHostilityDetection(stage);
 
   return (
-    <section className="operator-confidence-panel rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
+    <section className="operator-confidence-panel mt-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
       <div
         className="operator-confidence-grid"
         style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
@@ -1200,12 +1217,14 @@ function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; fra
   );
 }
 
-export default function OperatorPanel(_props: { onBack: () => void; onOpenSimulator: () => void }) {
+import { useOutletContext } from 'react-router-dom';
+
+export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimulator?: () => void }) {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
   const isDesktopShell = queryParams.get('desktop') === '1';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
-  const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
+  let apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
   const cameraStreamUrl = queryParams.get('cameraStream')?.trim()
     || (import.meta.env.VITE_GOKKALKAN_CAMERA_STREAM_URL as string | undefined)?.trim()
     || 'http://127.0.0.1:8090/camera/live.mjpg';
@@ -1217,6 +1236,7 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [, setLastHardwareResult] = useState<HardwareResult>();
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const {
+    apiBaseUrl: contextApiBaseUrl,
     snapshot: apiSnapshot,
     setSnapshot: setApiSnapshot,
     readiness: readinessReport,
@@ -1224,7 +1244,9 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
     busy: backendBusy,
     error: backendError,
     readinessError: backendReadinessError,
-  } = useOperatorBackendState(apiBaseUrl);
+  } = useOutletContext<OperatorBackendState & { apiBaseUrl: string }>();
+  
+  apiBaseUrl = apiBaseUrl || contextApiBaseUrl;
   const shotTrackIds = useMemo(
     () => new Set(apiSnapshot?.missionFlow?.completedTargetIds ?? []),
     [apiSnapshot?.missionFlow?.completedTargetIds],
@@ -1241,6 +1263,8 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const [telemetryExport, setTelemetryExport] = useState<OperatorTelemetryExport>();
   const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
   const [evidenceBusy, setEvidenceBusy] = useState(false);
+  
+  const [viewMode, setViewMode] = useState<'lidar' | 'camera'>('lidar');
   const [evidenceError, setEvidenceError] = useState('');
   const [evidenceNotice, setEvidenceNotice] = useState('');
   const [rawCameraOpen, setRawCameraOpen] = useState(false);
@@ -1283,12 +1307,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   const sensorFrames = apiSnapshot?.sensorFrames ?? [];
   const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
   const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
-  const selectedLidarFrame = sensorFrames.find(
-    (frame) => frame.sensor === 'lidar' && frame.trackId === authoritativeTargetId,
-  ) ?? sensorFrames.find((frame) => frame.sensor === 'lidar');
-  const liveLidarRangeM = apiSnapshot?.lidarReading?.distanceM
-    ?? selectedLidarFrame?.rangeM
-    ?? authoritativeTrack?.rangeM;
   const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
   const safety = apiSnapshot?.safety ?? {
     estop: false,
@@ -1416,14 +1434,6 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       .finally(() => setEvidenceBusy(false));
   };
 
-  const resetOperatorPanel = () => {
-    setSelectedTrackId(authoritativeTargetId);
-    setMaintenanceOpen(false);
-    setEvidenceError('');
-    setCommandApiError('');
-    setRawCameraOpen(false);
-    setEvidenceNotice('Görünüm backend snapshot durumuna yeniden eşitlendi; görev state değiştirilmedi.');
-  };
 
   const recordStage = (nextStage: Stage, nextRound = 1) => {
     if (!apiBaseUrl) {
@@ -1572,32 +1582,33 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
   useEffect(() => {
     const lockPage = maintenanceSessionActive || operatorStopActive;
     if (!lockPage) return;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousRootOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousRootOverflow;
-    };
+    // Prevent locking the scroll completely since we now use native scrolling
+    return () => {};
   }, [maintenanceSessionActive, operatorStopActive]);
 
   if (rawCameraOpen) {
     return <RawCameraDiagnosticPage streamUrl={cameraStreamUrl} onBack={() => setRawCameraOpen(false)} />;
   }
 
+  const isTimeCritical = apiSnapshot?.missionRemainingSeconds !== undefined && apiSnapshot.missionRemainingSeconds <= 30;
+
   return (
-    <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff]" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
-      <MissionHeader
-        apiBusy={apiBusy}
-        config={config}
-        stage={displayStage}
-        mode={mode}
-        round={displayRound}
-        onRawCameraOpen={() => setRawCameraOpen(true)}
-        onReset={resetOperatorPanel}
-        missionRemainingSeconds={apiSnapshot?.missionRemainingSeconds}
-      />
+    <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff] pt-20" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
+      <Navigation>
+        {apiSnapshot?.missionRemainingSeconds !== undefined && (
+          <div className={`flex flex-col text-center justify-center rounded-lg px-3 py-1 border ${isTimeCritical ? 'border-[#ff4757]/60 bg-[#ff4757]/20 animate-pulse' : 'border-[#48a8ff]/30 bg-[#48a8ff]/10'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isTimeCritical ? 'text-[#ffbdc4]' : 'text-[#bfe7ff]'}`}>Süre</span>
+            <span className={`text-lg leading-none font-black ${isTimeCritical ? 'text-[#ff4757]' : 'text-white'}`}>{Math.ceil(apiSnapshot.missionRemainingSeconds)}s</span>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1">
+          <span className={`inline-flex items-center justify-center rounded px-2 py-0.5 text-[10px] font-black tracking-wider border ${config.dryRun ? 'bg-[#ffbb42]/10 border-[#ffbb42]/30 text-[#ffbb42]' : 'bg-[#ff4757]/10 border-[#ff4757]/30 text-[#ff4757]'}`}>{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
+          <span className={`inline-flex items-center justify-center rounded bg-[#33e68c]/10 border border-[#33e68c]/30 px-2 py-0.5 text-[10px] font-black tracking-wider text-[#bfffe0]`}>{config.connectionState.toUpperCase()}</span>
+        </div>
+
+      </Navigation>
+
       {(apiError || readinessError) && (
         <div
           role="status"
@@ -1609,51 +1620,90 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
       )}
 
       <section className="operator-primary-grid">
-        <section className="operator-3d-panel rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-0" data-testid="operator-sensor-fusion-panel" aria-label="Kamera ve 1D LiDAR yazılım füzyon katmanı">
-          {displayStage === 1 ? (
-            <Stage1CameraSupport
-              streamUrl={cameraStreamUrl}
-              lidarRangeM={liveLidarRangeM}
-              lidarLive={apiSnapshot?.lidarReading?.status === 'LIVE_ACCEPTED'}
-              correctionDeg={apiSnapshot?.ballisticCompensation?.elevationCorrectionDeg}
-              calibrationActive={apiSnapshot?.ballisticCompensation?.active ?? false}
+        <section className={`operator-3d-panel rounded-xl border ${maintenanceSessionActive ? 'border-[#ffbb42] shadow-[0_0_30px_rgba(255,187,66,.15)]' : 'border-[#48a8ff]/18'} bg-[rgba(7,10,14,.94)] p-0 flex flex-col overflow-hidden relative transition-colors duration-500`} data-testid="operator-sensor-fusion-panel" aria-label="Kamera ve 1D LiDAR yazılım füzyon katmanı">
+          <div className="bg-[#48a8ff]/5 border-b border-[#48a8ff]/20 w-full">
+            <StageRoundSelector
+              displayStage={displayStage}
+              displayRound={displayRound}
+              apiBusy={apiBusy}
+              onRecordStage={recordStage}
+              stageRoundLimit={stageRoundLimit}
             />
-          ) : (
-            <SensorFusion3DView
-              stage={displayStage}
-              frames={interpretedSensorFrames}
-              selectedTrackId={selectedTrackId}
-              shotTrackIds={shotTrackIds}
-              onSelect={setSelectedTrackId}
-              connectedSensorFramesEmpty={connectedSensorFramesEmpty}
-            />
-          )}
+          </div>
+          
+          <div className="flex-1 flex flex-col relative min-h-[550px]">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex bg-[#05070a]/80 backdrop-blur-md rounded-lg border border-[#48a8ff]/30 overflow-hidden shadow-lg">
+              <button
+                className={`px-3 py-1.5 text-[11px] font-black transition-colors ${viewMode === 'lidar' ? 'bg-[#48a8ff]/30 text-[#cbe9ff]' : 'text-[#8ba7be] hover:bg-white/10'}`}
+                onClick={() => setViewMode('lidar')}
+              >
+                3D LiDAR
+              </button>
+              <button
+                className={`px-3 py-1.5 text-[11px] font-black transition-colors ${viewMode === 'camera' ? 'bg-[#33e68c]/30 text-[#bfffe0]' : 'text-[#8ba7be] hover:bg-white/10'}`}
+                onClick={() => setViewMode('camera')}
+              >
+                OPTİK KAMERA
+              </button>
+            </div>
+            {viewMode === 'lidar' ? (
+              <SensorFusion3DView
+                stage={displayStage}
+                frames={interpretedSensorFrames}
+                selectedTrackId={selectedTrackId}
+                shotTrackIds={shotTrackIds}
+                onSelect={setSelectedTrackId}
+                connectedSensorFramesEmpty={connectedSensorFramesEmpty}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-black flex flex-col justify-center items-center">
+                <img src={cameraStreamUrl} className="w-full h-full object-contain" alt="Canlı Kamera Akışı" />
+                <div className="absolute bottom-4 left-4 z-10">
+                  <ManualAimController
+                    apiBusy={apiBusy}
+                    manualAimReady={Boolean(
+                      apiBaseUrl
+                      && displayStage === 1
+                      && mode === 'manual'
+                      && missionStatus === 'ACTIVE'
+                      && !safety.estop
+                    )}
+                    onManualAim={sendManualAim}
+                    turretCalibration={apiSnapshot?.turretCalibration}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRawCameraOpen(true)}
+                  className="absolute bottom-4 right-4 z-10 bg-black/60 hover:bg-black/80 text-white p-2.5 rounded-lg border border-white/20 transition-colors flex items-center justify-center"
+                  aria-label="Tam Ekran Ham Kamera"
+                  title="Tam Ekran Ham Kamera"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
         </section>
 
-        <aside className="operator-side-rail">
+        <aside className="operator-side-rail flex flex-col gap-3 min-h-0">
           <CommandConsole
-            displayStage={displayStage}
-            displayRound={displayRound}
             apiBusy={apiBusy}
             fireReady={fireReady}
             fireCaption={fireCaption}
             operatorStopActive={operatorStopActive}
             maintenanceReady={maintenanceReady}
             maintenanceStatusCopy={maintenanceStatusCopy}
-            onRecordStage={recordStage}
             onSendFireIntent={sendFireIntent}
             onTriggerOperatorStop={triggerOperatorStop}
             onOpenMaintenance={openMaintenance}
-            onManualAim={sendManualAim}
-            manualAimReady={Boolean(
-              apiBaseUrl
-              && displayStage === 1
-              && mode === 'manual'
-              && missionStatus === 'ACTIVE'
-              && !safety.estop
-            )}
-            turretCalibration={apiSnapshot?.turretCalibration}
-            stageRoundLimit={stageRoundLimit}
+            maintenanceSessionActive={maintenanceSessionActive}
+            maintenanceBudget={apiSnapshot?.maintenanceBudgetSec ?? 0}
           >
             <TrackList
               tracks={visibleTracks}
@@ -1689,10 +1739,16 @@ export default function OperatorPanel(_props: { onBack: () => void; onOpenSimula
           config={config}
         />
 
-        <EventStream commandResults={commandResults} />
+        <div className="relative min-h-0">
+          <div className="absolute inset-0 flex flex-col">
+            <EventStream commandResults={commandResults} />
+          </div>
+        </div>
       </section>
 
-      <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} snapshot={apiSnapshot} />
+      <div className="mt-3">
+        <HardwareHealthBadge apiBaseUrl={apiBaseUrl ?? ''} snapshot={apiSnapshot} />
+      </div>
 
       <details className="mt-3 rounded-xl border border-[#48a8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-evidence-drawer">
         <summary className="cursor-pointer list-none text-xl font-black text-[#d7efff]">

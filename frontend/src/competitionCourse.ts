@@ -124,7 +124,7 @@ const lanes: CourseLane[] = dataset.routes.map((route) => ({
   })),
 }));
 
-const systemReference = dataset.raster_derivation.system_reference;
+export const systemReference = dataset.raster_derivation.system_reference;
 const systemPosition = toDisplay({
   x_m: systemReference.course_x_m,
   y_m: systemReference.course_y_m,
