@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Stage } from '../types';
 
 export function StageRoundSelector({
@@ -14,7 +15,7 @@ export function StageRoundSelector({
   stageRoundLimit: (stage: Stage) => number;
 }) {
   return (
-    <div className="flex-1 flex flex-col gap-2 p-3 min-w-0">
+    <div className="flex-1 flex flex-col gap-2 p-3 min-w-0" data-testid="operator-stage-control">
       <div className="flex justify-between items-center">
         <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görev Aşama / Tur</p>
       </div>
@@ -31,7 +32,10 @@ export function StageRoundSelector({
             </button>
           ))}
         </div>
-        <div className="flex gap-1 overflow-x-auto pb-1 min-w-0">
+        <div
+          className="operator-round-grid overflow-x-auto pb-1 min-w-0"
+          style={{ '--round-count': stageRoundLimit(displayStage) } as CSSProperties}
+        >
           {Array.from({ length: stageRoundLimit(displayStage) }, (_, index) => index + 1).map((item) => (
             <button
               key={`round-${item}`}

@@ -58,7 +58,14 @@ export function TrackList({
                 <div className="flex justify-between items-start gap-3">
                   <div className="flex flex-col gap-2 flex-1 overflow-hidden">
                     <div className="flex flex-col gap-1">
-                      <b className="text-[#eaf7ff] text-xs font-mono break-all leading-tight">{track.trackId}</b>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <b className="text-[#eaf7ff] text-xs font-mono break-all leading-tight">{track.trackId}</b>
+                        {authoritative && (
+                          <strong className="rounded border border-[#33e68c]/35 bg-[#33e68c]/10 px-1.5 py-0.5 text-[8px] font-black tracking-wide text-[#69f0ae]">
+                            BACKEND ÖNCELİĞİ
+                          </strong>
+                        )}
+                      </div>
                       
                       <div className="w-full flex items-center gap-1.5 mt-0.5">
                         <span className="text-[#5a7a8a] text-[8px] uppercase tracking-widest font-bold">Güven</span>

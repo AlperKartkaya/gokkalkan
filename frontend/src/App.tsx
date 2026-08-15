@@ -1,5 +1,4 @@
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import AIPanel from './components/AIPanel';
 import { useOperatorBackendState } from './hooks/useOperatorBackendState';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
@@ -1241,16 +1240,23 @@ function Console() {
   );
 }
 
-type AppSurface = 'landing' | 'simulator' | 'operator';
+type AppSurface = 'landing' | 'simulator' | 'operator' | 'ai';
 
 function initialSurface(): AppSurface {
   const params = new URLSearchParams(window.location.search);
   if (params.has('landing')) return 'landing';
   if (params.has('console')) return 'simulator';
+  if (params.has('ai')) return 'ai';
   return 'operator';
 }
 
-function Layout() {
+function OperatorWorkspace({
+  surface,
+  onSurface,
+}: {
+  surface: 'operator' | 'ai';
+  onSurface: (surface: AppSurface) => void;
+}) {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
@@ -1258,10 +1264,17 @@ function Layout() {
 
   const backendState = useOperatorBackendState(apiBaseUrl);
 
+  if (surface === 'ai') {
+    return <AIPanel backendState={backendState} onOpenOperator={() => onSurface('operator')} />;
+  }
   return (
-    <div className="app-layout min-h-screen bg-[#05070a]">
-      <Outlet context={{ apiBaseUrl, ...backendState }} />
-    </div>
+    <OperatorPanel
+      apiBaseUrl={apiBaseUrl}
+      backendState={backendState}
+      onBack={() => onSurface('landing')}
+      onOpenSimulator={() => onSurface('simulator')}
+      onOpenAI={() => onSurface('ai')}
+    />
   );
 }
 
@@ -1270,15 +1283,5 @@ export default function App() {
   if (surface === 'simulator') return <Console />;
   if (surface === 'landing') return <Landing onEnter={() => setSurface('simulator')} onOperatorPanel={() => setSurface('operator')} />;
   
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/ai" replace />} />
-          <Route path="/operator" element={<OperatorPanel onBack={() => setSurface('landing')} onOpenSimulator={() => setSurface('simulator')} />} />
-          <Route path="/ai" element={<AIPanel />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  );
+  return <OperatorWorkspace surface={surface} onSurface={setSurface} />;
 }

@@ -82,6 +82,8 @@ class TrackCandidate:
     aim_valid: bool = False
     object_role: str = "target"   # "target" | "balloon"
     fire_candidate: bool = True    # balon track'lerinde False
+    frame_width_px: int = 1280
+    frame_height_px: int = 720
 
     def to_api_dict(self) -> dict[str, Any]:
         """Backend /tracks/update sözleşmesiyle uyumlu dict."""
@@ -109,6 +111,7 @@ class TrackCandidate:
             "aimValid": self.aim_valid,
             "objectRole": self.object_role,
             "fireCandidate": self.fire_candidate,
+            "frameSizePx": [self.frame_width_px, self.frame_height_px],
         }
 
 
@@ -561,6 +564,8 @@ class FrameProcessor:
                         (timestamp_ns - int(tr.get("last_seen_ns", timestamp_ns))) / 1e6,
                     ),
                     receive_monotonic_ns=timestamp_ns,
+                    frame_width_px=self.image_width,
+                    frame_height_px=self.image_height,
                 )
             if self.aim_calibration is not None:
                 aim = calibrated_aim_error(
@@ -608,6 +613,8 @@ class FrameProcessor:
                 receive_monotonic_ns=timestamp_ns,
                 object_role="balloon",
                 fire_candidate=False,  # balloon cannot be a direct fire target
+                frame_width_px=self.image_width,
+                frame_height_px=self.image_height,
             )
             candidates.append(balloon_candidate)
 

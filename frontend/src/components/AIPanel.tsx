@@ -1,12 +1,17 @@
-import { useOutletContext } from 'react-router-dom';
 import { useMemo, useState } from 'react';
-import type { OperatorApiSnapshot } from '../operatorApiClient';
 import type { OperatorTrackState, OperatorSensorFrame } from '../operatorContracts';
+import type { OperatorBackendState } from '../hooks/useOperatorBackendState';
 
 import Navigation from './Navigation';
 
-export default function AIPanel() {
-  const { snapshot } = useOutletContext<{ snapshot?: OperatorApiSnapshot }>();
+export default function AIPanel({
+  backendState,
+  onOpenOperator,
+}: {
+  backendState: OperatorBackendState;
+  onOpenOperator: () => void;
+}) {
+  const { snapshot, error } = backendState;
   const [cameraFailed, setCameraFailed] = useState(false);
   
   const cameraStreamUrl = useMemo(() => {
@@ -28,7 +33,7 @@ export default function AIPanel() {
 
   return (
     <div className="flex flex-col h-screen bg-[#070a0e] text-[#8ba7be] overflow-auto pt-20 p-6">
-      <Navigation />
+      <Navigation activeSurface="ai" onOpenOperator={onOpenOperator} onOpenAI={() => undefined} />
       <header className="mb-6 border-b border-[#48a8ff]/20 pb-4">
         <h1 className="text-2xl font-black text-[#d7efff]">Yapay Zeka & Algı (Perception) Paneli</h1>
         <p className="mt-2 text-sm text-[#8ba7be]">Sentetik kamera, ROI geometrisi ve hedef takip telemetrisi özeti.</p>
@@ -40,7 +45,9 @@ export default function AIPanel() {
         <div className="rounded-xl border border-[#48a8ff]/20 bg-[rgba(10,15,22,.9)] shadow-[0_8px_32px_rgba(72,168,255,.05)] lg:col-span-2 overflow-hidden flex flex-col relative items-center justify-center bg-black">
           <div className="absolute top-4 left-4 z-10 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono text-xs">
              <span className="block text-[#91a6b7]">CANLI OPTİK / AI TESPİT</span>
-             <b className="text-[#33e68c]">SİSTEM AKTİF</b>
+             <b className={snapshot && !error ? 'text-[#33e68c]' : 'text-[#ff4757]'}>
+               {snapshot && !error ? 'TELEMETRİ BAĞLI' : 'TELEMETRİ BEKLENİYOR'}
+             </b>
           </div>
           
           <div className="relative w-full max-w-[1200px] aspect-video">
@@ -54,35 +61,39 @@ export default function AIPanel() {
 
             {/* Bounding Boxes Overlay */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {tracks.map(t => {
-                // Rough mapping: -30 deg to +30 deg FOV. Range mapping to box size.
-                const xPct = 50 + (t.bearingDeg / 30) * 50;
-                const size = Math.max(30, 200 - t.rangeM * 2.5);
+              {tracks.map((t) => {
+                if (!t.bboxPx || !t.frameSizePx) return null;
+                const [cx, cy, width, height] = t.bboxPx;
+                const [frameWidth, frameHeight] = t.frameSizePx;
+                if (frameWidth <= 0 || frameHeight <= 0) return null;
                 const color = getTargetColor(t.friendFoe, t.targetType);
-                
-                if (xPct < -10 || xPct > 110) return null; // out of view
-                
+
                 return (
                 <div 
                   key={t.trackId}
                   className="absolute border-2 bg-[rgba(0,0,0,0.1)] flex flex-col justify-end"
                   style={{
-                    left: `${Math.max(2, Math.min(98, xPct))}%`,
-                    top: '50%',
-                    width: `${size}px`,
-                    height: `${size}px`,
+                    left: `${(cx / frameWidth) * 100}%`,
+                    top: `${(cy / frameHeight) * 100}%`,
+                    width: `${(width / frameWidth) * 100}%`,
+                    height: `${(height / frameHeight) * 100}%`,
                     transform: 'translate(-50%, -50%)',
                     borderColor: color,
                     boxShadow: `0 0 10px ${color}80, inset 0 0 10px ${color}40`
                   }}
                 >
                   <div className="absolute -top-6 left-0 right-0 text-center font-mono text-[10px] font-black whitespace-nowrap bg-black/60 px-1 rounded border border-transparent" style={{ color, borderColor: `${color}40` }}>
-                    {t.targetType.toUpperCase()} - {t.rangeM.toFixed(1)}m
+                    {t.targetType.toUpperCase()} · {t.fireCandidate === false ? 'ATIŞ DIŞI' : `${t.rangeM.toFixed(1)}m`}
                   </div>
                 </div>
               );
             })}
             </div>
+            {tracks.length > 0 && tracks.every((track) => !track.bboxPx) && (
+              <div className="absolute bottom-3 right-3 rounded border border-[#ffbb42]/30 bg-black/75 px-3 py-2 text-xs text-[#ffe4ad]">
+                Track telemetrisi bağlı; piksel bbox verisi bekleniyor.
+              </div>
+            )}
           </div>
         </div>
 

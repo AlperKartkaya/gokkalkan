@@ -59,13 +59,17 @@ export interface OperatorTrackState {
   trackId: string;
   stage: Stage;
   round: number;
-  targetType: TargetType | 'Bilinmeyen';
+  targetType: TargetType | 'Bilinmeyen' | 'Balon';
   friendFoe: FriendFoe;
   rangeM: number;
   bearingDeg: number;
   confidence: number;
   source: 'perception' | 'radar-lidar' | 'fused' | 'dry-run';
   updatedAt: string;
+  bboxPx?: [number, number, number, number] | null;
+  frameSizePx?: [number, number] | null;
+  objectRole?: 'target' | 'balloon';
+  fireCandidate?: boolean;
   courseState?: OperatorCourseTrackState | null;
 }
 

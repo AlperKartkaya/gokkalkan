@@ -139,6 +139,7 @@ class DetectionTrackProjector:
                 (x2 - x1) * scale_x,
                 (y2 - y1) * scale_y,
             ],
+            "frameSizePx": [output_width, output_height],
             "source": "perception",
             "rangeSource": "unavailable-awaiting-lidar-fusion",
             "freshnessMs": 0.0,
@@ -152,4 +153,3 @@ class DetectionTrackProjector:
             "aimCalibrationHash": None,
             "aimValid": False,
         }
-

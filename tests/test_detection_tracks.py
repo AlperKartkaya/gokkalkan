@@ -37,6 +37,7 @@ def test_model_detection_becomes_stable_fail_closed_api_track() -> None:
     assert second["rangeSource"] == "unavailable-awaiting-lidar-fusion"
     assert second["aimValid"] is False
     assert second["bboxPx"][2] < 200
+    assert second["frameSizePx"] == [1280, 720]
 
 
 def test_ambiguous_or_pre_stage_three_detection_never_asserts_enemy() -> None:
@@ -60,4 +61,3 @@ def test_ambiguous_or_pre_stage_three_detection_never_asserts_enemy() -> None:
         model_sha256=None,
     )[0]
     assert stage_two["friendFoe"] == "Bilinmeyen"
-

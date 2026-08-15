@@ -41,7 +41,7 @@ export function SafetyAuthorityPanel({
         <button
           id="estop-btn"
           aria-label="Acil Durdur — Yazılım E-Stop"
-          disabled={eStopBusy}
+          disabled={eStopBusy || estopActive}
           onClick={onEStop}
           className={[
             'rounded-xl px-5 py-2.5 text-sm font-black uppercase tracking-widest transition-all',

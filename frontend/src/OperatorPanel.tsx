@@ -23,12 +23,14 @@ import {
   sendOperatorStageRequest,
   type HardwareResult,
   type OperatorReplayBundle,
+  type OperatorApiSnapshot,
   type OperatorReadinessItem,
   type OperatorTelemetryExport,
   type OperatorTelemetryLogRecord,
 } from './operatorApiClient';
 import type { Mode, Stage, TargetType } from './types';
 import Navigation from './components/Navigation';
+import { MissionHeader } from './components/MissionHeader';
 import { CommandConsole } from './components/CommandConsole';
 import { ReadinessDashboard } from './components/ReadinessDashboard';
 import { EventStream } from './components/EventStream';
@@ -904,7 +906,41 @@ function OperatorTrackScene({
   );
 }
 
-function RawCameraDiagnosticPage({ streamUrl, onBack }: { streamUrl: string; onBack: () => void }) {
+function CameraReticleOverlay({
+  ballistic,
+  compact = false,
+}: {
+  ballistic?: OperatorApiSnapshot['ballisticCompensation'];
+  compact?: boolean;
+}) {
+  const correction = ballistic?.active ? ballistic.elevationCorrectionDeg : null;
+  const holdoverTop = correction == null ? null : clampNumber(50 + correction * 4, 12, 88);
+  return (
+    <div className="absolute inset-0 pointer-events-none z-10" aria-label="Kalibre nişangâh katmanı">
+      <span className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#48a8ff] shadow-[0_0_10px_#48a8ff]" />
+      <span className="absolute left-1/2 top-1/2 h-px w-16 -translate-x-1/2 bg-[#48a8ff]" />
+      <span className="absolute left-1/2 top-1/2 h-16 w-px -translate-y-1/2 bg-[#48a8ff]" />
+      {holdoverTop != null && (
+        <span
+          className={`absolute left-1/2 -translate-x-1/2 rounded-full border-2 border-dashed border-[#ffbb42] shadow-[0_0_10px_rgba(255,187,66,.55)] ${compact ? 'h-7 w-7' : 'h-10 w-10'}`}
+          style={{ top: `${holdoverTop}%` }}
+          data-testid="camera-ballistic-holdover"
+          title={`Balistik düzeltme ${correction?.toFixed(2)}°`}
+        />
+      )}
+    </div>
+  );
+}
+
+function RawCameraDiagnosticPage({
+  streamUrl,
+  ballistic,
+  onBack,
+}: {
+  streamUrl: string;
+  ballistic?: OperatorApiSnapshot['ballisticCompensation'];
+  onBack: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   return (
     <main className="raw-camera-page min-h-screen bg-[#05070a] p-4 md:p-8 text-[#ecf7ff] overflow-y-auto flex flex-col items-center justify-start" data-testid="raw-camera-page">
@@ -921,29 +957,7 @@ function RawCameraDiagnosticPage({ streamUrl, onBack }: { streamUrl: string; onB
         <section className="p-4 md:p-6 bg-black/60 relative">
           <img src={streamUrl} className={`${failed ? 'hidden' : 'block'} aspect-video w-full rounded-lg bg-black object-contain border border-[#48a8ff]/10 shadow-inner relative z-0`} alt="Kamera sensöründen gelen canlı MJPEG akışı" data-testid="raw-camera-live-stream" onError={() => setFailed(true)} />
           
-          {/* Nişangâh Katmanı */}
-          {!failed && (
-            <div className="absolute inset-0 pointer-events-none flex justify-center items-center z-10" style={{ padding: '1.5rem' /* md:p-6 padding compensation */ }}>
-              <div className="relative w-full h-full max-w-[calc(100vh*(16/9))] max-h-[calc(100vw*(9/16))] flex justify-center items-center">
-                {/* Mavi Merkez Nişangâhı (Kamera Ekseni) */}
-                <svg width="80" height="80" viewBox="0 0 60 60" className="absolute opacity-80" style={{ transform: 'translate(0, 0)' }}>
-                  <circle cx="30" cy="30" r="2" fill="#48a8ff" />
-                  <line x1="30" y1="5" x2="30" y2="20" stroke="#48a8ff" strokeWidth="1.5" />
-                  <line x1="30" y1="40" x2="30" y2="55" stroke="#48a8ff" strokeWidth="1.5" />
-                  <line x1="5" y1="30" x2="20" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
-                  <line x1="40" y1="30" x2="55" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
-                </svg>
-                
-                {/* Sarı Darbe Noktası (Tahmini Balistik Holdover) */}
-                <svg width="50" height="50" viewBox="0 0 40 40" className="absolute opacity-90 transition-transform duration-300" style={{ transform: 'translate(0, 60px)' }}>
-                  <circle cx="20" cy="20" r="10" fill="none" stroke="#ffbb42" strokeWidth="1.5" strokeDasharray="4 2" />
-                  <circle cx="20" cy="20" r="1.5" fill="#ffbb42" />
-                  <line x1="20" y1="10" x2="20" y2="30" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
-                  <line x1="10" y1="20" x2="30" y2="20" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
-                </svg>
-              </div>
-            </div>
-          )}
+          {!failed && <CameraReticleOverlay ballistic={ballistic} />}
 
           {failed && (
             <div className="grid aspect-video w-full place-items-center rounded-lg border border-[#ff4757]/30 bg-[#ff4757]/8 p-8 text-center" data-testid="raw-camera-offline">
@@ -1242,14 +1256,22 @@ function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; fra
   );
 }
 
-import { useOutletContext } from 'react-router-dom';
-
-export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimulator?: () => void }) {
+export default function OperatorPanel({
+  apiBaseUrl,
+  backendState,
+  onOpenAI,
+}: {
+  apiBaseUrl: string;
+  backendState: OperatorBackendState;
+  onBack: () => void;
+  onOpenSimulator: () => void;
+  onOpenAI: () => void;
+}) {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
   const isDesktopShell = queryParams.get('desktop') === '1';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
-  let apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
+  const resolvedApiBaseUrl = apiBaseUrl || queryApiBaseUrl || envApiBaseUrl;
   const cameraStreamUrl = queryParams.get('cameraStream')?.trim()
     || (import.meta.env.VITE_GOKKALKAN_CAMERA_STREAM_URL as string | undefined)?.trim()
     || 'http://127.0.0.1:8090/camera/live.mjpg';
@@ -1261,7 +1283,6 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
   const [, setLastHardwareResult] = useState<HardwareResult>();
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const {
-    apiBaseUrl: contextApiBaseUrl,
     snapshot: apiSnapshot,
     setSnapshot: setApiSnapshot,
     readiness: readinessReport,
@@ -1269,9 +1290,7 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
     busy: backendBusy,
     error: backendError,
     readinessError: backendReadinessError,
-  } = useOutletContext<OperatorBackendState & { apiBaseUrl: string }>();
-  
-  apiBaseUrl = apiBaseUrl || contextApiBaseUrl;
+  } = backendState;
   const shotTrackIds = useMemo(
     () => new Set(apiSnapshot?.missionFlow?.completedTargetIds ?? []),
     [apiSnapshot?.missionFlow?.completedTargetIds],
@@ -1289,7 +1308,7 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
   const [replayBundle, setReplayBundle] = useState<OperatorReplayBundle>();
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   
-  const [viewMode, setViewMode] = useState<'lidar' | 'camera'>('lidar');
+  const [viewMode, setViewMode] = useState<'lidar' | 'camera'>('camera');
   const [evidenceError, setEvidenceError] = useState('');
   const [evidenceNotice, setEvidenceNotice] = useState('');
   const [rawCameraOpen, setRawCameraOpen] = useState(false);
@@ -1315,15 +1334,18 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
     const apiReady = Boolean(apiSnapshot && !apiError);
     const connectionState = apiReady ? (apiSnapshot?.dryRun ? 'dry-run' : 'live') : 'offline';
     return {
-      apiBaseUrl: apiBaseUrl || 'backend-required',
+      apiBaseUrl: resolvedApiBaseUrl || 'backend-required',
       connectionState,
       dryRun: apiSnapshot?.dryRun ?? true,
       liveArmEnabled: apiSnapshot?.liveArmEnabled ?? (liveArmEnabled && apiReady),
     };
-  }, [apiBaseUrl, apiError, apiSnapshot, liveArmEnabled]);
+  }, [resolvedApiBaseUrl, apiError, apiSnapshot, liveArmEnabled]);
 
   const displayStage = apiSnapshot?.stage ?? stage;
   const displayRound = apiSnapshot?.round ?? round;
+  useEffect(() => {
+    setViewMode(displayStage === 1 ? 'camera' : 'lidar');
+  }, [displayStage]);
   const visibleTracks = apiSnapshot?.tracks ?? [];
   const authoritativeTargetId = apiSnapshot?.missionFlow?.selectedTargetId ?? '';
   const authoritativeTrack = visibleTracks.find(
@@ -1457,6 +1479,15 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
         setEvidenceNotice('');
       })
       .finally(() => setEvidenceBusy(false));
+  };
+
+  const resetOperatorPanel = () => {
+    setSelectedTrackId(authoritativeTargetId);
+    setMaintenanceOpen(false);
+    setEvidenceError('');
+    setCommandApiError('');
+    setRawCameraOpen(false);
+    setEvidenceNotice('Görünüm backend snapshot durumuna yeniden eşitlendi; görev state değiştirilmedi.');
   };
 
 
@@ -1606,33 +1637,31 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
 
   useEffect(() => {
     const lockPage = maintenanceSessionActive || operatorStopActive;
-    if (!lockPage) return;
-    // Prevent locking the scroll completely since we now use native scrolling
-    return () => {};
+    if (!lockPage) return undefined;
+    const rootOverflow = document.documentElement.style.overflow;
+    const bodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = rootOverflow;
+      document.body.style.overflow = bodyOverflow;
+    };
   }, [maintenanceSessionActive, operatorStopActive]);
 
   if (rawCameraOpen) {
-    return <RawCameraDiagnosticPage streamUrl={cameraStreamUrl} onBack={() => setRawCameraOpen(false)} />;
+    return <RawCameraDiagnosticPage streamUrl={cameraStreamUrl} ballistic={apiSnapshot?.ballisticCompensation} onBack={() => setRawCameraOpen(false)} />;
   }
-
-  const isTimeCritical = apiSnapshot?.missionRemainingSeconds !== undefined && apiSnapshot.missionRemainingSeconds <= 30;
 
   return (
     <main className="operator-shell min-h-screen bg-[#05070a] p-3 text-[#ecf7ff] pt-20" data-testid="operator-panel" data-desktop-shell={isDesktopShell ? 'true' : 'false'}>
-      <Navigation>
-        {apiSnapshot?.missionRemainingSeconds !== undefined && (
-          <div className={`flex flex-col text-center justify-center rounded-lg px-3 py-1 border ${isTimeCritical ? 'border-[#ff4757]/60 bg-[#ff4757]/20 animate-pulse' : 'border-[#48a8ff]/30 bg-[#48a8ff]/10'}`}>
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isTimeCritical ? 'text-[#ffbdc4]' : 'text-[#bfe7ff]'}`}>Süre</span>
-            <span className={`text-lg leading-none font-black ${isTimeCritical ? 'text-[#ff4757]' : 'text-white'}`}>{Math.ceil(apiSnapshot.missionRemainingSeconds)}s</span>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1">
-          <span className={`inline-flex items-center justify-center rounded px-2 py-0.5 text-[10px] font-black tracking-wider border ${config.dryRun ? 'bg-[#ffbb42]/10 border-[#ffbb42]/30 text-[#ffbb42]' : 'bg-[#ff4757]/10 border-[#ff4757]/30 text-[#ff4757]'}`}>{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
-          <span className={`inline-flex items-center justify-center rounded bg-[#33e68c]/10 border border-[#33e68c]/30 px-2 py-0.5 text-[10px] font-black tracking-wider text-[#bfffe0]`}>{config.connectionState.toUpperCase()}</span>
-        </div>
-
-      </Navigation>
+      <Navigation activeSurface="operator" onOpenOperator={() => undefined} onOpenAI={onOpenAI} />
+      <MissionHeader
+        apiBusy={apiBusy}
+        config={config}
+        missionRemainingSeconds={apiSnapshot?.missionRemainingSeconds === undefined ? undefined : Math.ceil(apiSnapshot.missionRemainingSeconds)}
+        onRawCameraOpen={() => setRawCameraOpen(true)}
+        onReset={resetOperatorPanel}
+      />
 
       {(apiError || readinessError) && (
         <div
@@ -1681,26 +1710,15 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
                 connectedSensorFramesEmpty={connectedSensorFramesEmpty}
               />
             ) : (
-              <div className="absolute inset-0 bg-black flex flex-col justify-center items-center">
+              <div className="absolute inset-0 bg-black flex flex-col justify-center items-center" data-testid={displayStage === 1 ? 'stage1-camera-support' : undefined}>
                 <img src={cameraStreamUrl} className="w-full h-full object-contain" alt="Canlı Kamera Akışı" />
-                <div className="absolute inset-0 pointer-events-none flex justify-center items-center">
-                  {/* Mavi Merkez Nişangâhı (Kamera Ekseni) */}
-                  <svg width="60" height="60" viewBox="0 0 60 60" className="absolute opacity-80" style={{ transform: 'translate(0, 0)' }}>
-                    <circle cx="30" cy="30" r="2" fill="#48a8ff" />
-                    <line x1="30" y1="5" x2="30" y2="20" stroke="#48a8ff" strokeWidth="1.5" />
-                    <line x1="30" y1="40" x2="30" y2="55" stroke="#48a8ff" strokeWidth="1.5" />
-                    <line x1="5" y1="30" x2="20" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
-                    <line x1="40" y1="30" x2="55" y2="30" stroke="#48a8ff" strokeWidth="1.5" />
-                  </svg>
-                  
-                  {/* Sarı Darbe Noktası (Tahmini Balistik Holdover) */}
-                  <svg width="40" height="40" viewBox="0 0 40 40" className="absolute opacity-90 transition-transform duration-300" style={{ transform: 'translate(0, 45px)' }}>
-                    <circle cx="20" cy="20" r="10" fill="none" stroke="#ffbb42" strokeWidth="1.5" strokeDasharray="4 2" />
-                    <circle cx="20" cy="20" r="1.5" fill="#ffbb42" />
-                    <line x1="20" y1="10" x2="20" y2="30" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
-                    <line x1="10" y1="20" x2="30" y2="20" stroke="#ffbb42" strokeWidth="1" opacity="0.5" />
-                  </svg>
-                </div>
+                <CameraReticleOverlay ballistic={apiSnapshot?.ballisticCompensation} compact />
+                {displayStage === 1 && (
+                  <div className="absolute left-4 top-16 z-10 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono" data-testid="stage1-lidar-range">
+                    <span className="block text-[10px] text-[#91a6b7]">1D LİDAR · BORESIGHT · {apiSnapshot?.lidarReading?.status === 'LIVE_ACCEPTED' ? 'CANLI' : 'REPLAY/BEKLEME'}</span>
+                    <b className="text-xl text-white">{apiSnapshot?.lidarReading?.distanceM == null ? '---' : `${apiSnapshot.lidarReading.distanceM.toFixed(2)} m`}</b>
+                  </div>
+                )}
                 
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto">
                   <ManualAimController
@@ -1722,6 +1740,7 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
                   className="absolute bottom-4 right-4 z-10 bg-black/60 hover:bg-black/80 text-white p-2.5 rounded-lg border border-white/20 transition-colors flex items-center justify-center"
                   aria-label="Tam Ekran Ham Kamera"
                   title="Tam Ekran Ham Kamera"
+                  data-testid="operator-raw-camera-expand-button"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="15 3 21 3 21 9"></polyline>
@@ -1745,9 +1764,9 @@ export default function OperatorPanel(_props: { onBack?: () => void; onOpenSimul
             maintenanceStatusCopy={maintenanceStatusCopy}
             onSendFireIntent={sendFireIntent}
             onTriggerOperatorStop={triggerOperatorStop}
-            onOpenMaintenance={openMaintenance}
+            onOpenMaintenance={maintenanceSessionActive ? finishMaintenanceSession : openMaintenance}
             maintenanceSessionActive={maintenanceSessionActive}
-            maintenanceBudget={apiSnapshot?.maintenanceBudgetSec ?? 0}
+            maintenanceRemainingSeconds={maintenanceCountdownSeconds}
           >
             <TrackList
               tracks={visibleTracks}

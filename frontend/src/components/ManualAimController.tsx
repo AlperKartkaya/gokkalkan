@@ -23,6 +23,9 @@ export function ManualAimController({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editing = target?.matches('input, select, textarea, [contenteditable="true"]') ?? false;
+      if (editing) return;
       if (event.code === 'Space') {
         event.preventDefault();
         updateDeadman(manualAimReady && !apiBusy);

@@ -213,6 +213,8 @@ class DryRunTrack:
     courseState: dict[str, Any] | None = None
     objectRole: Literal["target", "balloon"] = "target"
     fireCandidate: bool = True
+    bboxPx: tuple[float, float, float, float] | None = None
+    frameSizePx: tuple[int, int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -235,6 +237,8 @@ class DryRunTrack:
             "courseState": self.courseState,
             "objectRole": self.objectRole,
             "fireCandidate": self.fireCandidate,
+            "bboxPx": list(self.bboxPx) if self.bboxPx is not None else None,
+            "frameSizePx": list(self.frameSizePx) if self.frameSizePx is not None else None,
         }
 
 
@@ -1746,6 +1750,8 @@ class OperatorService:
                 bool,
                 Literal["target", "balloon"],
                 bool,
+                tuple[float, float, float, float] | None,
+                tuple[int, int] | None,
             ]
         ] = []
         for raw in tracks_data:
@@ -1785,6 +1791,20 @@ class OperatorService:
                     bool(raw.get("fireCandidate", True))
                     and object_role == "target"
                 )
+                bbox_px = None
+                if raw.get("bboxPx") is not None:
+                    bbox_values = tuple(float(value) for value in raw["bboxPx"])
+                    if len(bbox_values) != 4 or not all(isfinite(value) for value in bbox_values):
+                        raise ValueError("bboxPx dört sonlu sayı içermelidir")
+                    if bbox_values[2] <= 0 or bbox_values[3] <= 0:
+                        raise ValueError("bboxPx genişlik ve yüksekliği pozitif olmalıdır")
+                    bbox_px = bbox_values
+                frame_size_px = None
+                if raw.get("frameSizePx") is not None:
+                    frame_values = tuple(int(value) for value in raw["frameSizePx"])
+                    if len(frame_values) != 2 or frame_values[0] <= 0 or frame_values[1] <= 0:
+                        raise ValueError("frameSizePx iki pozitif tamsayı içermelidir")
+                    frame_size_px = frame_values
                 normalized.append(
                     (
                         track_id,
@@ -1806,6 +1826,8 @@ class OperatorService:
                         ),
                         object_role,
                         fire_candidate,
+                        bbox_px,
+                        frame_size_px,
                     )
                 )
             except (TypeError, ValueError) as exc:
@@ -1829,6 +1851,8 @@ class OperatorService:
             aim_valid,
             object_role,
             fire_candidate,
+            bbox_px,
+            frame_size_px,
         ) in normalized:
             course_state = self.course_estimator.update(
                 track_id,
@@ -1856,6 +1880,8 @@ class OperatorService:
                 courseState=course_state.to_dict(),
                 objectRole=object_role,
                 fireCandidate=fire_candidate,
+                bboxPx=bbox_px,
+                frameSizePx=frame_size_px,
             )
             updated.append(track)
 

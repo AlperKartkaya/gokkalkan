@@ -362,11 +362,15 @@ class TestOperatorServiceHardwareIntegration(unittest.TestCase):
     def test_update_tracks_replaces_dry_run_tracks(self) -> None:
         self.service.update_tracks([
             {"trackId": "LIVE-A", "friendFoe": "Düşman", "rangeM": 10.0,
-             "bearingDeg": 0.0, "confidence": 0.8},
+             "bearingDeg": 0.0, "confidence": 0.8,
+             "bboxPx": [640.0, 360.0, 120.0, 80.0],
+             "frameSizePx": [1280, 720]},
         ])
         self.assertEqual(len(self.service.tracks), 1)
         self.assertEqual(self.service.tracks[0].trackId, "LIVE-A")
         self.assertEqual(self.service.tracks[0].source, "perception")
+        self.assertEqual(self.service.tracks[0].to_dict()["bboxPx"], [640.0, 360.0, 120.0, 80.0])
+        self.assertEqual(self.service.tracks[0].to_dict()["frameSizePx"], [1280, 720])
 
     def test_balloon_track_is_preserved_as_non_fire_candidate(self) -> None:
         result = self.service.update_tracks(
@@ -391,6 +395,14 @@ class TestOperatorServiceHardwareIntegration(unittest.TestCase):
 
     def test_update_tracks_with_invalid_data_returns_error(self) -> None:
         result = self.service.update_tracks("not-a-list")  # type: ignore[arg-type]
+        self.assertFalse(result["ok"])
+
+    def test_update_tracks_rejects_invalid_bbox_geometry(self) -> None:
+        result = self.service.update_tracks([
+            {"trackId": "BAD-BBOX", "friendFoe": "Düşman", "rangeM": 8.0,
+             "bearingDeg": 0.0, "confidence": 0.8,
+             "bboxPx": [100.0, 100.0, -1.0, 20.0], "frameSizePx": [1280, 720]},
+        ])
         self.assertFalse(result["ok"])
 
     def test_update_tracks_empty_list_clears_tracks(self) -> None:
