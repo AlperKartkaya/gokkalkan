@@ -119,7 +119,13 @@ int main() {
   assert(std::string(rejected.apply(Command::ARM, 2)) == "REJECTED_INTERLOCK");
   assert(!rejected.outputs_enabled());
 
-  assert(!gokkalkan::board::pins_verified(gokkalkan::board::kPins));
+  assert(gokkalkan::board::pins_verified(gokkalkan::board::kPins));
+  assert(gokkalkan::board::kPins.pan_step == 2);
+  assert(gokkalkan::board::kPins.pan_dir == 3);
+  assert(gokkalkan::board::kPins.pan_enable == 4);
+  assert(gokkalkan::board::kPins.tilt_step == 5);
+  assert(gokkalkan::board::kPins.tilt_dir == 6);
+  assert(gokkalkan::board::kPins.tilt_enable == 7);
 
   gokkalkan::PicoIo io({true, true, true, true}, 20);
   gokkalkan::RawDigitalInputs safe_levels;

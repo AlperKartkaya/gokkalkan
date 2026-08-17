@@ -22,8 +22,10 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/gokkalkan
-DeviceAllow=/dev/video0 rw
-DeviceAllow=/dev/hailo0 rw
+# Picamera2/libcamera discovers a changing set of media, video-subdevice and
+# DMA-heap nodes on Raspberry Pi 5. Keep Unix group/device permissions as the
+# boundary instead of an incomplete systemd DeviceAllow list that hides the
+# physically present camera from libcamera.
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=gokkalkan-perception

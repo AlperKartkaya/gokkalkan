@@ -198,6 +198,11 @@ class PerceptionBridge:
         get_sample = getattr(self.camera, "get_latest_sample", None)
         sample = get_sample() if callable(get_sample) else None
         frame = sample.image if sample is not None else self.camera.get_latest_frame()
+        if frame is None:
+            # Camera startup and reconnect are asynchronous. Do not pass an
+            # empty frame into JPEG encoding or inference while Picamera2 is
+            # still acquiring its first valid buffer.
+            return
         if self.camera_stream is not None:
             self.camera_stream.update_image(frame, _utc_now())
         try:

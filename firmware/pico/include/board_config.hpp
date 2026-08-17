@@ -6,7 +6,7 @@
 namespace gokkalkan::board {
 
 constexpr std::uint8_t kUnverifiedPin = 0xFFU;
-constexpr char kBoardRevision[] = "UNVERIFIED";
+constexpr char kBoardRevision[] = "GKK-IO-REV-A";
 
 struct Pins {
   std::uint8_t estop_safe_sense{kUnverifiedPin};
@@ -27,7 +27,28 @@ struct Pins {
   std::uint8_t tilt_encoder_b{kUnverifiedPin};
 };
 
-constexpr Pins kPins{};
+// GKK-IO-REV-A keeps the motor-test GP2/GP3/GP4 assignment for PAN and
+// allocates the remaining safety, motion and encoder signals contiguously.
+// Electrical polarity and isolated I/O behaviour still require the physical
+// acceptance measurements recorded in docs/hardware/GKK-IO-REV-A_PIN_MAP.md.
+constexpr Pins kPins{
+    8,   // estop_safe_sense
+    9,   // fire_interlock
+    10,  // trigger_feedback
+    11,  // fire_output
+    12,  // pan_limit_nc
+    13,  // tilt_limit_nc
+    2,   // pan_step
+    3,   // pan_dir
+    4,   // pan_enable
+    5,   // tilt_step
+    6,   // tilt_dir
+    7,   // tilt_enable
+    14,  // pan_encoder_a
+    15,  // pan_encoder_b
+    16,  // tilt_encoder_a
+    17,  // tilt_encoder_b
+};
 
 constexpr bool pins_verified(const Pins& pins) {
   const std::array<std::uint8_t, 16> values{

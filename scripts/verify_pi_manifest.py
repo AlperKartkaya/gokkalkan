@@ -157,6 +157,25 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
             "config/runtime/pi-sim.toml",
             "systemctl enable --now gokkalkan.target",
             "installed-packages.lock",
+            "apt-bootstrap.sha256",
+            "python-dependencies.sha256",
+        ),
+    )
+    _require_tokens(
+        REPO_ROOT / "scripts/build_pi_release.sh",
+        (
+            "RELEASE_PATHS=(",
+            "frontend/dist",
+            "perception/src",
+            "perception/models/*.hef",
+        ),
+    )
+    _require_tokens(
+        REPO_ROOT / "scripts/deploy_to_pi.sh",
+        (
+            "scripts/build_pi_release.sh",
+            "rsync -az --delete",
+            "mkdir -p '$REMOTE_RELEASE'",
         ),
     )
     return data

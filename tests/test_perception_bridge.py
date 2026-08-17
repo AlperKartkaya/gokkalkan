@@ -135,6 +135,17 @@ class EmptyTrackProcessor(DummyProcessor):
 
 
 class PerceptionProcessBoundaryTest(unittest.TestCase):
+    def test_tick_waits_for_first_camera_frame_without_processing_none(self) -> None:
+        bridge = PerceptionBridge()
+        bridge.camera = DummyCamera()
+        bridge.processor = Mock()
+        bridge.camera_stream = Mock()
+
+        bridge._tick()
+
+        bridge.processor.process.assert_not_called()
+        bridge.camera_stream.update_image.assert_not_called()
+
     def test_sahi_detector_receives_main_frame_and_maps_detection_to_lores_track(self) -> None:
         detector = MainSpaceDetector()
         bridge = PerceptionBridge(detector=detector)

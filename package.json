@@ -45,7 +45,11 @@
     "cad:render": "bash scripts/render_cad_dataset.sh",
     "cad:ingest": "bash scripts/ingest_cad_dataset.sh",
     "model:train": "bash scripts/train_target_detector.sh",
+    "model:export:hailo": ".venv-training/bin/python perception/tools/export_hailo_model.py",
+    "model:compile:hailo": "bash scripts/compile_hailo_hef.sh",
     "model:predict:val": "bash scripts/predict_target_val.sh",
-    "pi:deploy": "bash scripts/deploy_to_pi.sh"
+    "pi:deploy": "bash scripts/deploy_to_pi.sh",
+    "pico:motor-test:build": "bash scripts/build_pico_motor_test.sh",
+    "pico:motor-test:deploy": "bash scripts/deploy_pico_motor_test.sh"
   }
 }

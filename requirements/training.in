@@ -1,3 +1,8 @@
 -r backend.lock
 ultralytics==8.4.116
 sahi==0.11.36
+# Pinned below the onnx 1.22 typing-extensions floor because backend.lock
+# intentionally keeps Python 3.11's shared typing-extensions on 4.12.2.
+onnx==1.16.2
+onnxruntime==1.18.1
+onnxslim==0.1.52

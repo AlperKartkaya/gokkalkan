@@ -8,11 +8,19 @@ SKIP_BUILD=0
 HEF_PATH=""
 RUNNER_FACTORY=""
 REMOTE_RELEASE="/tmp/gokkalkan-release"
+LOCAL_RELEASE=""
+
+cleanup() {
+  if [[ -n "$LOCAL_RELEASE" && -d "$LOCAL_RELEASE" ]]; then
+    rm -rf "$LOCAL_RELEASE"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
 Usage: scripts/deploy_to_pi.sh --host pi@<adres> [--identity ~/.ssh/id_ed25519] [--skip-build]
-       [--hef ./target_detector.hef --runner-factory paket.modul:create_batch_runner]
+       [--hef ./target_detector.hef --runner-factory gokkalkan_hailo_runtime:create_batch_runner]
 
 Builds the frontend locally, copies a clean release tree to the Raspberry Pi,
 runs the idempotent Pi bootstrap, and verifies persistent systemd services.
@@ -55,13 +63,15 @@ fi
   exit 1
 }
 
-ssh "${SSH_ARGS[@]}" "$PI_HOST" "rm -rf '$REMOTE_RELEASE' && mkdir -p '$REMOTE_RELEASE'"
+LOCAL_RELEASE="$(mktemp -d "${TMPDIR:-/tmp}/gokkalkan-pi-release.XXXXXX")"
+bash "$ROOT/scripts/build_pi_release.sh" "$LOCAL_RELEASE"
+
+# Keep the remote staging directory between deploys so rsync can transfer only
+# changed files. --delete still removes files that no longer belong to release.
+ssh "${SSH_ARGS[@]}" "$PI_HOST" "mkdir -p '$REMOTE_RELEASE'"
 rsync -az --delete \
-  --exclude '.git/' --exclude '.venv*/' --exclude 'node_modules/' \
-  --exclude 'perception/dataset/generated/' --exclude 'perception/dataset/model_runs/' \
-  --exclude 'perception/synthetic/generated/' --exclude 'telemetry_data/' \
-  --exclude 'perception/models/*.hef' --exclude '*.pt' --exclude '*.onnx' \
-  -e "ssh ${SSH_ARGS[*]}" "$ROOT/" "$PI_HOST:$REMOTE_RELEASE/"
+  --exclude 'perception/models/*.hef' \
+  -e "ssh ${SSH_ARGS[*]}" "$LOCAL_RELEASE/" "$PI_HOST:$REMOTE_RELEASE/"
 
 if [[ -n "$HEF_PATH" ]]; then
   rsync -az -e "ssh ${SSH_ARGS[*]}" "$HEF_PATH" "$PI_HOST:$REMOTE_RELEASE/perception/models/target_detector.hef"

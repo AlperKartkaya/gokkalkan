@@ -34,8 +34,30 @@ with open(sys.argv[1], "rb") as handle:
         print(package)
 PY
 )
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+
+install -d -o root -g root -m 0755 /var/lib/gokkalkan
+APT_FINGERPRINT="$({
+  cat "$REPO_ROOT/deploy/pi/manifest.toml"
+  printf '%s\n' "${APT_PACKAGES[@]}"
+} | sha256sum | awk '{print $1}')"
+APT_MARKER="/var/lib/gokkalkan/apt-bootstrap.sha256"
+
+APT_MISSING=0
+for package in "${APT_PACKAGES[@]}"; do
+  dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed' || {
+    APT_MISSING=1
+    break
+  }
+done
+
+if [[ "$APT_MISSING" -eq 1 || ! -f "$APT_MARKER" || "$(cat "$APT_MARKER")" != "$APT_FINGERPRINT" ]]; then
+  echo "Pi system dependencies changed or are missing; running apt."
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+  printf '%s\n' "$APT_FINGERPRINT" > "$APT_MARKER"
+else
+  echo "Pi system dependencies unchanged; skipping apt."
+fi
 
 if ! id gokkalkan >/dev/null 2>&1; then
   useradd --create-home --system --shell /usr/sbin/nologin --user-group gokkalkan
@@ -55,11 +77,26 @@ if [[ "$(realpath "$REPO_ROOT")" != "/opt/gokkalkan" ]]; then
     "$REPO_ROOT/" /opt/gokkalkan/
 fi
 
-python3 -m venv --system-site-packages /opt/gokkalkan/.venv
-/opt/gokkalkan/.venv/bin/python -m pip install \
-  "pip==25.1.1" "setuptools==75.6.0" "wheel==0.45.1"
-/opt/gokkalkan/.venv/bin/python -m pip install \
-  -r /opt/gokkalkan/requirements/backend.lock
+PYTHON_FINGERPRINT="$({
+  python3 -VV
+  cat /opt/gokkalkan/requirements/backend.lock
+  cat /opt/gokkalkan/pyproject.toml
+} | sha256sum | awk '{print $1}')"
+PYTHON_MARKER="/var/lib/gokkalkan/python-dependencies.sha256"
+
+if [[ ! -x /opt/gokkalkan/.venv/bin/python || ! -f "$PYTHON_MARKER" || "$(cat "$PYTHON_MARKER")" != "$PYTHON_FINGERPRINT" ]]; then
+  echo "Python dependencies changed or are missing; updating virtual environment."
+  python3 -m venv --system-site-packages /opt/gokkalkan/.venv
+  /opt/gokkalkan/.venv/bin/python -m pip install \
+    "pip==25.1.1" "setuptools==75.6.0" "wheel==0.45.1"
+  /opt/gokkalkan/.venv/bin/python -m pip install \
+    -r /opt/gokkalkan/requirements/backend.lock
+  printf '%s\n' "$PYTHON_FINGERPRINT" > "$PYTHON_MARKER"
+else
+  echo "Python dependencies unchanged; skipping dependency install."
+fi
+
+# Application source changes on every release, even when dependencies do not.
 /opt/gokkalkan/.venv/bin/python -m pip install \
   --no-deps --no-build-isolation /opt/gokkalkan
 

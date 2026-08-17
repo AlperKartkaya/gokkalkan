@@ -28,6 +28,30 @@ Güvenlik çekirdeği FIRE için kapalı fiziksel interlock ve serbest tetik ger
 bildirimi ister; kuru-kontak çıkışını 120 ms ile sınırlar. Interlock kopması,
 takılı tetik geri bildirimi, E-Stop, heartbeat veya enkoder fault'u ateş
 çıkışını fail-closed kapatır. USB CDC alıcı/verici, 100 ms host heartbeat ve status/ACK yolu uygulanmıştır.
-Kart pin haritası ve GPIO çıkış katı onaylanana kadar `pico_main.cpp` aktüatör
-çıkışlarını bilerek etkinleştirmez. İmalat ayrıntıları için
+GKK-IO-REV-A mantıksal GPIO ataması `board_config.hpp` ve
+`docs/hardware/GKK-IO-REV-A_PIN_MAP.md` içinde yapılmıştır. Elektriksel aktif
+seviyeler, izolasyon ve boot/reset ölçümleri tamamlanmadan LIVE fiziksel çıkış
+kabulü verilmez. İmalat ayrıntıları için
 `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` dosyasına bakın.
+
+## Ayrı tek-motor tezgâh testi
+
+Üretim pin haritasını etkinleştirmeden bir DM542 kanalını sınayan ayrı
+`gokkalkan_motor_test` hedefi vardır. Varsayılan pinler `GP2=STEP`, `GP3=DIR`,
+`GP4=ENA`'dır. Açılışta hareket yoktur; USB'den `ARM` ve sınırlı `MOVE`
+gelmelidir. Komut başına sınır 2000 adım/1000 Hz, ARM süresi 10 saniyedir.
+
+```sh
+npm run pico:motor-test:deploy -- --host gokkalkan@gokkalkan.local \
+  --identity ~/.ssh/gokkalkan_pi --prepare
+```
+
+Sonraki yüklemelerde `--prepare` çıkarılır. İlk düşük hızlı test:
+
+```sh
+ssh -i ~/.ssh/gokkalkan_pi gokkalkan@gokkalkan.local \
+  'python3 /tmp/gokkalkan-pico-motor-test/scripts/pico_motor_test.py --direction CW --steps 200 --hz 100'
+```
+
+Bu hedef airsoft bağlantısı sökülmüş ve motor mekanik olarak emniyete alınmış
+tezgâh testi içindir; üretim/HIL kabulü değildir.

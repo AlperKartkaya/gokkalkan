@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "status": "SYNTHETIC_RESEARCH_ONLY",
+  "releaseCandidate": false,
+  "architecture": "yolov8s",
+  "inputSize": [
+    640,
+    640
+  ],
+  "classCount": 7,
+  "classes": [
+    "dusman_drone_kirmizi",
+    "dusman_helikopter_kirmizi",
+    "dusman_f16_kirmizi",
+    "dusman_fuze_kirmizi",
+    "dost_helikopter_camgobegi",
+    "dost_f16_camgobegi",
+    "balon"
+  ],
+  "weights": "/Users/alperkartkaya/Documents/gokkalkan/perception/dataset/model_runs/cad-20260817-124525/weights/best.pt",
+  "weightsSha256": "bec0a83f06434ad22d58a50ce698a4cb65108d712aec7828204a48619feec18c",
+  "onnx": "/Users/alperkartkaya/Documents/gokkalkan/artifacts/hailo/target_detector.onnx",
+  "onnxSha256": "191a4a2150100d6f8538b4354221ba0e0b3c7cb3a262768c1ea7b52e3c3a83ff",
+  "hailoTarget": "hailo8",
+  "requiredPostprocess": "Hailo NMS"
+}
