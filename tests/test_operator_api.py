@@ -27,6 +27,10 @@ class OperatorServiceTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
+    def start_stage3(self) -> None:
+        response = self.service.handle_stage_request({"stage": 3, "round": 1, "operatorId": "test", "timestamp": fixed_clock(), "reason": "test-stage-3", "dryRun": True})
+        self.assertTrue(response["result"]["accepted"])
+
     def test_target_range_gate_matches_competition_ranges(self) -> None:
         self.assertTrue(target_range_gate("F16", 12.0))
         self.assertFalse(target_range_gate("F16", 9.9))
@@ -38,10 +42,14 @@ class OperatorServiceTest(unittest.TestCase):
         snapshot = self.service.snapshot()
         self.assertTrue(snapshot["dryRun"])
         self.assertFalse(snapshot["physicalOutputEnabled"])
-        self.assertEqual(snapshot["mode"], "autonomous")
+        self.assertEqual(snapshot["mode"], "safe")
+        self.assertEqual(snapshot["stage"], 1)
+        self.assertEqual(snapshot["missionFlow"]["status"], "IDLE")
         self.assertEqual(snapshot["telemetry"]["recordCount"], 1)
         self.assertGreaterEqual(len(snapshot["sensorFrames"]), 1)
         self.assertTrue(snapshot["sensorHealth"]["replayOnly"])
+        self.start_stage3()
+        snapshot = self.service.snapshot()
         unknown_track = next(track for track in snapshot["tracks"] if track["trackId"] == "DRY-RUN-UAV-03")
         self.assertEqual(unknown_track["friendFoe"], "Bilinmeyen")
         unknown_frame = next(frame for frame in snapshot["sensorFrames"] if frame["trackId"] == "DRY-RUN-UAV-03" and frame["sensor"] == "fusion")
@@ -150,10 +158,11 @@ class OperatorServiceTest(unittest.TestCase):
 
         self.assertFalse(response["result"]["accepted"])
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_INVALID_COMMAND")
-        self.assertEqual(response["state"]["stage"], 3)
+        self.assertEqual(response["state"]["stage"], 1)
         self.assertEqual(response["state"]["round"], 1)
 
     def test_fire_is_blocked_in_safe_mode_before_hardware_adapter(self) -> None:
+        self.start_stage3()
         self.service.handle_mode_request({"requestedMode": "safe", "operatorId": "test", "timestamp": fixed_clock(), "reason": "safe-mode-test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertFalse(response["result"]["accepted"])
@@ -161,6 +170,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(self.hardware.commands, [])
 
     def test_dry_run_fire_records_no_physical_output(self) -> None:
+        self.start_stage3()
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertTrue(response["result"]["accepted"])
@@ -223,6 +233,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": 2, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 0}))
 
     def test_telemetry_jsonl_export_and_replay_are_persistent_and_no_output(self) -> None:
+        self.start_stage3()
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "telemetry-test", "dryRun": True})
         self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
 
@@ -291,6 +302,7 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertTrue(any("TFA50-L" in action for action in report["nextCriticalActions"]))
 
     def test_friendly_target_fire_is_blocked(self) -> None:
+        self.start_stage3()
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-HEL-02", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertFalse(response["result"]["accepted"])
@@ -298,12 +310,14 @@ class OperatorServiceTest(unittest.TestCase):
         self.assertEqual(len(self.hardware.commands), 0)
 
     def test_unidentified_target_fire_is_blocked_until_classification_is_resolved(self) -> None:
+        self.start_stage3()
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-UAV-03", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": True})
         self.assertFalse(response["result"]["accepted"])
         self.assertEqual(response["result"]["safetyBlockReason"], "BLOCKED_TARGET_GATE")
         self.assertEqual(len(self.hardware.commands), 0)
 
     def test_dry_run_service_ignores_client_live_override(self) -> None:
+        self.start_stage3()
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test", "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         response = self.service.handle_fire_intent({"targetId": "DRY-RUN-F16-01", "stage": 3, "round": 1, "operatorConfirm": True, "dryRun": False})
         self.assertTrue(response["result"]["accepted"])
@@ -467,6 +481,8 @@ class MaintenanceBudgetTest(unittest.TestCase):
         self.assertEqual(result["reason"], "BLOCKED_ESTOP")
 
     def test_maintenance_end_charges_minimum_30s(self) -> None:
+        self.service.handle_stage_request({"stage": 2, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         self.service.handle_mode_request({"requestedMode": "autonomous", "operatorId": "test",
                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
         self.service.handle_maintenance_request({})
@@ -474,7 +490,7 @@ class MaintenanceBudgetTest(unittest.TestCase):
         result = self.service.maintenance_end()
         self.assertTrue(result["ok"])
         self.assertGreaterEqual(result["elapsedSec"], 30)
-        self.assertEqual(self.service.mode, "safe")
+        self.assertEqual(self.service.mode, "autonomous")
         self.assertGreaterEqual(self.service.maintenance_used_sec, 30)
 
     def test_maintenance_end_when_not_in_maintenance_fails(self) -> None:
@@ -526,7 +542,9 @@ class MissionTimerTest(unittest.TestCase):
         self.assertIsNone(snap["missionRemainingSeconds"])
 
     def test_stage3_has_no_time_limit(self) -> None:
-        snap = self.service.snapshot()  # başlangıçta stage 3
+        self.service.handle_stage_request({"stage": 3, "round": 1, "operatorId": "test",
+                                           "timestamp": fixed_clock(), "reason": "test", "dryRun": True})
+        snap = self.service.snapshot()
         self.assertIsNone(snap["missionTimeLimitSec"])
         self.assertIsNone(snap["missionRemainingSeconds"])
 

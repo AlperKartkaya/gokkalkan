@@ -39,7 +39,7 @@ import { HardwareHealthBadge } from './components/HardwareHealthBadge';
 import { TrackList } from './components/TrackList';
 import { ManualAimController } from './components/ManualAimController';
 import { StageRoundSelector } from './components/StageRoundSelector';
-import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendMissionStop, sendOperatorManualAimCommand } from './operatorApiClient';
+import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendOperatorManualAimCommand } from './operatorApiClient';
 import { type OperatorBackendState } from './hooks/useOperatorBackendState';
 
 
@@ -79,9 +79,9 @@ function isKnownTargetType(type: string): type is TargetType {
 }
 
 function hasReliableTrackType(
-  track: Pick<OperatorTrackState, 'confidence' | 'targetType'>,
-): track is Pick<OperatorTrackState, 'confidence' | 'targetType'> & { targetType: TargetType } {
-  return track.confidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
+  track: Pick<OperatorTrackState, 'confidence' | 'typeConfidence' | 'targetType'>,
+): track is Pick<OperatorTrackState, 'confidence' | 'typeConfidence' | 'targetType'> & { targetType: TargetType } {
+  return (track.typeConfidence ?? track.confidence) >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
     && isKnownTargetType(track.targetType);
 }
 
@@ -1201,51 +1201,57 @@ function AccuracyCircle({ label, value, tone, testId }: { label: string; value: 
   );
 }
 
-function ConfidencePanel({ stage, frames, selectedTrackId }: { stage: Stage; frames: OperatorSensorFrame[]; selectedTrackId: string }) {
-  const uniqueFrames = frames.filter((frame, index, all) => all.findIndex((candidate) => candidate.trackId === frame.trackId) === index);
+function ConfidencePanel({ stage, tracks, selectedTrackId }: { stage: Stage; tracks: OperatorTrackState[]; selectedTrackId: string }) {
   const hostilityDetection = stageHasHostilityDetection(stage);
 
   return (
     <section className="operator-confidence-panel mt-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-4" data-testid="operator-confidence-panel" aria-label="Sınıf ve dost düşman doğruluk yüzdeleri">
       <div
         className="operator-confidence-grid"
-        style={{ '--confidence-count': Math.max(1, uniqueFrames.length) } as CSSProperties}
+        style={{ '--confidence-count': Math.max(1, tracks.length) } as CSSProperties}
       >
-        {uniqueFrames.map((frame) => {
-          const unknown = !hasReliableFrameType(frame);
-          const colorValue = hostilityConfidence(frame);
-          const selected = frame.trackId === selectedTrackId;
-          const displayType = unknown ? 'Bilinmeyen cisim' : targetLabel[frame.targetType];
-          const displayAffiliation = hostilityDetection ? frame.friendFoe : 'Bilinmeyen';
+        {tracks.map((track) => {
+          const unknown = !hasReliableTrackType(track);
+          const typeValue = track.typeConfidence ?? track.confidence;
+          const colorValue = track.friendFoeConfidence;
+          const selected = track.trackId === selectedTrackId;
+          const displayType = unknown ? 'Bilinmeyen cisim' : targetLabel[track.targetType];
+          const displayAffiliation = hostilityDetection ? track.friendFoe : 'Bilinmeyen';
           return (
             <article
-              key={frame.trackId}
+              key={track.trackId}
               className={`confidence-row rounded-lg border p-2.5 ${selected ? 'border-[#ffbb42]/35 bg-[#ffbb42]/10' : 'border-white/[.07] bg-white/[.04]'}`}
-              data-testid={`operator-confidence-${frame.trackId}`}
+              data-testid={`operator-confidence-${track.trackId}`}
               data-affiliation={displayAffiliation}
               data-identification={unknown ? 'unknown' : 'identified'}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <b className="block overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white">{displayType}</b>
-                  {hostilityDetection && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-black text-[#91a6b7]">{frame.friendFoe}</span>}
+                  {hostilityDetection && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs font-black text-[#91a6b7]">{track.friendFoe}</span>}
                 </div>
-                {hostilityDetection && <i className={`confidence-swatch ${affiliationClass(frame.friendFoe)}`} aria-hidden="true" />}
+                {hostilityDetection && <i className={`confidence-swatch ${affiliationClass(track.friendFoe)}`} aria-hidden="true" />}
               </div>
               <div className={`accuracy-circle-grid mt-3 ${hostilityDetection ? '' : 'type-only'}`}>
                 {hostilityDetection && (
-                  <AccuracyCircle
-                    label="Renk"
-                    value={colorValue}
-                    tone={affiliationClass(frame.friendFoe)}
-                    testId={`operator-accuracy-${frame.trackId}-color`}
-                  />
+                  colorValue == null ? (
+                    <div className="grid place-items-center text-center text-[10px] font-bold text-[#91a6b7]" data-testid={`operator-accuracy-${track.trackId}-color`}>
+                      Renk<br />ölçülmedi
+                    </div>
+                  ) : (
+                    <AccuracyCircle
+                      label="Renk"
+                      value={colorValue}
+                      tone={affiliationClass(track.friendFoe)}
+                      testId={`operator-accuracy-${track.trackId}-color`}
+                    />
+                  )
                 )}
                 <AccuracyCircle
                   label="Tür"
-                  value={frame.classificationConfidence}
+                  value={typeValue}
                   tone={unknown ? 'unknown' : 'type'}
-                  testId={`operator-accuracy-${frame.trackId}-type`}
+                  testId={`operator-accuracy-${track.trackId}-type`}
                 />
               </div>
             </article>
@@ -1516,6 +1522,20 @@ export default function OperatorPanel({
       .finally(() => setApiBusy(false));
   };
 
+  const startOrAdvanceMission = () => {
+    if (missionStatus === 'IDLE') {
+      recordStage(1, 1);
+      return;
+    }
+    if (missionStatus !== 'ROUND_COMPLETE') return;
+    const roundLimit = stageRoundLimit(displayStage);
+    if (displayRound < roundLimit) {
+      recordStage(displayStage, displayRound + 1);
+    } else if (displayStage < 3) {
+      recordStage((displayStage + 1) as Stage, 1);
+    }
+  };
+
   const sendManualAim = (panDeltaDeg: number, tiltDeltaDeg: number) => {
     if (!apiBaseUrl) {
       setApiError('Backend API bağlantısı yok; manuel yönelim fail-closed.');
@@ -1564,21 +1584,6 @@ export default function OperatorPanel({
         setLastHardwareResult(undefined);
         setApiError(error instanceof Error ? error.message : 'Backend FireIntent komutunu kabul etmedi.');
       })
-      .finally(() => setApiBusy(false));
-  };
-
-  const triggerOperatorStop = () => {
-    if (!apiBaseUrl) {
-      setApiError('Backend API bağlantısı yok; kontrollü stop doğrulanamadı.');
-      return;
-    }
-    setApiBusy(true);
-    void sendMissionStop(apiBaseUrl)
-      .then((response) => {
-        setApiSnapshot(response.state);
-        setApiError(response.accepted ? '' : 'Backend görev stop geçişini reddetti.');
-      })
-      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Görev durdurulamadı.'))
       .finally(() => setApiBusy(false));
   };
 
@@ -1679,9 +1684,9 @@ export default function OperatorPanel({
             <StageRoundSelector
               displayStage={displayStage}
               displayRound={displayRound}
+              missionStatus={missionStatus}
               apiBusy={apiBusy}
-              onRecordStage={recordStage}
-              stageRoundLimit={stageRoundLimit}
+              onStartOrAdvance={startOrAdvanceMission}
             />
           </div>
           
@@ -1763,7 +1768,7 @@ export default function OperatorPanel({
             maintenanceReady={maintenanceReady}
             maintenanceStatusCopy={maintenanceStatusCopy}
             onSendFireIntent={sendFireIntent}
-            onTriggerOperatorStop={triggerOperatorStop}
+            onTriggerOperatorStop={handleEStop}
             onOpenMaintenance={maintenanceSessionActive ? finishMaintenanceSession : openMaintenance}
             maintenanceSessionActive={maintenanceSessionActive}
             maintenanceRemainingSeconds={maintenanceCountdownSeconds}
@@ -1786,7 +1791,7 @@ export default function OperatorPanel({
         </aside>
       </section>
 
-      <ConfidencePanel stage={displayStage} frames={interpretedSensorFrames} selectedTrackId={selectedTrackId} />
+      <ConfidencePanel stage={displayStage} tracks={visibleTracks} selectedTrackId={selectedTrackId} />
 
       <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
         <SafetyAuthorityPanel

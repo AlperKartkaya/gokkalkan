@@ -76,3 +76,51 @@ Kurulum sonunda aşağıdaki komut release kanıtı olarak saklanır:
 dpkg-query -W -f='${Package}==${Version}\n' \
   > /var/lib/gokkalkan/installed-packages.lock
 ```
+
+## Geliştirme bilgisayarından tek komutla yükleme
+
+Pi'ye Raspberry Pi OS Lite kurulmuş, SSH anahtarı tanımlanmış ve kullanıcı
+`sudo` çalıştırabiliyor olmalıdır. Repo Pi'ye kaynak + önceden derlenmiş
+`frontend/dist` olarak gider; Python paketi Pi üzerinde venv'e kurulur. Pi'de
+Node.js gerekmez.
+
+```bash
+npm run pi:deploy -- --host pi@192.168.1.50
+```
+
+Kamera/Hailo servisini de aynı dağıtımda etkinleştirmek için derlenmiş HEF ve
+repo dışı HailoRT runner factory birlikte verilmelidir. Script ikisinden yalnız
+biri verilirse durur; eksik detector ile perception'ı sağlıklı göstermeye çalışmaz:
+
+```bash
+npm run pi:deploy -- --host pi@192.168.1.50 \
+  --hef ./artifacts/target_detector.hef \
+  --runner-factory gokkalkan_hailo_runtime:create_batch_runner
+```
+
+HEF verilmezse backend ve arayüz bağımsız olarak kurulur; perception servisi
+`ConditionPathExists` kapısıyla devre dışı kalır. Daha önce Pi'ye kurulmuş HEF,
+normal kod güncellemelerinde `rsync --delete` tarafından silinmez.
+
+Özel SSH anahtarı:
+
+```bash
+npm run pi:deploy -- --host pi@192.168.1.50 \
+  --identity ~/.ssh/gokkalkan_pi
+```
+
+Script sırasıyla manifesti doğrular, `npm ci + frontend build` yapar, temiz
+release ağacını `rsync` ile Pi'ye kopyalar, `bootstrap_pi.sh --apply`
+çalıştırır ve API/UI/systemd sağlıklarını kontrol eder. `gokkalkan.target`
+`systemctl enable` edildiği için SSH ve geliştirme bilgisayarı kapatılsa da
+backend/perception/frontend Pi açılışında kendiliğinden çalışır.
+
+Pi bağımsız çalışır; yalnız operatör ekranını başka bilgisayardan görmek için
+ağ istemcisi gerekir. Güvenlik nedeniyle servisler loopback'te kaldığından:
+
+```bash
+ssh -N -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 pi@192.168.1.50
+```
+
+ve tarayıcıda `http://127.0.0.1:4173` açılır. Tünelin kapanması Pi üzerindeki
+görev servislerini durdurmaz; yalnız uzaktaki ekran bağlantısını keser.

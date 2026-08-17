@@ -11,12 +11,36 @@ sys.path.insert(0, str(Path("perception/tools").resolve()))
 
 from dataset_pipeline import (
     PipelineError,
+    add_human_annotations,
     auto_label_real,
     pull_captures,
     safe_component,
     stable_split,
     yolo_line,
 )
+
+
+def test_human_yolo_export_is_ingested_by_session(tmp_path: Path) -> None:
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"classes": ["f16", "balon"], "realSplitPercent": {"train": 70, "val": 15, "test": 15}}), encoding="utf-8")
+    session = tmp_path / "annotated" / "SESSION-TEAM-01"
+    (session / "images" / "train").mkdir(parents=True)
+    (session / "labels" / "train").mkdir(parents=True)
+    (session / "session.json").write_text(json.dumps({"sessionId": "SESSION-TEAM-01", "annotator": "team-a", "reviewer": "team-b"}), encoding="utf-8")
+    (session / "images" / "train" / "frame.jpg").write_bytes(b"reviewed-image")
+    (session / "labels" / "train" / "frame.txt").write_text("0 0.5 0.5 0.25 0.20\n1 0.5 0.6 0.05 0.05\n", encoding="utf-8")
+
+    output = tmp_path / "output"
+    for split in ("train", "val", "test"):
+        (output / "images" / split).mkdir(parents=True)
+        (output / "labels" / split).mkdir(parents=True)
+    result = add_human_annotations(config, session.parent, output)
+
+    assert result["humanCount"] == 1
+    assert result["review"] == []
+    assert result["records"][0]["sourceKind"] == "real-human-annotated"
+    assert result["records"][0]["annotationStatus"] == "HUMAN_REVIEWED"
+    assert result["records"][0]["annotator"] == "team-a"
 
 
 def test_yolo_line_normalizes_bbox() -> None:

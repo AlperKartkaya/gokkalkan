@@ -101,7 +101,7 @@ class MissionFlow:
             return False
         self.status = (
             self.previous_status
-            if self.previous_status in {"ACTIVE", "ROUND_COMPLETE"}
+            if self.previous_status in {"IDLE", "ACTIVE", "ROUND_COMPLETE"}
             else "ACTIVE"
         )
         self.previous_status = None
@@ -119,13 +119,12 @@ class MissionFlow:
     def end_maintenance(self, reason: str) -> bool:
         if self.status != "MAINTENANCE":
             return False
-        resume_status = (
+        self.status = (
             self.previous_status
             if self.previous_status in {"ACTIVE", "ROUND_COMPLETE"}
             else "ACTIVE"
         )
-        self.status = "PAUSED"
-        self.previous_status = resume_status
+        self.previous_status = None
         self._transition(reason)
         return True
 

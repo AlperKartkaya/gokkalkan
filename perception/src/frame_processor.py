@@ -94,6 +94,13 @@ class TrackCandidate:
             "rangeM":     round(self.range_m, 2),
             "bearingDeg": round(self.bearing_deg, 2),
             "confidence": round(self.confidence, 3),
+            "typeConfidence": None,
+            "friendFoeConfidence": (
+                round(self.confidence, 3)
+                if self.friend_foe != "Bilinmeyen"
+                else None
+            ),
+            "confidenceSemantics": "HSV_TRACK_STABILITY",
             "bboxPx":     [self.cx, self.cy, self.width_px, self.height_px],
             "source":     "perception",
             "rangeSource": "camera-bbox-estimate",

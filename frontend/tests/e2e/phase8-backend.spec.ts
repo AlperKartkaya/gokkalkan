@@ -33,15 +33,14 @@ test('operator panel follows real backend stage, deadman, stop and maintenance s
   ).toBeVisible();
 
   await page.getByTestId('operator-stop-button').click();
-  await expect(page.getByTestId('operator-stop-overlay')).toContainText('GÖREV DURAKLATILDI');
-  await page.getByTestId('operator-stop-resume-button').click();
+  await expect(page.getByTestId('operator-stop-overlay')).toContainText('ACİL DURDUR');
+  await page.request.post(`${API}/estop/reset`, { data: { operatorId: 'PW-PHASE8' } });
+  await page.request.post(`${API}/mission/resume`, { data: { reason: 'PW-PHASE8-RESET' } });
   await expect(page.getByTestId('operator-stop-overlay')).toHaveCount(0);
 
   await page.getByTestId('operator-maintenance-button').click();
   await expect(page.getByTestId('operator-maintenance-overlay')).toContainText('BAKIM');
   await page.getByTestId('operator-maintenance-finish-button').click();
-  await expect(page.getByTestId('operator-stop-overlay')).toContainText('GÖREV DURAKLATILDI');
-  await page.getByTestId('operator-stop-resume-button').click();
   await expect(page.getByTestId('operator-stop-overlay')).toHaveCount(0);
 
   await expect(page.getByLabel('Donanım Sağlık Durumu')).toContainText('Çalışma profili: SIM');

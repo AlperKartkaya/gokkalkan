@@ -49,6 +49,7 @@ install -d -o gokkalkan -g gokkalkan /opt/gokkalkan /var/lib/gokkalkan/telemetry
 install -d -o root -g gokkalkan -m 0750 /etc/gokkalkan
 if [[ "$(realpath "$REPO_ROOT")" != "/opt/gokkalkan" ]]; then
   rsync -a --delete \
+    --exclude 'perception/models/*.hef' \
     --exclude '.git/' --exclude '.venv/' --exclude 'node_modules/' \
     --exclude 'telemetry_data/' \
     "$REPO_ROOT/" /opt/gokkalkan/

@@ -27,6 +27,7 @@ DEFAULT_CONFIG = ROOT / "perception/dataset/config.json"
 DEFAULT_ASSET_MANIFEST = ROOT / "perception/assets/target_prints/manifest.json"
 DEFAULT_DROP = ROOT / "perception/dataset/captures/drop"
 DEFAULT_STORE = ROOT / "perception/dataset/captures/store"
+DEFAULT_ANNOTATED = ROOT / "perception/dataset/captures/annotated"
 DEFAULT_OUTPUT = ROOT / "perception/dataset/generated/yolo_current"
 DEFAULT_CAD_BATCH_ROOT = ROOT / "perception/synthetic/generated/render_batches"
 DEFAULT_CAD_OUTPUT = ROOT / "perception/dataset/generated/yolo_cad_research"
@@ -359,6 +360,89 @@ def add_real_captures(config_path: Path, store: Path, output: Path) -> dict[str,
     return {"records": records, "review": review, "realCount": len(records)}
 
 
+def _validate_yolo_label(path: Path, class_count: int) -> list[str]:
+    """Validate a human-reviewed Ultralytics YOLO bbox file fail-closed."""
+
+    lines: list[str] = []
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 5:
+            raise PipelineError(f"{path}:{line_number}: YOLO bbox beş alan içermelidir")
+        try:
+            class_id = int(parts[0])
+            values = [float(value) for value in parts[1:]]
+        except ValueError as exc:
+            raise PipelineError(f"{path}:{line_number}: sayısal YOLO etiketi bekleniyor") from exc
+        if not 0 <= class_id < class_count:
+            raise PipelineError(f"{path}:{line_number}: sınıf kimliği aralık dışında")
+        if not all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in values):
+            raise PipelineError(f"{path}:{line_number}: bbox değerleri 0..1 aralığında olmalıdır")
+        if values[2] <= 0 or values[3] <= 0:
+            raise PipelineError(f"{path}:{line_number}: bbox genişlik/yüksekliği pozitif olmalıdır")
+        lines.append(f"{class_id} " + " ".join(f"{value:.6f}" for value in values))
+    return lines
+
+
+def add_human_annotations(
+    config_path: Path,
+    annotated_root: Path,
+    output: Path,
+) -> dict[str, Any]:
+    """Ingest CVAT Ultralytics-YOLO exports grouped by capture session.
+
+    Layout per session is intentionally CVAT-compatible: ``session.json`` plus
+    recursively discoverable ``images/**`` and matching ``labels/**`` paths.
+    Splits are reassigned by sessionId to prevent frame leakage.
+    """
+
+    config = load_json(config_path)
+    classes = list(config["classes"])
+    records: list[dict[str, Any]] = []
+    review: list[dict[str, Any]] = []
+    if not annotated_root.exists():
+        return {"records": records, "review": review, "humanCount": 0}
+    for session_dir in sorted(path for path in annotated_root.iterdir() if path.is_dir()):
+        session_meta_path = session_dir / "session.json"
+        if not session_meta_path.is_file():
+            review.append({"source": str(session_dir), "status": "REVIEW_REQUIRED", "reason": "session-json-missing"})
+            continue
+        session_meta = load_json(session_meta_path)
+        session_id = safe_component(str(session_meta.get("sessionId", session_dir.name)), "sessionId")
+        split = stable_split(session_id, config["realSplitPercent"])
+        image_root = session_dir / "images"
+        label_root = session_dir / "labels"
+        for image_path in sorted(path for path in image_root.rglob("*") if path.suffix.lower() in IMAGE_SUFFIXES):
+            relative = image_path.relative_to(image_root)
+            label_path = (label_root / relative).with_suffix(".txt")
+            if not label_path.is_file():
+                review.append({"source": str(image_path), "status": "REVIEW_REQUIRED", "reason": "human-label-missing"})
+                continue
+            lines = _validate_yolo_label(label_path, len(classes))
+            digest = sha256(image_path)
+            stem = f"human_{hashlib.sha256((session_id + digest).encode()).hexdigest()[:20]}"
+            destination = output / "images" / split / f"{stem}{image_path.suffix.lower()}"
+            shutil.copy2(image_path, destination)
+            (output / "labels" / split / f"{stem}.txt").write_text(
+                "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8"
+            )
+            records.append({
+                "id": stem,
+                "sourceKind": "real-human-annotated",
+                "split": split,
+                "sessionId": session_id,
+                "groupId": session_id,
+                "sourceSha256": digest,
+                "annotationSha256": sha256(label_path),
+                "annotationStatus": "HUMAN_REVIEWED",
+                "annotator": session_meta.get("annotator"),
+                "reviewer": session_meta.get("reviewer"),
+            })
+    return {"records": records, "review": review, "humanCount": len(records)}
+
+
 def _bbox_for_class(np: Any, class_map: Any, class_id: int) -> tuple[int, int, int, int] | None:
     rows, columns = np.where(class_map == class_id)
     if len(rows) == 0:
@@ -634,22 +718,30 @@ def write_dataset_contract(output: Path, config: dict[str, Any], records: list[d
     yaml.extend(f"  {index}: {name}" for index, name in enumerate(classes))
     (output / "data.yaml").write_text("\n".join(yaml) + "\n", encoding="utf-8")
     counts = {split: sum(1 for item in records if item["split"] == split) for split in ("train", "val", "test")}
-    manifest = {"schemaVersion": 1, "datasetId": "GOKKALKAN-TARGETS-WORKING", "generatedAt": datetime.now(UTC).isoformat(), "status": "SYNTHETIC_SMOKE_ONLY" if not any(item["sourceKind"] == "real-capture" for item in records) else "REAL_CAPTURE_MIXED_UNVERIFIED", "trainingAuthorized": counts["val"] > 0 and counts["test"] > 0 and not review, "classes": classes, "counts": counts, "records": records, "reviewQueue": review, "inputs": inputs, "warnings": ["Sentetik veri fiziksel kabul kanıtı değildir.", "Sentetik val aynı temel maketlerden türediği için yalnız pipeline smoke-validation'dır.", "Validation/test gerçek capture session grupları oluşmadan model release adayı değildir.", "AUTO_REVIEW_REQUIRED gerçek etiketler insan incelemesi olmadan release kabulüne girmez."]}
+    has_real = any(str(item["sourceKind"]).startswith("real-") for item in records)
+    real_splits = {
+        str(item["split"])
+        for item in records
+        if str(item["sourceKind"]).startswith("real-")
+    }
+    manifest = {"schemaVersion": 1, "datasetId": "GOKKALKAN-TARGETS-WORKING", "generatedAt": datetime.now(UTC).isoformat(), "status": "SYNTHETIC_SMOKE_ONLY" if not has_real else "REAL_CAPTURE_MIXED_UNVERIFIED", "trainingAuthorized": {"val", "test"}.issubset(real_splits) and not review, "classes": classes, "counts": counts, "records": records, "reviewQueue": review, "inputs": inputs, "warnings": ["Sentetik veri fiziksel kabul kanıtı değildir.", "Sentetik val aynı temel maketlerden türediği için yalnız pipeline smoke-validation'dır.", "Validation/test gerçek capture session grupları oluşmadan model release adayı değildir.", "AUTO_REVIEW_REQUIRED gerçek etiketler insan incelemesi olmadan release kabulüne girmez."]}
     atomic_json(output / "dataset-manifest.json", manifest)
     return manifest
 
 
-def prepare(config_path: Path, asset_manifest: Path, drop: Path, store: Path, output: Path) -> dict[str, Any]:
+def prepare(config_path: Path, asset_manifest: Path, drop: Path, store: Path, annotated: Path, output: Path) -> dict[str, Any]:
     if output.exists():
         shutil.rmtree(output)
     _ensure_layout(output)
     pulled = pull_captures(drop, store, config_path)
     synthetic = generate_synthetic(config_path, asset_manifest, output)
     real = add_real_captures(config_path, store, output)
+    human = add_human_annotations(config_path, annotated, output)
     config = load_json(config_path)
-    records = synthetic["records"] + real["records"]
-    manifest = write_dataset_contract(output, config, records, real["review"], {"configSha256": sha256(config_path), "assetManifestSha256": sha256(asset_manifest), "capturePullManifestSha256": sha256(store / "pull-manifest.json")})
-    return {"pull": pulled["status"], "synthetic": synthetic["syntheticCount"], "real": real["realCount"], "review": len(real["review"]), "datasetStatus": manifest["status"], "trainingAuthorized": manifest["trainingAuthorized"], "output": str(output)}
+    records = synthetic["records"] + real["records"] + human["records"]
+    review = real["review"] + human["review"]
+    manifest = write_dataset_contract(output, config, records, review, {"configSha256": sha256(config_path), "assetManifestSha256": sha256(asset_manifest), "capturePullManifestSha256": sha256(store / "pull-manifest.json"), "humanAnnotationRoot": str(annotated.resolve())})
+    return {"pull": pulled["status"], "synthetic": synthetic["syntheticCount"], "real": real["realCount"] + human["humanCount"], "realAutoLabeled": real["realCount"], "realHumanAnnotated": human["humanCount"], "review": len(review), "datasetStatus": manifest["status"], "trainingAuthorized": manifest["trainingAuthorized"], "output": str(output)}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -663,6 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
     prep.add_argument("--asset-manifest", type=Path, default=DEFAULT_ASSET_MANIFEST)
     prep.add_argument("--drop", type=Path, default=DEFAULT_DROP)
     prep.add_argument("--store", type=Path, default=DEFAULT_STORE)
+    prep.add_argument("--annotated", type=Path, default=DEFAULT_ANNOTATED)
     prep.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     cad = sub.add_parser(
         "ingest-cad", help="BlenderProc batch'lerini araştırma YOLO verisine dönüştür"
@@ -684,7 +777,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "pull-captures":
             result = pull_captures(args.source, args.store, args.config)
         elif args.command == "prepare":
-            result = prepare(args.config, args.asset_manifest, args.drop, args.store, args.output)
+            result = prepare(args.config, args.asset_manifest, args.drop, args.store, args.annotated, args.output)
         else:
             result = ingest_cad_render_batches(
                 batch_root=args.batch_root,

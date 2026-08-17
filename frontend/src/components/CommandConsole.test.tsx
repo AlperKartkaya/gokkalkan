@@ -25,7 +25,7 @@ function renderConsole(overrides: Partial<Parameters<typeof CommandConsole>[0]> 
 describe('CommandConsole', () => {
   it('does not repeat the stop command while the mission is already locked', () => {
     renderConsole({ operatorStopActive: true });
-    expect(screen.getByRole('button', { name: 'GÖREVİ DURAKLAT' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'ACİL DURDUR' })).toBeDisabled();
   });
 
   it('ends an active maintenance session through the visible maintenance control', async () => {

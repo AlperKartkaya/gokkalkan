@@ -112,7 +112,7 @@ class MissionCoreTest(unittest.TestCase):
         state = self.core.state
 
         self.assertEqual(state.run_id, "RUN-CORE-TEST")
-        self.assertEqual(state.stage, 3)
+        self.assertEqual(state.stage, 1)
         self.assertEqual(state.round, 1)
         self.assertFalse(state.armed)
         self.assertFalse(state.maintenance_active)

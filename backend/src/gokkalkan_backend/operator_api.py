@@ -215,6 +215,9 @@ class DryRunTrack:
     fireCandidate: bool = True
     bboxPx: tuple[float, float, float, float] | None = None
     frameSizePx: tuple[int, int] | None = None
+    typeConfidence: float | None = None
+    friendFoeConfidence: float | None = None
+    confidenceSemantics: str = "LEGACY_COMBINED"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -226,6 +229,9 @@ class DryRunTrack:
             "rangeM": self.rangeM,
             "bearingDeg": self.bearingDeg,
             "confidence": self.confidence,
+            "typeConfidence": self.typeConfidence,
+            "friendFoeConfidence": self.friendFoeConfidence,
+            "confidenceSemantics": self.confidenceSemantics,
             "source": self.source,
             "updatedAt": self.updatedAt,
             "receiveMonotonicNs": self.receiveMonotonicNs,
@@ -405,8 +411,8 @@ class OperatorService:
         self._ids = count(1)
         self._owner_thread_id: int | None = None
         self._active_command_id: str | None = None
-        self.stage: Stage = 3
-        self.mode: Mode = stage_expected_mode(self.stage)
+        self.stage: Stage = 1
+        self.mode: Mode = "safe"
         self.round = 1
         self.estop = False
         self.motion_zone_ok = True
@@ -458,12 +464,7 @@ class OperatorService:
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
         self.mission_flow = MissionFlow(stage=self.stage, round=self.round)
-        self.mission_flow.start_stage(
-            self.stage,
-            self.round,
-            (track.to_dict() for track in self.tracks),
-            reason="BOOT_DEFAULT_STAGE",
-        )
+        self.mission_flow.refresh_tracks(track.to_dict() for track in self.tracks)
         self.command_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
         # Pan/tilt yazılım sınır alanları
@@ -1060,7 +1061,7 @@ class OperatorService:
     def reset_telemetry(self) -> dict[str, Any]:
         self._require_owner()
         self.mode = "safe"
-        self.stage = 3
+        self.stage = 1
         self.round = 1
         self.course_estimator.reset()
         self.tracks = self._tracks_for_stage(self.stage, self.round)
@@ -1330,12 +1331,17 @@ class OperatorService:
         self.maintenance_used_sec += elapsed
         self._maintenance_started_at = None
         self.mission_flow.end_maintenance("OPERATOR_MAINTENANCE_END")
-        self.mode = "safe"
-        self._mission_mode_before_pause = getattr(
+        restored_mode = getattr(
             self,
             "_maintenance_previous_mode",
             stage_expected_mode(self.stage),
         )
+        self.mode = "safe" if self.mission_flow.status == "IDLE" else (
+            restored_mode
+            if restored_mode in {stage_expected_mode(self.stage), "engagement"}
+            else stage_expected_mode(self.stage)
+        )
+        self._resume_mission_timer()
         self._append_event("maintenance", "MAINTENANCE_END",
                            f"Bakım sona erdi ({elapsed:.1f} sn); görev durumu backend tarafından geri yüklendi.",
                            {"elapsedSec": elapsed, "totalUsedSec": self.maintenance_used_sec,
@@ -1752,6 +1758,9 @@ class OperatorService:
                 bool,
                 tuple[float, float, float, float] | None,
                 tuple[int, int] | None,
+                float | None,
+                float | None,
+                str,
             ]
         ] = []
         for raw in tracks_data:
@@ -1772,12 +1781,37 @@ class OperatorService:
                 range_m = float(raw.get("rangeM", 0.0))
                 bearing_deg = float(raw.get("bearingDeg", 0.0))
                 confidence = float(raw.get("confidence", 0.5))
+                type_confidence = (
+                    None
+                    if raw.get("typeConfidence") is None
+                    else float(raw["typeConfidence"])
+                )
+                friend_foe_confidence = (
+                    None
+                    if raw.get("friendFoeConfidence") is None
+                    else float(raw["friendFoeConfidence"])
+                )
+                confidence_semantics = str(
+                    raw.get("confidenceSemantics", "LEGACY_COMBINED")
+                )
                 if not all(
                     isfinite(value)
-                    for value in (range_m, bearing_deg, confidence)
+                    for value in (
+                        range_m,
+                        bearing_deg,
+                        confidence,
+                        *(
+                            value
+                            for value in (type_confidence, friend_foe_confidence)
+                            if value is not None
+                        ),
+                    )
                 ):
-                    raise ValueError("rangeM, bearingDeg ve confidence sonlu olmalıdır")
-                if range_m < 0 or not 0 <= confidence <= 1:
+                    raise ValueError("track güven ve geometri alanları sonlu olmalıdır")
+                if range_m < 0 or any(
+                    value is not None and not 0 <= value <= 1
+                    for value in (confidence, type_confidence, friend_foe_confidence)
+                ):
                     raise ValueError(
                         "rangeM negatif olamaz; confidence 0-1 arasında olmalıdır"
                     )
@@ -1828,6 +1862,9 @@ class OperatorService:
                         fire_candidate,
                         bbox_px,
                         frame_size_px,
+                        type_confidence,
+                        friend_foe_confidence,
+                        confidence_semantics,
                     )
                 )
             except (TypeError, ValueError) as exc:
@@ -1853,6 +1890,9 @@ class OperatorService:
             fire_candidate,
             bbox_px,
             frame_size_px,
+            type_confidence,
+            friend_foe_confidence,
+            confidence_semantics,
         ) in normalized:
             course_state = self.course_estimator.update(
                 track_id,
@@ -1882,6 +1922,9 @@ class OperatorService:
                 fireCandidate=fire_candidate,
                 bboxPx=bbox_px,
                 frameSizePx=frame_size_px,
+                typeConfidence=type_confidence,
+                friendFoeConfidence=friend_foe_confidence,
+                confidenceSemantics=confidence_semantics,
             )
             updated.append(track)
 

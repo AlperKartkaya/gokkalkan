@@ -356,7 +356,7 @@ export async function sendMaintenanceRequest(baseUrl: string): Promise<OperatorS
   return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance`, {});
 }
 
-/** POST /maintenance/end — Bakımı bitir; görev PAUSED kalır ve açık resume ister. */
+/** POST /maintenance/end — Bakımı bitir; önceki aktif görev ve timer backend tarafından sürdürülür. */
 export async function sendMaintenanceEnd(baseUrl: string): Promise<OperatorStateCommandResponse> {
   return requestJson<OperatorStateCommandResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/maintenance/end`, {});
 }

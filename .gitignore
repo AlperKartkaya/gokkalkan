@@ -70,6 +70,7 @@ recordings/
 perception/dataset/captures/drop/*/
 perception/dataset/captures/store/*
 !perception/dataset/captures/store/.gitkeep
+perception/dataset/captures/annotated/*/
 perception/dataset/generated/*
 !perception/dataset/generated/.gitkeep
 perception/dataset/model_runs/*

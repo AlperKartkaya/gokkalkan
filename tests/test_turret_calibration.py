@@ -112,8 +112,8 @@ def test_operator_applies_active_correction_only_after_safety_accepts() -> None:
         tilt=AxisCalibration(gain=1, offset_deg=0, sample_count=4),
     )
     service = OperatorService(hardware=hardware, turret_calibration=calibration)
-    service.stage = 1
-    service.mode = "manual"
+    stage = service.handle_stage_request({"stage": 1, "round": 1, "reason": "calibration-test"})
+    assert stage["result"]["accepted"] is True
     response = service.handle_manual_aim(
         {
             "panDeltaDeg": 10,

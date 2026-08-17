@@ -68,15 +68,24 @@ export function TrackList({
                       </div>
                       
                       <div className="w-full flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[#5a7a8a] text-[8px] uppercase tracking-widest font-bold">Güven</span>
+                        <span className="text-[#5a7a8a] text-[8px] uppercase tracking-widest font-bold">Tür</span>
                         <div className="flex-1 bg-white/10 h-1.5 rounded-full overflow-hidden flex">
                           <div 
-                            className={`h-full transition-all duration-500 ${track.confidence > 0.8 ? 'bg-[#33e68c] shadow-[0_0_8px_#33e68c]' : 'bg-[#ffbb42] shadow-[0_0_8px_#ffbb42]'}`} 
-                            style={{ width: `${Math.round(track.confidence * 100)}%` }} 
+                            className={`h-full transition-all duration-500 ${(track.typeConfidence ?? track.confidence) > 0.8 ? 'bg-[#33e68c] shadow-[0_0_8px_#33e68c]' : 'bg-[#ffbb42] shadow-[0_0_8px_#ffbb42]'}`}
+                            style={{ width: `${Math.round((track.typeConfidence ?? track.confidence) * 100)}%` }}
                           />
                         </div>
-                        <span className="text-[#c8d8e2] text-[9px] font-mono">{Math.round(track.confidence * 100)}%</span>
+                        <span className="text-[#c8d8e2] text-[9px] font-mono" data-testid={`operator-track-type-confidence-${track.trackId}`}>{Math.round((track.typeConfidence ?? track.confidence) * 100)}%</span>
                       </div>
+                      {track.friendFoeConfidence != null && (
+                        <div className="w-full flex items-center gap-1.5">
+                          <span className="text-[#5a7a8a] text-[8px] uppercase tracking-widest font-bold">Renk</span>
+                          <div className="flex-1 bg-white/10 h-1.5 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#25d8ff] transition-all duration-500" style={{ width: `${Math.round(track.friendFoeConfidence * 100)}%` }} />
+                          </div>
+                          <span className="text-[#c8d8e2] text-[9px] font-mono" data-testid={`operator-track-color-confidence-${track.trackId}`}>{Math.round(track.friendFoeConfidence * 100)}%</span>
+                        </div>
+                      )}
                     </div>
                     
                     {track.courseState && (

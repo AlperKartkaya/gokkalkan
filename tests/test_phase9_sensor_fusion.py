@@ -100,6 +100,7 @@ def test_stage3_does_not_classify_red_balloon_as_enemy_target() -> None:
 
 
 def test_camera_frame_envelope_exposes_both_clocks_and_mock_is_not_live_healthy() -> None:
+    pytest.importorskip("numpy")
     camera = CameraNode(width=8, height=8, fps=100, backend="mock")
     camera.start()
     try:

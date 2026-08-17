@@ -379,13 +379,8 @@ class Phase8RealHttpFlowTest(unittest.TestCase):
         )
         self.assertEqual(
             maintenance_end["state"]["missionFlow"]["status"],
-            "PAUSED",
+            "ROUND_COMPLETE",
         )
-        maintenance_resume = self.post(
-            "/mission/resume",
-            {"reason": "E2E_MAINTENANCE_RESUME"},
-        )
-        self.assertTrue(maintenance_resume["accepted"])
 
         stopped = self.post("/mission/stop", {"reason": "E2E_STOP"})
         self.assertTrue(stopped["accepted"])

@@ -133,6 +133,14 @@ class DetectionTrackProjector:
             "rangeM": 0.0,
             "bearingDeg": round(bearing_deg, 2),
             "confidence": round(detection.confidence, 3),
+            # The deployed detector uses joint presentation classes
+            # (target type + colour/IFF). Until a calibrated multi-head model
+            # exists, both UI facets truthfully carry the same joint score.
+            "typeConfidence": round(detection.confidence, 3),
+            "friendFoeConfidence": (
+                round(detection.confidence, 3) if friend_foe != "Bilinmeyen" else None
+            ),
+            "confidenceSemantics": "JOINT_PRESENTATION_CLASS",
             "bboxPx": [
                 center_x * scale_x,
                 center_y * scale_y,

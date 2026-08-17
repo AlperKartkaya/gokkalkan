@@ -54,9 +54,9 @@ export function CommandConsole({
               data-testid="operator-stop-button"
               disabled={apiBusy || operatorStopActive}
               onClick={onTriggerOperatorStop}
-              title={operatorStopActive ? "Görev duraklatıldı. Devam etmek için komut gönderin." : "Görevi duraklat (Hazır)"}
+              title={operatorStopActive ? "Acil Durdur kilidi aktif." : "Yazılım Acil Durdur isteği gönder"}
             >
-              GÖREVİ DURAKLAT
+              ACİL DURDUR
             </button>
           </div>
 

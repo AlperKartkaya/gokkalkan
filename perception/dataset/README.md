@@ -50,6 +50,13 @@ Pull işlemi kaynak fotoğrafları silmez. Aynı dosya tekrar geldiğinde SHA-25
 nedeniyle çoğaltılmaz. Split görüntü bazında değil `sessionId` bazında yapılır;
 aynı çekim oturumu train ve test'e sızamaz.
 
+Takım arkadaşlarının CVAT ile insan onaylı etiketlediği export'lar
+`captures/annotated/<sessionId>/` altına açılır. Ayrıntılı görev paylaşımı,
+sınıf sırası ve export biçimi için
+[`docs/FIZIKSEL_VERI_ETIKETLEME_MODEL_VE_OPERATOR_AKISI.md`](../../docs/FIZIKSEL_VERI_ETIKETLEME_MODEL_VE_OPERATOR_AKISI.md)
+belgesine bakın. Pipeline `Ultralytics YOLO Detection 1.0` etiketlerini
+doğrular ve aynı `sessionId` grubunu tek split'te tutar.
+
 ## Otomatik ön etiketleme
 
 Klasör adı sunum sınıfını verir. OpenCV yayımlanan kırmızı/camgöbeği renginden

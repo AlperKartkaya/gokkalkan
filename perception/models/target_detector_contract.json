@@ -6,6 +6,13 @@
   "researchArchitecture": "YOLOv8s",
   "fallbackArchitecture": "YOLOv8n",
   "deploymentTarget": "Raspberry Pi AI HAT+ 26 TOPS / Hailo-8 HEF",
+  "runtimeModelTopology": {
+    "modelCount": 1,
+    "weightsSharedBy": ["SEARCH_SAHI_TILE_768", "TRACK_SQUARE_ROI"],
+    "searchDifference": "Aynı model sekiz örtüşmeli SAHI tile üzerinde batch çalışır.",
+    "trackDifference": "Aynı model hedef merkezli tek kare ROI üzerinde çalışır.",
+    "futureSplitPolicy": "Yalnız real-only ölçümler tek modelin iki görünüm ailesinde kabul kapılarını birlikte sağlayamadığını gösterirse iki modele ayrılır."
+  },
   "note": "Sentetik CAD render pipeline hazır (BlenderProc, 6930+ poz). Araştırma amaçlı HEF üretilebilir; gerçek Camera Module 3 verisiyle doğrulama tamamlanmadan canlı kullanım veya atış yetkisi verilmez. Model ağırlıkları (.pt/.onnx/.hef) bu repoya eklenmez; konumları evidence/ içinde hash ile kayıtlanır.",
   "input": {
     "colorOrder": "RGB",

@@ -1,53 +1,48 @@
-import type { CSSProperties } from 'react';
 import type { Stage } from '../types';
+
+type MissionStatus = 'IDLE' | 'ACTIVE' | 'PAUSED' | 'MAINTENANCE' | 'ESTOP_LATCHED' | 'ROUND_COMPLETE';
 
 export function StageRoundSelector({
   displayStage,
   displayRound,
+  missionStatus,
   apiBusy,
-  onRecordStage,
-  stageRoundLimit,
+  onStartOrAdvance,
 }: {
   displayStage: Stage;
   displayRound: number;
+  missionStatus: MissionStatus;
   apiBusy: boolean;
-  onRecordStage: (stage: Stage, round: number) => void;
-  stageRoundLimit: (stage: Stage) => number;
+  onStartOrAdvance: () => void;
 }) {
+  const canStart = missionStatus === 'IDLE' || missionStatus === 'ROUND_COMPLETE';
+  const actionLabel = missionStatus === 'IDLE'
+    ? 'AŞAMA 1 · TUR 1 BAŞLAT'
+    : missionStatus === 'ROUND_COMPLETE'
+      ? 'SONRAKİ TUR / AŞAMAYI BAŞLAT'
+      : null;
+
   return (
-    <div className="flex-1 flex flex-col gap-2 p-3 min-w-0" data-testid="operator-stage-control">
-      <div className="flex justify-between items-center">
-        <p className="m-0 text-xs font-black uppercase tracking-[.16em] text-[#25d8ff]">Görev Aşama / Tur</p>
-      </div>
-      <div className="flex gap-2 min-w-0">
-        <div className="flex gap-1 border-r border-[#48a8ff]/20 pr-2 mr-1">
-          {([1, 2, 3] as const).map((item) => (
-            <button
-              key={`stage-${item}`}
-              className={`rounded-lg border px-3 py-1.5 text-xs whitespace-nowrap font-black ${displayStage === item ? 'border-[#33e68c]/40 bg-[#33e68c]/14 text-[#ccffe2]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
-              disabled={apiBusy}
-              onClick={() => onRecordStage(item, 1)}
-            >
-              Aşama {item}
-            </button>
-          ))}
+    <div className="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="operator-stage-control">
+      <div>
+        <p className="m-0 text-[10px] font-black uppercase tracking-[.16em] text-[#25d8ff]">Backend görev sırası</p>
+        <div className="mt-1 flex items-center gap-2">
+          <strong className="rounded border border-[#33e68c]/35 bg-[#33e68c]/12 px-3 py-1 text-sm text-[#ccffe2]">Aşama {displayStage}</strong>
+          <strong className="rounded border border-[#ffbb42]/35 bg-[#ffbb42]/12 px-3 py-1 text-sm text-[#ffe4ad]">Tur {displayRound}</strong>
+          <span className="text-xs font-bold text-[#91a6b7]" data-testid="operator-mission-status">{missionStatus}</span>
         </div>
-        <div
-          className="operator-round-grid overflow-x-auto pb-1 min-w-0"
-          style={{ '--round-count': stageRoundLimit(displayStage) } as CSSProperties}
+      </div>
+      {actionLabel && (
+        <button
+          type="button"
+          className="min-h-11 rounded-lg border border-[#33e68c]/45 bg-[#33e68c]/16 px-4 text-xs font-black tracking-wide text-[#ccffe2] hover:bg-[#33e68c]/24 disabled:opacity-45"
+          data-testid="operator-mission-start-button"
+          disabled={apiBusy || !canStart}
+          onClick={onStartOrAdvance}
         >
-          {Array.from({ length: stageRoundLimit(displayStage) }, (_, index) => index + 1).map((item) => (
-            <button
-              key={`round-${item}`}
-              className={`rounded-full border px-2.5 py-1 text-[11px] whitespace-nowrap font-black ${displayRound === item ? 'border-[#ffbb42]/40 bg-[#ffbb42]/14 text-[#ffe4ad]' : 'border-white/10 bg-white/[.06] text-[#c8d8e2]'}`}
-              disabled={apiBusy}
-              onClick={() => onRecordStage(displayStage, item)}
-            >
-              Tur {item}
-            </button>
-          ))}
-        </div>
-      </div>
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

@@ -64,6 +64,9 @@ export interface OperatorTrackState {
   rangeM: number;
   bearingDeg: number;
   confidence: number;
+  typeConfidence?: number | null;
+  friendFoeConfidence?: number | null;
+  confidenceSemantics?: 'JOINT_PRESENTATION_CLASS' | 'HSV_TRACK_STABILITY' | 'LEGACY_COMBINED' | string;
   source: 'perception' | 'radar-lidar' | 'fused' | 'dry-run';
   updatedAt: string;
   bboxPx?: [number, number, number, number] | null;
