@@ -38,6 +38,8 @@ trap 'rm -rf "$WORKDIR"' EXIT
     --ckpt "$ONNX" \
     --calib-path "$CALIBRATION" \
     --yaml "$YAML" \
+    --start-node-names images \
+    --end-node-names /model.22/cv2.0/cv2.0.2/Conv /model.22/cv3.0/cv3.0.2/Conv /model.22/cv2.1/cv2.1.2/Conv /model.22/cv3.1/cv3.1.2/Conv /model.22/cv2.2/cv2.2.2/Conv /model.22/cv3.2/cv3.2.2/Conv \
     --classes 7 \
     --hw-arch hailo8
 )
