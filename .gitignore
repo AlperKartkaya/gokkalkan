@@ -112,3 +112,7 @@ reports/assets/
 .pytest_cache/
 # Local heavyweight development tools (for example Blender).
 .tools/
+
+# Local Hailo development environments and model zoo clones.
+hailo_env/
+hailo_model_zoo/
