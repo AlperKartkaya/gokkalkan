@@ -3,9 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ONNX="${1:-$ROOT/artifacts/hailo/target_detector.onnx}"
-CALIBRATION="${2:-$ROOT/perception/dataset/generated/yolo_cad_research/images/train}"
-OUTPUT="${3:-$ROOT/artifacts/hailo/target_detector.hef}"
+ONNX="$(realpath "${1:-$ROOT/artifacts/hailo/target_detector.onnx}")"
+CALIBRATION="$(realpath "${2:-$ROOT/perception/dataset/generated/yolo_cad_research/images/train}")"
+OUTPUT="$(realpath -m "${3:-$ROOT/artifacts/hailo/target_detector.hef}")"
 
 command -v hailomz >/dev/null || {
   echo "hailomz bulunamadı. Bu komut Pi'de değil, Hailo Dataflow Compiler kurulu x86_64 Linux makinede çalışır." >&2
