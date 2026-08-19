@@ -98,6 +98,7 @@ class SensorSettings:
     lidar_firmware_version: str
     lidar_calibration_path: Path
     lidar_mount_revision: str
+    lidar_input_enabled: bool
     classification_min_confidence: float
 
 
@@ -388,6 +389,7 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
                 str(sensors.get("lidar_calibration_path", "config/calibration/tfa50_l.toml"))
             ),
             lidar_mount_revision=str(sensors.get("lidar_mount_revision", "UNVERIFIED")),
+            lidar_input_enabled=bool(sensors.get("lidar_input_enabled", False)),
             classification_min_confidence=_required(
                 sensors, "classification_min_confidence", float
             ),

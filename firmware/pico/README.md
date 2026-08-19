@@ -34,12 +34,18 @@ seviyeler, izolasyon ve boot/reset ölçümleri tamamlanmadan LIVE fiziksel çı
 kabulü verilmez. İmalat ayrıntıları için
 `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` dosyasına bakın.
 
-## Ayrı tek-motor tezgâh testi
+## Ayrı çift-motor tezgâh testi
 
-Üretim pin haritasını etkinleştirmeden bir DM542 kanalını sınayan ayrı
-`gokkalkan_motor_test` hedefi vardır. Varsayılan pinler `GP2=STEP`, `GP3=DIR`,
-`GP4=ENA`'dır. Açılışta hareket yoktur; USB'den `ARM` ve sınırlı `MOVE`
-gelmelidir. Komut başına sınır 2000 adım/1000 Hz, ARM süresi 10 saniyedir.
+Üretim pin haritasını etkinleştirmeden iki DM542 kanalını sınayan ayrı
+`gokkalkan_motor_test` hedefi vardır. Ortak-anot bağlantıda sürücü 1 için
+`GP7=PUL-`, `GP6=DIR-`, `GP5=ENA-`; sürücü 2 için `GP4=PUL-`, `GP3=DIR-`,
+`GP2=ENA-` kullanılır. Her sürücünün `PUL+`, `DIR+` ve `ENA+` ucu 5 V ortak
+anot hattına bağlı olmalıdır. Pico GPIO'sunu 5 V sürücü girişine doğrudan
+bağlamayın; her `*-` hattı için seviyesi doğrulanmış açık-kollektör/izole
+arayüz gerekir. Açılışta hareket yoktur; USB'den `ARM` ve sınırlı `MOVE`
+gelmelidir. Komut başına sınır 64000 adım/4000 Hz, ARM süresi 120 saniyedir.
+`MOVE 0` iki sürücüyü, `MOVE 1` yalnız sürücü 1'i, `MOVE 2` yalnız sürücü 2'yi
+çalıştırır.
 
 ```sh
 npm run pico:motor-test:deploy -- --host gokkalkan@gokkalkan.local \
@@ -50,7 +56,7 @@ Sonraki yüklemelerde `--prepare` çıkarılır. İlk düşük hızlı test:
 
 ```sh
 ssh -i ~/.ssh/gokkalkan_pi gokkalkan@gokkalkan.local \
-  'python3 /tmp/gokkalkan-pico-motor-test/scripts/pico_motor_test.py --direction CW --steps 200 --hz 100'
+  'python3 /tmp/gokkalkan-pico-motor-test/scripts/pico_motor_test.py --driver 1 --direction CW --steps 200 --hz 100'
 ```
 
 Bu hedef airsoft bağlantısı sökülmüş ve motor mekanik olarak emniyete alınmış

@@ -1260,7 +1260,10 @@ function OperatorWorkspace({
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const queryApiBaseUrl = queryParams.get('operatorApi')?.trim() ?? '';
   const envApiBaseUrl = (import.meta.env.VITE_GOKKALKAN_OPERATOR_API_BASE as string | undefined)?.trim() ?? '';
-  const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl;
+  const defaultApiBaseUrl = typeof window !== 'undefined' && window.location.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:8088`
+    : 'http://127.0.0.1:8088';
+  const apiBaseUrl = queryApiBaseUrl || envApiBaseUrl || defaultApiBaseUrl;
 
   const backendState = useOperatorBackendState(apiBaseUrl);
 

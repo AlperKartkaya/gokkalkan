@@ -10,6 +10,7 @@ from gokkalkan_backend.tfa50_l import (
     parse_measurement_frame,
     parse_identity_response,
 )
+from gokkalkan_backend.lidar_adapter import probe_tfa50l_uart
 
 pytestmark = pytest.mark.protocol
 
@@ -53,6 +54,33 @@ class TFA50LProtocolTest(unittest.TestCase):
         self.assertEqual([item.distance_cm for item in measurements], [4354, 65535])
         self.assertEqual(decoder.rejected_frame_count, 1)
         self.assertGreaterEqual(decoder.discarded_byte_count, 2)
+
+    def test_receive_only_probe_decodes_frames_without_writing_commands(self) -> None:
+        class ReceiveOnlySerial:
+            def __init__(self) -> None:
+                self.chunks = [bytes.fromhex("5C 02 11 EC"), b""]
+                self.closed = False
+
+            def read(self, _size: int = 64) -> bytes:
+                return self.chunks.pop(0) if self.chunks else b""
+
+            def close(self) -> None:
+                self.closed = True
+
+        serial = ReceiveOnlySerial()
+        ticks = iter((0.0, 0.0, 0.02, 0.2))
+        result = probe_tfa50l_uart(
+            "/dev/fake",
+            timeout_sec=0.1,
+            serial_factory=lambda **_kwargs: serial,
+            monotonic=lambda: next(ticks),
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mode"], "RECEIVE_ONLY")
+        self.assertEqual(result["validFrameCount"], 1)
+        self.assertEqual(result["lastMeasurement"]["distanceM"], 43.54)
+        self.assertTrue(serial.closed)
 
     def test_identity_and_frequency_control_frames_follow_datasheet(self) -> None:
         self.assertEqual(

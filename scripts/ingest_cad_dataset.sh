@@ -7,9 +7,12 @@ cd "$ROOT"
 BATCH_ROOT="${BATCH_ROOT:-perception/synthetic/generated/render_batches/cad_pilot_378}"
 OUTPUT="${OUTPUT:-perception/dataset/generated/yolo_cad_research}"
 WORKERS="${WORKERS:-0}"
+VIEWS="${VIEWS:-all}"
 
 exec .venv-synthetic/bin/python perception/tools/dataset_pipeline.py ingest-cad \
   --batch-root "$BATCH_ROOT" \
   --output "$OUTPUT" \
   --workers "$WORKERS" \
+  --views "$VIEWS" \
   "$@"
+

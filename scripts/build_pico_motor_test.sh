@@ -8,11 +8,9 @@ if [[ ! -f "$SDK_PATH/external/pico_sdk_import.cmake" ]]; then
   exit 2
 fi
 export PICO_SDK_PATH="$SDK_PATH"
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 cmake -S "$ROOT/firmware/pico" -B "$BUILD_DIR" -G Ninja \
-  -DGOKKALKAN_BUILD_MOTOR_TEST=ON \
-  -DGOKKALKAN_TEST_STEP_PIN="${GOKKALKAN_TEST_STEP_PIN:-2}" \
-  -DGOKKALKAN_TEST_DIR_PIN="${GOKKALKAN_TEST_DIR_PIN:-3}" \
-  -DGOKKALKAN_TEST_ENABLE_PIN="${GOKKALKAN_TEST_ENABLE_PIN:-4}" \
-  -DGOKKALKAN_TEST_SIGNAL_ACTIVE_HIGH="${GOKKALKAN_TEST_SIGNAL_ACTIVE_HIGH:-1}"
+  -DGOKKALKAN_BUILD_MOTOR_TEST=ON
 cmake --build "$BUILD_DIR" --target gokkalkan_motor_test
 echo "UF2 hazır: $BUILD_DIR/gokkalkan_motor_test.uf2"

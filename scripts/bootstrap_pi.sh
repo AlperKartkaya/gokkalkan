@@ -102,6 +102,10 @@ fi
 
 install -o root -g gokkalkan -m 0640 \
   /opt/gokkalkan/config/runtime/pi-sim.toml /etc/gokkalkan/runtime.toml
+install -d -o root -g gokkalkan -m 0750 /etc/gokkalkan/calibration
+cp -a /opt/gokkalkan/config/calibration/. /etc/gokkalkan/calibration/
+chown -R root:gokkalkan /etc/gokkalkan/calibration
+chmod -R u=rwX,g=rX,o= /etc/gokkalkan/calibration
 install -o root -g root -m 0644 /opt/gokkalkan/deploy/systemd/*.service /etc/systemd/system/
 install -o root -g root -m 0644 /opt/gokkalkan/deploy/systemd/gokkalkan.target /etc/systemd/system/
 

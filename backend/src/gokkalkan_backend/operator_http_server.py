@@ -566,7 +566,7 @@ def main(argv: list[str] | None = None) -> None:
         core=core,
     )
     sensor_runtime: TFA50LSensorRuntime | None = None
-    if runtime_mode == "LIVE":
+    if settings.sensors.lidar_input_enabled:
         try:
             sensor_runtime = build_tfa50l_sensor_runtime(
                 core,

@@ -16,9 +16,12 @@ export default function AIPanel({
   
   const cameraStreamUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
+    const defaultStream = typeof window !== 'undefined' && window.location.hostname
+      ? `${window.location.protocol}//${window.location.hostname}:8090/camera/live.mjpg`
+      : 'http://127.0.0.1:8090/camera/live.mjpg';
     return params.get('cameraStream')?.trim()
       || (import.meta.env.VITE_GOKKALKAN_CAMERA_STREAM_URL as string | undefined)?.trim()
-      || 'http://127.0.0.1:8090/camera/live.mjpg';
+      || defaultStream;
   }, []);
 
   const getTargetColor = (friendFoe?: string, type?: string) => {

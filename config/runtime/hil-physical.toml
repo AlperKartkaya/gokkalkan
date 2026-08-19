@@ -45,6 +45,7 @@ lidar_serial_number = "UNVERIFIED"
 lidar_firmware_version = "UNVERIFIED"
 lidar_calibration_path = "config/calibration/tfa50_l.toml"
 lidar_mount_revision = "BRIDGE-UNVERIFIED"
+lidar_input_enabled = false
 
 [live]
 interlock_provider = ""

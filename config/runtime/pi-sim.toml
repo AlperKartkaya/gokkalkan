@@ -4,7 +4,11 @@ profile = "SIM"
 [api]
 host = "127.0.0.1"
 port = 8088
-allowed_origins = ["http://127.0.0.1:4173"]
+allowed_origins = [
+  "http://127.0.0.1:4173",
+  "http://localhost:4173",
+  "http://[::1]:4173",
+]
 
 [mcu]
 transport = "usb_serial"
@@ -44,13 +48,18 @@ lidar_stale_ms = 300
 lidar_min_m = 0.2
 lidar_max_m = 50.0
 classification_min_confidence = 0.40
-lidar_port = "/dev/ttyUSB0"
+# Raspberry Pi 5 GPIO header pin 8/10 requires `dtoverlay=uart0-pi5` at boot.
+# `/dev/serial0` is the Pi 5 debug UART (ttyAMA10), not this header UART.
+lidar_port = "/dev/ttyAMA0"
 lidar_baud_rate = 460800
 lidar_sample_hz = 1000
 lidar_serial_number = "UNVERIFIED"
 lidar_firmware_version = "UNVERIFIED"
 lidar_calibration_path = "config/calibration/tfa50_l.toml"
 lidar_mount_revision = "BRIDGE-UNVERIFIED"
+# Receive-only TFA50-L probe and identity/calibration approval are required
+# before this can be set to true in /etc/gokkalkan/runtime.toml.
+lidar_input_enabled = false
 
 [live]
 interlock_provider = ""

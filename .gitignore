@@ -43,6 +43,7 @@ CMakeFiles/
 *.hef          
 *.pt           
 *.onnx         
+*.onnx.zip
 *.weights
 
 # ==========================================

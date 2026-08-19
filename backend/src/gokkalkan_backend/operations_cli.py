@@ -133,7 +133,24 @@ def lidar_main(argv: list[str]) -> int:
     calibrate = sub.add_parser("calibrate")
     calibrate.add_argument("observations")
     calibrate.add_argument("--output", required=True)
+    probe = sub.add_parser(
+        "probe",
+        help="TFA50-L UART akışını komut göndermeden salt-okunur doğrula",
+    )
+    probe.add_argument("--port", required=True)
+    probe.add_argument("--baud-rate", type=int, default=460_800)
+    probe.add_argument("--timeout-sec", type=float, default=2.0)
     args = parser.parse_args(argv)
+    if args.operation == "probe":
+        from .lidar_adapter import probe_tfa50l_uart
+
+        result = probe_tfa50l_uart(
+            args.port,
+            baud_rate=args.baud_rate,
+            timeout_sec=args.timeout_sec,
+        )
+        _print(result)
+        return 0 if result["ok"] else 1
     result = evaluate_lidar_file(args.observations, args.output)
     _print(result)
     return 0 if result["physicalGatePassed"] else 1

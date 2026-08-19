@@ -157,3 +157,50 @@ def test_cad_ingest_rejects_legacy_low_resolution_render(tmp_path: Path) -> None
             output=tmp_path / "dataset",
             config_path=config,
         )
+
+
+def test_cad_ingest_centered_only_produces_only_track_square_views(tmp_path: Path) -> None:
+    batch_root = tmp_path / "batches"
+    write_batch(batch_root)
+    config = tmp_path / "config.json"
+    write_config(config)
+    output = tmp_path / "dataset"
+
+    result = ingest_cad_render_batches(
+        batch_root=batch_root,
+        output=output,
+        config_path=config,
+        views="centered",
+    )
+
+    manifest = json.loads(
+        (output / "dataset-manifest.json").read_text(encoding="utf-8")
+    )
+    assert result["viewsMode"] == "centered"
+    assert {item["viewFamily"] for item in manifest["records"]} == {"TRACK_SQUARE_ROI"}
+    assert all("search_" not in item["id"] for item in manifest["records"])
+    assert all("track_" in item["id"] for item in manifest["records"])
+    assert all(item["targetVisible"] for item in manifest["records"])
+
+
+def test_cad_ingest_search_only_produces_only_sahi_views(tmp_path: Path) -> None:
+    batch_root = tmp_path / "batches"
+    write_batch(batch_root)
+    config = tmp_path / "config.json"
+    write_config(config)
+    output = tmp_path / "dataset"
+
+    result = ingest_cad_render_batches(
+        batch_root=batch_root,
+        output=output,
+        config_path=config,
+        views="search-only",
+    )
+
+    manifest = json.loads(
+        (output / "dataset-manifest.json").read_text(encoding="utf-8")
+    )
+    assert result["viewsMode"] == "search-only"
+    assert {item["viewFamily"] for item in manifest["records"]} == {"SEARCH_SAHI_TILE_768"}
+    assert all("track_" not in item["id"] for item in manifest["records"])
+

@@ -25,6 +25,25 @@ class RuntimeConfigTest(unittest.TestCase):
                 self.assertEqual(settings.profile, profile)
                 self.assertEqual(settings.schema_version, 1)
 
+    def test_pi_sim_allows_only_local_operator_origins(self) -> None:
+        settings = load_runtime_config("config/runtime/pi-sim.toml")
+
+        self.assertEqual(
+            settings.api.allowed_origins,
+            (
+                "http://127.0.0.1:4173",
+                "http://localhost:4173",
+                "http://[::1]:4173",
+            ),
+        )
+        self.assertEqual(settings.sensors.lidar_port, "/dev/ttyAMA0")
+        self.assertFalse(settings.sensors.lidar_input_enabled)
+
+    def test_live_profile_enables_tfa50l_input_runtime(self) -> None:
+        settings = load_runtime_config("config/runtime/live.toml")
+
+        self.assertTrue(settings.sensors.lidar_input_enabled)
+
     def test_runtime_config_maps_limits_and_timeouts_to_launch(self) -> None:
         settings = load_runtime_config("config/runtime/hil.toml")
 

@@ -23,8 +23,8 @@ class_agnostic = false
 ambiguity_ios_threshold = 0.50
 
 [temporal]
-history_sweeps = 3
-required_hits = 2
+history_sweeps = 1
+required_hits = 1
 spatial_iou_threshold = 0.30
 
 [track]
@@ -33,5 +33,4 @@ first_recovery_roi_size_px = 960
 second_recovery_roi_size_px = 1152
 return_to_search_after_misses = 3
 confirm_frames = 3
-minimum_confidence = 0.65
-
+minimum_confidence = 0.10

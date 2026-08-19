@@ -469,11 +469,11 @@ def _deterministic_subset(record_id: str, roi_size: int) -> bool:
 
 
 def _ingest_cad_one(
-    task: tuple[Path, Path, dict[str, Any], list[str]],
+    task: tuple[Path, Path, dict[str, Any], list[str], str],
 ) -> list[dict[str, Any]]:
     """Convert one high-resolution CAD frame into runtime-equivalent views."""
 
-    hdf5_path, output, record, classes = task
+    hdf5_path, output, record, classes, views_mode = task
     try:
         import cv2  # type: ignore
         import h5py  # type: ignore
@@ -514,34 +514,38 @@ def _ingest_cad_one(
     balloon_mask = (class_map == 7).astype(np.uint8) * 255
     union_mask = cv2.bitwise_or(target_mask, balloon_mask)
     views: list[dict[str, Any]] = []
-    search_views = build_sahi_search_views(
-        rgb,
-        union_mask,
-        slice_size=(SEARCH_TILE_SIZE, SEARCH_TILE_SIZE),
-        overlap=SEARCH_TILE_OVERLAP,
-    )
-    positive_search = [
-        view for view in search_views if np.count_nonzero(view["modelMask"]) > 0
-    ]
-    easy_negatives = [
-        view for view in search_views if np.count_nonzero(view["modelMask"]) == 0
-    ][:2]
-    views.extend(positive_search)
-    views.extend(easy_negatives)
-    target_center = (
-        target_bbox[0] + target_bbox[2] / 2,
-        target_bbox[1] + target_bbox[3] / 2,
-    )
-    for roi_size in TRACK_ROI_SIZES:
-        if roi_size == 768 or _deterministic_subset(str(record["recordId"]), roi_size):
-            views.append(
-                build_track_square_view(
-                    rgb,
-                    union_mask,
-                    roi_size_px=roi_size,
-                    predicted_center_px=target_center,
+
+    if views_mode in ("all", "search-only"):
+        search_views = build_sahi_search_views(
+            rgb,
+            union_mask,
+            slice_size=(SEARCH_TILE_SIZE, SEARCH_TILE_SIZE),
+            overlap=SEARCH_TILE_OVERLAP,
+        )
+        positive_search = [
+            view for view in search_views if np.count_nonzero(view["modelMask"]) > 0
+        ]
+        easy_negatives = [
+            view for view in search_views if np.count_nonzero(view["modelMask"]) == 0
+        ][:2]
+        views.extend(positive_search)
+        views.extend(easy_negatives)
+
+    if views_mode in ("all", "centered", "track-only", "centered-only"):
+        target_center = (
+            target_bbox[0] + target_bbox[2] / 2,
+            target_bbox[1] + target_bbox[3] / 2,
+        )
+        for roi_size in TRACK_ROI_SIZES:
+            if roi_size == 768 or _deterministic_subset(str(record["recordId"]), roi_size):
+                views.append(
+                    build_track_square_view(
+                        rgb,
+                        union_mask,
+                        roi_size_px=roi_size,
+                        predicted_center_px=target_center,
+                    )
                 )
-            )
 
     base_stem = "cad_" + str(record["recordId"]).lower().replace("rec-", "")
     source_batch_sha = sha256(hdf5_path)
@@ -633,8 +637,12 @@ def ingest_cad_render_batches(
     output: Path,
     config_path: Path,
     workers: int = 1,
+    views: str = "all",
 ) -> dict[str, Any]:
     """Convert validated BlenderProc HDF5 batches into a research-only YOLO set."""
+
+    if views not in {"all", "centered", "track-only", "centered-only", "search-only"}:
+        raise PipelineError(f"Geçersiz views modu: {views}")
 
     _cv()
     try:
@@ -647,7 +655,7 @@ def ingest_cad_render_batches(
     if output.exists():
         shutil.rmtree(output)
     _ensure_layout(output)
-    tasks: list[tuple[Path, Path, dict[str, Any], list[str]]] = []
+    tasks: list[tuple[Path, Path, dict[str, Any], list[str], str]] = []
     seen_world_splits: dict[str, str] = {}
 
     for record_path in sorted(batch_root.rglob("record.json")):
@@ -668,7 +676,7 @@ def ingest_cad_render_batches(
         presentation_class = str(record["presentationClass"])
         if presentation_class not in classes:
             raise PipelineError(f"bilinmeyen CAD presentationClass: {presentation_class}")
-        tasks.append((hdf5_files[0], output, record, classes))
+        tasks.append((hdf5_files[0], output, record, classes, views))
 
     workers = _auto_workers(workers)
     try:
@@ -694,6 +702,7 @@ def ingest_cad_render_batches(
             "cadBatchRoot": str(batch_root.resolve()),
             "cadBatchCount": len(tasks),
             "derivedViewCount": len(records),
+            "viewsMode": views,
             "baseRenderResolution": list(CAD_BASE_RESOLUTION),
             "modelInputResolution": list(MODEL_INPUT_RESOLUTION),
             "ingestWorkers": workers,
@@ -706,6 +715,7 @@ def ingest_cad_render_batches(
     return {
         "status": manifest["status"],
         "records": len(records),
+        "viewsMode": views,
         "trainingAuthorized": False,
         "releaseCandidate": False,
         "output": str(output),
@@ -768,6 +778,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Paralel CAD dönüştürme süreci; 0 CPU'ya göre otomatik",
     )
+    cad.add_argument(
+        "--views",
+        choices=("all", "centered", "track-only", "search-only"),
+        default="all",
+        help="Dönüştürülecek görünüm ailesi: 'all' (SAHI + track), 'centered' / 'track-only' (yalnız ortalanmış hedef kareleri), 'search-only' (yalnız SAHI tile'ları)",
+    )
     return parser
 
 
@@ -784,6 +800,7 @@ def main(argv: list[str] | None = None) -> int:
                 output=args.output,
                 config_path=args.config,
                 workers=args.workers,
+                views=args.views,
             )
     except PipelineError as exc:
         print(json.dumps({"status": "ERROR", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)

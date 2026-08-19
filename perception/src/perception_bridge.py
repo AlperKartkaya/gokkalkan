@@ -557,6 +557,7 @@ def main() -> None:
                     allowed_labels=allowed_labels,
                     # Preserve friend/foe class identity through cross-tile merge.
                     label_map=None,
+                    min_confidence=search_config.minimum_confidence,
                     model_size=search_config.model_size,
                 ),
                 search_config,

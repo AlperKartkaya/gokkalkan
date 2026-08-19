@@ -194,3 +194,58 @@ class TFA50LSerialAdapter:
             "rejectedFrames": self._decoder.rejected_frame_count,
             **self.manifest(),
         }
+
+
+def probe_tfa50l_uart(
+    port: str,
+    baud_rate: int = 460_800,
+    timeout_sec: float = 2.0,
+    *,
+    read_size: int = 64,
+    serial_factory: Callable[..., SerialLike] | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> dict[str, Any]:
+    """Read TFA50-L measurement frames without transmitting any UART command.
+
+    This is intentionally a receive-only wiring/baud diagnostic. It never
+    changes LiDAR configuration, starts ranging, or enables physical outputs.
+    """
+
+    if timeout_sec <= 0:
+        raise ValueError("timeout_sec must be positive")
+    if read_size <= 0:
+        raise ValueError("read_size must be positive")
+
+    factory = serial_factory or TFA50LSerialAdapter._default_serial_factory
+    decoder = TFA50LStreamDecoder()
+    serial_port = factory(port=port, baudrate=baud_rate, timeout=0.1)
+    valid_frames: list[dict[str, Any]] = []
+    invalid_frames = 0
+    deadline = monotonic() + timeout_sec
+    try:
+        while monotonic() < deadline:
+            chunk = serial_port.read(read_size)
+            for measurement in decoder.feed(chunk):
+                if measurement.valid:
+                    valid_frames.append(
+                        {
+                            "distanceM": measurement.distance_m,
+                            "rawHex": measurement.raw_frame.hex(" ").upper(),
+                        }
+                    )
+                else:
+                    invalid_frames += 1
+            invalid_frames += len(decoder.last_rejections)
+    finally:
+        serial_port.close()
+
+    return {
+        "mode": "RECEIVE_ONLY",
+        "port": port,
+        "baudRate": baud_rate,
+        "timeoutSec": timeout_sec,
+        "validFrameCount": len(valid_frames),
+        "invalidFrameCount": invalid_frames,
+        "lastMeasurement": valid_frames[-1] if valid_frames else None,
+        "ok": bool(valid_frames),
+    }

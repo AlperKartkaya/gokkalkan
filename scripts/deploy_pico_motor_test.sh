@@ -17,4 +17,4 @@ if ((PREPARE)); then
 fi
 "${SSH[@]}" "$HOST" "test -f $SDK_REMOTE/external/pico_sdk_import.cmake || { echo 'Pico SDK yok; --prepare ile çalıştırın' >&2; exit 2; }; cd '$REMOTE' && chmod +x scripts/* && PICO_SDK_PATH=$SDK_REMOTE bash scripts/build_pico_motor_test.sh"
 "${SSH[@]}" -t "$HOST" "sudo picotool load -f -x '$REMOTE/build/firmware-pico-motor-test/gokkalkan_motor_test.uf2'"
-echo "Yüklendi. Test: ssh ${IDENTITY:+-i $IDENTITY }$HOST 'python3 $REMOTE/scripts/pico_motor_test.py --direction CW --steps 200 --hz 100'"
+echo "Yüklendi. Test: ssh ${IDENTITY:+-i $IDENTITY }$HOST 'python3 $REMOTE/scripts/pico_motor_test.py --driver 1 --direction CW --steps 200 --hz 100'"

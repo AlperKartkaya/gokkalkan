@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 option(GOKKALKAN_BUILD_PICO "Build RP2040 firmware with the Pico SDK" OFF)
-option(GOKKALKAN_BUILD_MOTOR_TEST "Build the isolated single-axis bench-test firmware" OFF)
+option(GOKKALKAN_BUILD_MOTOR_TEST "Build the isolated dual-axis bench-test firmware" OFF)
 if(GOKKALKAN_BUILD_PICO OR GOKKALKAN_BUILD_MOTOR_TEST)
   if(NOT DEFINED ENV{PICO_SDK_PATH})
     message(FATAL_ERROR "PICO_SDK_PATH is required for a Pico build")
@@ -52,17 +52,7 @@ if(GOKKALKAN_BUILD_MOTOR_TEST)
   if(NOT GOKKALKAN_BUILD_PICO)
     pico_sdk_init()
   endif()
-  set(GOKKALKAN_TEST_STEP_PIN 2 CACHE STRING "Pico GPIO connected to TLP281 STEP input")
-  set(GOKKALKAN_TEST_DIR_PIN 3 CACHE STRING "Pico GPIO connected to TLP281 DIR input")
-  set(GOKKALKAN_TEST_ENABLE_PIN 4 CACHE STRING "Pico GPIO connected to TLP281 ENA input")
-  set(GOKKALKAN_TEST_SIGNAL_ACTIVE_HIGH 1 CACHE STRING "1 when GPIO high activates the TLP281 input")
   add_executable(gokkalkan_motor_test src/motor_test_main.cpp)
-  target_compile_definitions(gokkalkan_motor_test PRIVATE
-    GOKKALKAN_TEST_STEP_PIN=${GOKKALKAN_TEST_STEP_PIN}
-    GOKKALKAN_TEST_DIR_PIN=${GOKKALKAN_TEST_DIR_PIN}
-    GOKKALKAN_TEST_ENABLE_PIN=${GOKKALKAN_TEST_ENABLE_PIN}
-    GOKKALKAN_TEST_SIGNAL_ACTIVE_HIGH=${GOKKALKAN_TEST_SIGNAL_ACTIVE_HIGH}
-  )
   target_compile_options(gokkalkan_motor_test PRIVATE -Wall -Wextra -Wpedantic)
   target_link_libraries(gokkalkan_motor_test PRIVATE pico_stdlib hardware_gpio hardware_watchdog)
   pico_enable_stdio_usb(gokkalkan_motor_test 1)

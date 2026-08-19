@@ -51,6 +51,7 @@ class SahiSearchConfig:
     first_recovery_roi_size_px: int
     second_recovery_roi_size_px: int
     return_to_search_after_misses: int
+    minimum_confidence: float
 
     @classmethod
     def from_toml(cls, path: str | Path) -> "SahiSearchConfig":
@@ -85,6 +86,7 @@ class SahiSearchConfig:
             first_recovery_roi_size_px=int(track["first_recovery_roi_size_px"]),
             second_recovery_roi_size_px=int(track["second_recovery_roi_size_px"]),
             return_to_search_after_misses=int(track["return_to_search_after_misses"]),
+            minimum_confidence=float(track["minimum_confidence"]),
         )
         config.validate()
         return config
@@ -107,6 +109,8 @@ class SahiSearchConfig:
             raise ValueError("track ROI sizes must be increasing and never upsample")
         if self.return_to_search_after_misses < 3:
             raise ValueError("track recovery requires at least three misses")
+        if not 0.0 <= self.minimum_confidence <= 1.0:
+            raise ValueError("minimum_confidence must be within 0..1")
 
     def windows(self) -> list[SliceWindow]:
         return generate_slice_windows(

@@ -47,6 +47,14 @@ def test_slice_windows_match_sahi_768_contract() -> None:
     ]
 
 
+def test_runtime_search_config_allows_single_sweep_low_confidence_detection() -> None:
+    runtime_config = config()
+
+    assert runtime_config.history_sweeps == 1
+    assert runtime_config.required_hits == 1
+    assert runtime_config.minimum_confidence == 0.10
+
+
 def test_greedy_nmm_merges_same_class_and_marks_cross_class_conflict() -> None:
     merged = greedy_nmm(
         [
@@ -111,7 +119,7 @@ def test_hailo_adapter_resizes_batch_and_filters_outputs(tmp_path: Path) -> None
     assert adapter.health()["lastBatchSize"] == 2
 
 
-def test_search_engine_maps_tile_detection_to_full_frame_and_confirms_on_second_sweep() -> None:
+def test_search_engine_maps_tile_detection_to_full_frame_without_temporal_delay() -> None:
     class FakeBatchDetector:
         model_size = (640, 640)
 
@@ -127,12 +135,10 @@ def test_search_engine_maps_tile_detection_to_full_frame_and_confirms_on_second_
     frame = np.zeros((1296, 2304, 3), dtype=np.uint8)
 
     first = engine.run_sweep(frame, 1_000_000_000)
-    second = engine.run_sweep(frame, 1_010_000_000)
 
     assert first.tile_count == 8
-    assert first.confirmed_detections == ()
-    assert len(second.confirmed_detections) == 1
-    assert second.confirmed_detections[0].bbox_xyxy == pytest.approx(
+    assert len(first.confirmed_detections) == 1
+    assert first.confirmed_detections[0].bbox_xyxy == pytest.approx(
         (120.0, 120.0, 240.0, 240.0)
     )
 

@@ -30,6 +30,7 @@ Usage:
   gokkalkan hil --output REPORT
   gokkalkan release [build] --version VERSION --output MANIFEST ...
   gokkalkan release verify MANIFEST
+  gokkalkan lidar probe --port DEVICE [--baud-rate 460800] [--timeout-sec 2]
   gokkalkan lidar calibrate OBSERVATIONS --output REPORT
   gokkalkan turret calibrate OBSERVATIONS [--output FILE] [--activate]
 """
