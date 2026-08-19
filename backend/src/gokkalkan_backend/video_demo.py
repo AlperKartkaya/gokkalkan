@@ -167,6 +167,31 @@ def finish_run(
     return report
 
 
+def latest_run_summary(output_root: str | Path) -> dict[str, Any]:
+    """Return only the newest local session metadata for an operator display."""
+    root = Path(output_root)
+    start_files = sorted(root.glob("*/start.json"), key=lambda item: item.stat().st_mtime, reverse=True) if root.is_dir() else []
+    if not start_files:
+        return {"active": False, "physicalOutput": False}
+    start_file = start_files[0]
+    try:
+        started = json.loads(start_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"active": False, "physicalOutput": False, "error": "video oturum kaydı okunamadı"}
+    finished = (start_file.parent / "finish.json").is_file()
+    return {
+        "active": not finished,
+        "runId": started.get("runId"),
+        "capability": started.get("capability"),
+        "title": started.get("title"),
+        "startedAt": started.get("startedAt"),
+        "physicalActionRequired": started.get("physicalActionRequired"),
+        "physicalCapabilityVerified": False,
+        "manualAnnotationIsDetection": False,
+        "physicalOutput": False,
+    }
+
+
 def _git_revision() -> str | None:
     try:
         return subprocess.check_output(

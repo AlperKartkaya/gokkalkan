@@ -39,6 +39,7 @@ from .telemetry_session import SessionTelemetryStore
 from .turret_calibration import TurretCalibration
 from .sensor_runtime import TFA50LSensorRuntime, build_tfa50l_sensor_runtime
 from .camera_calibration import camera_calibration_digest
+from .video_demo import latest_run_summary
 
 
 class OperatorApiHandler(BaseHTTPRequestHandler):
@@ -46,6 +47,7 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
     core: MissionCore | None = None
     allowed_origins: tuple[str, ...] = ("*",)
     operator_token: str | None = None
+    video_runs_root: str = "/var/lib/gokkalkan/video-runs"
     server_version = "GokkalkanOperatorApi/0.1"
 
     def handle(self) -> None:
@@ -100,6 +102,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             self._send_json(self.operator_service.replay())
         elif path == "/hardware/health":
             self._send_json(self.operator_service.hardware.health_check())
+        elif path == "/video-demo/session":
+            self._send_json(latest_run_summary(self.video_runs_root))
         elif path.startswith("/commands/"):
             command_id = path.removeprefix("/commands/").strip()
             status = self.mission_core.command_status(command_id)
@@ -341,6 +345,7 @@ def build_http_server(
     allowed_origins: tuple[str, ...] = ("*",),
     core: MissionCore | None = None,
     operator_token: str | None = None,
+    video_runs_root: str = "/var/lib/gokkalkan/video-runs",
 ) -> ThreadingHTTPServer:
     class BoundHandler(OperatorApiHandler):
         pass
@@ -350,6 +355,7 @@ def build_http_server(
     BoundHandler.core = core or MissionCore(BoundHandler.service)
     BoundHandler.allowed_origins = allowed_origins
     BoundHandler.operator_token = operator_token
+    BoundHandler.video_runs_root = video_runs_root
 
     class CoreHttpServer(ThreadingHTTPServer):
         daemon_threads = True

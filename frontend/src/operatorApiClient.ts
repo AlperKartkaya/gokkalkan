@@ -18,6 +18,19 @@ export interface OperatorTelemetryMetadata {
   recordCount: number;
 }
 
+export interface VideoDemoSession {
+  active: boolean;
+  runId?: string;
+  capability?: string;
+  title?: string;
+  startedAt?: string;
+  physicalActionRequired?: string;
+  physicalCapabilityVerified?: false;
+  manualAnnotationIsDetection?: false;
+  physicalOutput: false;
+  error?: string;
+}
+
 export interface OperatorTelemetryLogRecord {
   recordId?: number;
   timestamp?: string;
@@ -251,6 +264,10 @@ export async function fetchOperatorSnapshot(baseUrl: string): Promise<OperatorAp
 
 export async function fetchOperatorReadiness(baseUrl: string): Promise<OperatorReadinessReport> {
   return requestJson<OperatorReadinessReport>(`${normalizeOperatorApiBaseUrl(baseUrl)}/readiness`);
+}
+
+export async function fetchVideoDemoSession(baseUrl: string): Promise<VideoDemoSession> {
+  return requestJson<VideoDemoSession>(`${normalizeOperatorApiBaseUrl(baseUrl)}/video-demo/session`);
 }
 
 export async function fetchOperatorSensorFrames(baseUrl: string): Promise<OperatorSensorFrameBundle> {

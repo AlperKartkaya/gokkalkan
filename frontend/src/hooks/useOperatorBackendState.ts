@@ -6,6 +6,8 @@ import {
   operatorStateStreamUrl,
   type OperatorApiSnapshot,
   type OperatorReadinessReport,
+  type VideoDemoSession,
+  fetchVideoDemoSession,
 } from '../operatorApiClient';
 
 export interface OperatorBackendState {
@@ -16,6 +18,7 @@ export interface OperatorBackendState {
   busy: boolean;
   error: string;
   readinessError: string;
+  videoDemoSession?: VideoDemoSession;
 }
 
 /**
@@ -31,6 +34,7 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [readinessError, setReadinessError] = useState('');
+  const [videoDemoSession, setVideoDemoSession] = useState<VideoDemoSession>();
 
   useEffect(() => {
     if (!apiBaseUrl) {
@@ -45,6 +49,7 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
     let cancelled = false;
     let fallbackTimer: number | undefined;
     let readinessTimer: number | undefined;
+    let videoDemoTimer: number | undefined;
     let stream: EventSource | undefined;
 
     const applySnapshot = (next: OperatorApiSnapshot) => {
@@ -83,6 +88,14 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
         });
     };
 
+    const loadVideoDemo = () => {
+      void fetchVideoDemoSession(apiBaseUrl).then((session) => {
+        if (!cancelled) setVideoDemoSession(session);
+      }).catch(() => {
+        if (!cancelled) setVideoDemoSession(undefined);
+      });
+    };
+
     const scheduleFallback = () => {
       if (cancelled || fallbackTimer !== undefined) return;
       fallbackTimer = window.setTimeout(() => {
@@ -93,7 +106,9 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
 
     loadSnapshot();
     loadReadiness();
+    loadVideoDemo();
     readinessTimer = window.setInterval(loadReadiness, 5_000);
+    videoDemoTimer = window.setInterval(loadVideoDemo, 3_000);
 
     if (typeof EventSource === 'function') {
       stream = new EventSource(operatorStateStreamUrl(apiBaseUrl));
@@ -124,6 +139,7 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
       stream?.close();
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
       if (readinessTimer !== undefined) window.clearInterval(readinessTimer);
+      if (videoDemoTimer !== undefined) window.clearInterval(videoDemoTimer);
     };
   }, [apiBaseUrl]);
 
@@ -135,5 +151,6 @@ export function useOperatorBackendState(apiBaseUrl: string): OperatorBackendStat
     busy,
     error,
     readinessError,
+    videoDemoSession,
   };
 }

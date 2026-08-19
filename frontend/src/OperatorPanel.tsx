@@ -39,6 +39,7 @@ import { HardwareHealthBadge } from './components/HardwareHealthBadge';
 import { TrackList } from './components/TrackList';
 import { ManualAimController } from './components/ManualAimController';
 import { StageRoundSelector } from './components/StageRoundSelector';
+import { VideoDemoBanner } from './components/VideoDemoBanner';
 import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendOperatorManualAimCommand } from './operatorApiClient';
 import { type OperatorBackendState } from './hooks/useOperatorBackendState';
 
@@ -1667,6 +1668,7 @@ export default function OperatorPanel({
         onRawCameraOpen={() => setRawCameraOpen(true)}
         onReset={resetOperatorPanel}
       />
+      <VideoDemoBanner session={backendState.videoDemoSession} />
 
       {(apiError || readinessError) && (
         <div

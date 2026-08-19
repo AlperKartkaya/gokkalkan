@@ -25,6 +25,10 @@ Komut `/health`, `/state` ve gerekirse `/readiness` endpointlerinden **mevcut
 durumu** kaydeder. Endpoint erişilemezse başarısız olur; sağlıklıymış gibi
 rapor üretmez.
 
+Operatör ve Algı paneli, Pi üzerindeki en son oturumu
+`GET /video-demo/session` üzerinden her üç saniyede bir salt-okunur olarak
+gösterir. Paneldeki sarı video bandı fiziksel başarı göstergesi değildir.
+
 Çekim bittiğinde aynı klasör için bitiş kanıtını alın:
 
 ```bash

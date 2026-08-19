@@ -3,6 +3,7 @@ import type { OperatorTrackState, OperatorSensorFrame } from '../operatorContrac
 import type { OperatorBackendState } from '../hooks/useOperatorBackendState';
 
 import Navigation from './Navigation';
+import { VideoDemoBanner } from './VideoDemoBanner';
 
 export default function AIPanel({
   backendState,
@@ -41,6 +42,7 @@ export default function AIPanel({
         <h1 className="text-2xl font-black text-[#d7efff]">Yapay Zeka & Algı (Perception) Paneli</h1>
         <p className="mt-2 text-sm text-[#8ba7be]">Sentetik kamera, ROI geometrisi ve hedef takip telemetrisi özeti.</p>
       </header>
+      <VideoDemoBanner session={backendState.videoDemoSession} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
