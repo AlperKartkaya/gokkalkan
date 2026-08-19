@@ -27,7 +27,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Pico üzerinden çift DM542 motor sürücü testi")
     parser.add_argument("--device", help="Varsayılan: ilk /dev/ttyACM*")
     parser.add_argument("--driver", type=int, choices=(0, 1, 2), default=0,
-                        help="0: HER İKİSİ AYNI ANDA (GP7 + GP4), 1: Sürücü 1 (GP7), 2: Sürücü 2 (GP4)")
+                        help="0: HER İKİSİ AYNI ANDA (GP15 + GP12), 1: Sürücü 1 (GP15/GP14), 2: Sürücü 2 (GP12/GP11)")
     parser.add_argument("--direction", choices=("CW", "CCW"), default="CW")
     parser.add_argument("--steps", type=int, default=1600)
     parser.add_argument("--hz", type=int, default=100)

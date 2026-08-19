@@ -11,6 +11,7 @@ from . import (
     session_cli,
     static_server,
     telemetry_recorder,
+    video_demo_cli,
 )
 
 
@@ -33,6 +34,7 @@ Usage:
   gokkalkan lidar probe --port DEVICE [--baud-rate 460800] [--timeout-sec 2]
   gokkalkan lidar calibrate OBSERVATIONS --output REPORT
   gokkalkan turret calibrate OBSERVATIONS [--output FILE] [--activate]
+  gokkalkan video-demo run --capability Y1..Y7 [--api-url URL]
 """
 
 
@@ -67,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         return operations_cli.lidar_main(command_args)
     if command == "turret":
         return operations_cli.turret_main(command_args)
+    if command == "video-demo":
+        return video_demo_cli.main(command_args)
     print(f"Unknown command: {command}\n\n{_usage()}", file=sys.stderr)
     return 2
 

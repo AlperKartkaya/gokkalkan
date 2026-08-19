@@ -12,7 +12,7 @@ kimliklerine bağlar. Güncel kısa takvim `TARIHLER.md` dosyasındadır.
 | Ön Tasarım Raporu sonucu | 13.04.2026 |
 | KTR teslim | 02.06.2026 17:00 |
 | KTR sonucu | **25.06.2026** |
-| Sistem Kabiliyeti Videoları teslim | **17.08.2026 17:00** |
+| Sistem Kabiliyeti Videoları teslim | **21.08.2026** *(takım tarafından bildirilen uzatma; KYS duyurusu ile teyit edilecek)* |
 | Finalist açıklama | 31.08.2026 |
 | Yarışma finalleri / TEKNOFEST | 30.09.2026–04.10.2026 |
 

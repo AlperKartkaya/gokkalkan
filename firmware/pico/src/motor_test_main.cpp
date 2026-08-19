@@ -8,15 +8,13 @@
 #include "pico/stdlib.h"
 
 namespace {
-// Driver 1 Pinout (Common Anode 5V)
-constexpr uint kDriver1StepPin = 7;
-constexpr uint kDriver1DirPin  = 6;
-constexpr uint kDriver1EnaPin  = 5;
+// Driver 1 Pinout (Common Anode 5V via Logic Level Converter)
+constexpr uint kDriver1StepPin = 15; // GP15 (pin 20) -> PUL-
+constexpr uint kDriver1DirPin  = 14; // GP14 (pin 19) -> DIR-
 
-// Driver 2 Pinout (Common Anode 5V)
-constexpr uint kDriver2StepPin = 4;
-constexpr uint kDriver2DirPin  = 3;
-constexpr uint kDriver2EnaPin  = 2;
+// Driver 2 Pinout (Common Anode 5V via Logic Level Converter)
+constexpr uint kDriver2StepPin = 12; // GP12 (pin 16) -> PUL-
+constexpr uint kDriver2DirPin  = 11; // GP11 (pin 15) -> DIR-
 
 constexpr uint32_t kMinFrequencyHz = 10;
 constexpr uint32_t kMaxFrequencyHz = 4000;
@@ -35,17 +33,14 @@ uint64_t next_edge_us = 0;
 uint64_t arm_deadline_us = 0;
 
 void set_step_pin(uint pin, bool active_pulse) {
+  // Common Anode (+5V on PUL+):
+  // Active pulse -> Pico 0 (LOW) -> Converter 0V -> Opto LED ON
+  // Inactive pulse -> Pico 1 (HIGH) -> Converter +5V -> Opto LED OFF
   gpio_put(pin, active_pulse ? 0 : 1);
 }
 
 void set_dir_pin(uint pin, bool is_cw) {
   gpio_put(pin, is_cw ? 0 : 1);
-}
-
-void set_enable_pin(uint pin, bool drive_enabled) {
-  // Drive enabled -> Opto OFF (3.3V / HIGH)
-  // Drive disabled -> Opto ON (0V / LOW)
-  gpio_put(pin, drive_enabled ? 1 : 0);
 }
 
 void safe_outputs() {
@@ -54,8 +49,6 @@ void safe_outputs() {
   remaining_steps = 0;
   set_step_pin(kDriver1StepPin, false);
   set_step_pin(kDriver2StepPin, false);
-  set_enable_pin(kDriver1EnaPin, false);
-  set_enable_pin(kDriver2EnaPin, false);
 }
 
 void disarm(const char* reason) {
@@ -65,7 +58,7 @@ void disarm(const char* reason) {
 }
 
 void print_status() {
-  std::printf("STATUS armed=%d moving=%d remaining=%lu driver_mode=%s D1(PUL:7,DIR:6,ENA:5) D2(PUL:4,DIR:3,ENA:2) mode=COMMON_ANODE_5V\n",
+  std::printf("STATUS armed=%d moving=%d remaining=%lu driver_mode=%s D1(PUL:GP15,DIR:GP14) D2(PUL:GP12,DIR:GP11) mode=COMMON_ANODE_5V_CONVERTER\n",
               armed ? 1 : 0, moving ? 1 : 0,
               static_cast<unsigned long>(remaining_steps),
               active_driver_mode == 0 ? "BOTH(D1+D2)" : (active_driver_mode == 1 ? "DRIVER_1" : "DRIVER_2"));
@@ -87,8 +80,6 @@ void handle_command(char* line) {
     safe_outputs();
     armed = true;
     arm_deadline_us = time_us_64() + kArmTimeoutUs;
-    set_enable_pin(kDriver1EnaPin, true);
-    set_enable_pin(kDriver2EnaPin, true);
     std::printf("OK ARMED timeout_ms=120000\n");
     return;
   }
@@ -127,11 +118,9 @@ void handle_command(char* line) {
     bool is_cw = (std::strcmp(direction, "CW") == 0);
 
     if (driver_num == 1 || driver_num == 0) {
-      set_enable_pin(kDriver1EnaPin, true);
       set_dir_pin(kDriver1DirPin, is_cw);
     }
     if (driver_num == 2 || driver_num == 0) {
-      set_enable_pin(kDriver2EnaPin, true);
       set_dir_pin(kDriver2DirPin, is_cw);
     }
 
@@ -144,7 +133,7 @@ void handle_command(char* line) {
     arm_deadline_us = time_us_64() + kArmTimeoutUs;
     next_edge_us = time_us_64();
     std::printf("OK MOVING mode=%s direction=%s steps=%lu hz=%lu\n",
-                driver_num == 0 ? "BOTH(GP7+GP4)" : (driver_num == 1 ? "GP7" : "GP4"),
+                driver_num == 0 ? "BOTH(GP15+GP12)" : (driver_num == 1 ? "GP15" : "GP12"),
                 direction, steps, frequency);
     return;
   }
@@ -176,8 +165,8 @@ void service_motion(uint64_t now_us) {
 
 int main() {
   stdio_init_all();
-  for (const uint pin : {kDriver1StepPin, kDriver1DirPin, kDriver1EnaPin,
-                         kDriver2StepPin, kDriver2DirPin, kDriver2EnaPin}) {
+  for (const uint pin : {kDriver1StepPin, kDriver1DirPin,
+                         kDriver2StepPin, kDriver2DirPin}) {
     gpio_init(pin);
     gpio_set_dir(pin, GPIO_OUT);
   }

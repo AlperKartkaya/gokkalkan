@@ -37,12 +37,10 @@ kabulü verilmez. İmalat ayrıntıları için
 ## Ayrı çift-motor tezgâh testi
 
 Üretim pin haritasını etkinleştirmeden iki DM542 kanalını sınayan ayrı
-`gokkalkan_motor_test` hedefi vardır. Ortak-anot bağlantıda sürücü 1 için
-`GP7=PUL-`, `GP6=DIR-`, `GP5=ENA-`; sürücü 2 için `GP4=PUL-`, `GP3=DIR-`,
-`GP2=ENA-` kullanılır. Her sürücünün `PUL+`, `DIR+` ve `ENA+` ucu 5 V ortak
-anot hattına bağlı olmalıdır. Pico GPIO'sunu 5 V sürücü girişine doğrudan
-bağlamayın; her `*-` hattı için seviyesi doğrulanmış açık-kollektör/izole
-arayüz gerekir. Açılışta hareket yoktur; USB'den `ARM` ve sınırlı `MOVE`
+`gokkalkan_motor_test` hedefi vardır. Ortak-anot (VBUS 5V) bağlantıda logic level converter
+üzerinden sürücü 1 için `GP15=PUL-`, `GP14=DIR-`; sürücü 2 için `GP12=PUL-`, `GP11=DIR-`
+kullanılır (`ENA` klemensleri boşta bırakılır). Her sürücünün `PUL+` ve `DIR+` ucu
+VBUS (+5V) ortak anot hattına bağlı olmalıdır. Açılışta hareket yoktur; USB'den `ARM` ve sınırlı `MOVE`
 gelmelidir. Komut başına sınır 64000 adım/4000 Hz, ARM süresi 120 saniyedir.
 `MOVE 0` iki sürücüyü, `MOVE 1` yalnız sürücü 1'i, `MOVE 2` yalnız sürücü 2'yi
 çalıştırır.
