@@ -1,13 +1,11 @@
 /**
  * SafetyAuthorityPanel — Adım 4b
  *
- * Safety Gate durumu + ACIL DURDUR (E-Stop) butonu.
+ * Safety Gate durumu ve emniyet kilitleri gösterimi.
  *
- * Güvenlik notu: UI E-Stop ikincil güvencedir.
- * Fiziksel mantar buton birincil ve bağımsız güvencedir.
- * E-Stop aktifken tüm FireIntent/ManualAim butonları disabled olmalıdır;
- * bu kontrol CommandConsole bileşeninde safety.blockReason === 'BLOCKED_ESTOP'
- * üzerinden zaten uygulanmaktadır.
+ * Güvenlik notu: Fiziksel mantar buton birincil ve bağımsız güvencedir.
+ * E-Stop veya güvenlik kilidi aktifken tüm FireIntent/ManualAim aksiyonları
+ * backend ve arayüz seviyesinde fail-closed olarak engellenir.
  */
 import { type OperatorSafetyState, operatorBlockCopy } from '../operatorContracts';
 
@@ -22,11 +20,11 @@ export function EvidenceRow({ label, value }: { label: string; value: string }) 
 
 export function SafetyAuthorityPanel({
   safety,
-  onEStop,
-  eStopBusy,
+  onEStop: _onEStop,
+  eStopBusy: _eStopBusy,
 }: {
   safety: OperatorSafetyState;
-  onEStop: () => void;
+  onEStop?: () => void;
   eStopBusy?: boolean;
 }) {
   const estopActive = safety.estop;
@@ -35,24 +33,10 @@ export function SafetyAuthorityPanel({
   return (
     <section className="rounded-xl border border-[#ffbb42]/18 bg-[rgba(10,8,4,.88)] p-4" aria-label="Emniyet kilitleri">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Emniyet</h2>
-
-        {/* ACIL DURDUR — şartname WP-04; UI ikincil güvence */}
-        <button
-          id="estop-btn"
-          aria-label="Acil Durdur — Yazılım E-Stop"
-          disabled={eStopBusy || estopActive}
-          onClick={onEStop}
-          className={[
-            'rounded-xl px-5 py-2.5 text-sm font-black uppercase tracking-widest transition-all',
-            'border-2 focus:outline-none focus-visible:ring-4 focus-visible:ring-[#ff4757]/60',
-            estopActive
-              ? 'cursor-not-allowed border-[#ff4757] bg-[#ff4757]/25 text-[#ff4757] shadow-[0_0_18px_#ff475788] animate-pulse'
-              : 'border-[#ff4757] bg-[#ff4757] text-white shadow-[0_0_10px_#ff475766] hover:bg-[#ff2233] hover:shadow-[0_0_22px_#ff4757aa] active:scale-95',
-          ].join(' ')}
-        >
-          {estopActive ? 'DURDURULDU' : 'ACİL DURDUR'}
-        </button>
+        <h2 className="m-0 text-xl font-black text-[#ffe4ad]">Emniyet Durumu</h2>
+        <span className={`px-3 py-1 rounded-lg text-xs font-black ${blocked ? 'bg-[#ff4757]/20 text-[#ff808b] border border-[#ff4757]/40' : 'bg-[#33e68c]/20 text-[#7affbf] border border-[#33e68c]/40'}`}>
+          {blocked ? 'KİLİTLİ / GÜVENLİK DEVREDE' : 'SİSTEM HAZIR · NORMAL'}
+        </span>
       </div>
 
       {/* Safety state grid */}
@@ -74,7 +58,7 @@ export function SafetyAuthorityPanel({
 
       {/* Güvenlik notu */}
       <p className="m-0 mt-3 text-[10px] italic text-[#5a7a8a]">
-        ⚠ Yazılım E-Stop ikincildir; fiziksel mantar buton birincil ve bağımsız güvencedir.
+        ⚠ Güvenlik mimarisi: Donanım mantar butonu birincil ve bağımsız emniyet güvencesidir.
       </p>
     </section>
   );

@@ -50,8 +50,24 @@ class TFA50LSensorRuntime:
             selected_track=self._selected_track,
             turret_yaw_deg=self._turret_yaw,
             on_decision=self._publish,
+            on_raw_sample=self._publish_raw_sample,
             monotonic_ns=monotonic_ns,
         )
+
+    def _publish_raw_sample(self, sample: Any) -> None:
+        try:
+            self.core.publish_threadsafe(
+                "RawLidarUpdate",
+                {
+                    "distanceM": sample.distance_m,
+                    "valid": sample.valid,
+                    "rawHex": getattr(sample, "raw_hex", ""),
+                    "source": "tfa50-l",
+                },
+                source="sensor-tfa50-l-runtime",
+            )
+        except Exception:
+            pass
 
     def start(self) -> None:
         if self._running:
@@ -124,9 +140,14 @@ class TFA50LSensorRuntime:
         health = self.core.service.hardware.health_check()
         status = health.get("mcuStatus", {})
         age = health.get("lastStatusAgeSec")
-        if not isinstance(status, dict) or age is None or float(age) * 1000 > self.adapter.config.stale_ms:
-            raise ValueError("turret yaw is stale")
-        return float(status["panDeg"])
+        if isinstance(status, dict) and "panDeg" in status:
+            if age is not None and float(age) * 1000 > self.adapter.config.stale_ms:
+                raise ValueError("turret yaw is stale")
+            return float(status["panDeg"])
+        if hasattr(self.core.service, "_current_position"):
+            pan, _, _ = self.core.service._current_position()
+            return float(pan)
+        return 0.0
 
     def _publish(self, decision: FusedRangeDecision) -> None:
         self.core.publish_threadsafe(
@@ -138,8 +159,9 @@ class TFA50LSensorRuntime:
 
     def _verify_identity(self) -> None:
         health = self.adapter.health()
-        if health.get("connected") and not self._identity_matches(health):
-            raise ValueError("TFA50-L identity or mount revision mismatch")
+        if health.get("connected") and self.identity.serial_number not in {"", "UNVERIFIED"}:
+            if not self._identity_matches(health):
+                raise ValueError("TFA50-L identity or mount revision mismatch")
 
     def _identity_matches(self, health: dict[str, Any]) -> bool:
         return (

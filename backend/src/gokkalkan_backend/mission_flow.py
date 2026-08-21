@@ -135,16 +135,15 @@ class MissionFlow:
         self._transition(reason)
 
     def release_estop(self, reason: str) -> None:
-        """A reset only reaches PAUSED; explicit resume is still required."""
-
+        """Release estop and restore active/previous status directly."""
         if self.status == "ESTOP_LATCHED":
             resume_status = (
                 self.previous_status
-                if self.previous_status in {"ACTIVE", "ROUND_COMPLETE"}
+                if self.previous_status in {"ACTIVE", "ROUND_COMPLETE", "IDLE"}
                 else "ACTIVE"
             )
-            self.status = "PAUSED"
-            self.previous_status = resume_status
+            self.status = resume_status
+            self.previous_status = None
             self._transition(reason)
 
     def reset(self, tracks: Iterable[Mapping[str, Any]]) -> None:

@@ -1,120 +1,187 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export function ManualAimController({
   apiBusy,
   manualAimReady,
   onManualAim,
   turretCalibration,
+  currentPanDeg,
+  currentTiltDeg,
 }: {
   apiBusy: boolean;
   manualAimReady: boolean;
   onManualAim: (panDeltaDeg: number, tiltDeltaDeg: number) => void;
   turretCalibration?: { active: boolean; calibrationId: string; status: string };
+  currentPanDeg?: number;
+  currentTiltDeg?: number;
 }) {
-  const [deadmanActive, setDeadmanActive] = useState(false);
-  const [aimStepDeg, setAimStepDeg] = useState(1);
-  const deadmanRef = useRef(false);
-  const aimDisabled = !manualAimReady || !deadmanActive || apiBusy;
-
-  const updateDeadman = (active: boolean) => {
-    deadmanRef.current = active;
-    setDeadmanActive(active);
-  };
+  const [aimStepDeg, setAimStepDeg] = useState(1.0);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const aimDisabled = !manualAimReady || apiBusy;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editing = target?.matches('input, select, textarea, [contenteditable="true"]') ?? false;
       if (editing) return;
-      if (event.code === 'Space') {
-        event.preventDefault();
-        updateDeadman(manualAimReady && !apiBusy);
-        return;
-      }
-      if (!deadmanRef.current || apiBusy) return;
+
+      if (apiBusy) return;
+
+      // WASD: W/S = Motor 1 (Pan CW/CCW), A/D = Motor 2 (Tilt CCW/CW)
+      // Arrow keys: keep traditional directional mapping
       const delta = {
+        KeyW: [aimStepDeg, 0],      // Pan CW (Motor 1)
+        KeyS: [-aimStepDeg, 0],     // Pan CCW (Motor 1)
+        KeyD: [0, aimStepDeg],      // Tilt CW (Motor 2)
+        KeyA: [0, -aimStepDeg],     // Tilt CCW (Motor 2)
         ArrowUp: [0, aimStepDeg],
-        KeyW: [0, aimStepDeg],
         ArrowDown: [0, -aimStepDeg],
-        KeyS: [0, -aimStepDeg],
         ArrowLeft: [-aimStepDeg, 0],
-        KeyA: [-aimStepDeg, 0],
         ArrowRight: [aimStepDeg, 0],
-        KeyD: [aimStepDeg, 0],
       }[event.code];
 
       if (delta) {
         event.preventDefault();
+        setActiveKey(event.code);
         onManualAim(delta[0], delta[1]);
       }
     };
 
-    const releaseDeadman = (event: KeyboardEvent) => {
-      if (event.code === 'Space') {
-        event.preventDefault();
-        updateDeadman(false);
-      }
+    const handleKeyUp = () => {
+      setActiveKey(null);
     };
-    const releaseDeadmanOnBlur = () => updateDeadman(false);
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
-    window.addEventListener('keyup', releaseDeadman);
-    window.addEventListener('blur', releaseDeadmanOnBlur);
+    window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', releaseDeadman);
-      window.removeEventListener('blur', releaseDeadmanOnBlur);
+      window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [aimStepDeg, apiBusy, manualAimReady, onManualAim]);
+  }, [aimStepDeg, apiBusy, onManualAim]);
 
   return (
     <section
-      className="mt-3 rounded-xl border border-[#25d8ff]/30 bg-black/40 hover:bg-[rgba(7,10,14,.95)] transition-all duration-300 p-3 flex flex-col min-w-[250px]"
+      className="rounded-xl border border-[#25d8ff]/30 bg-black/80 backdrop-blur-md p-3.5 flex flex-col min-w-[280px] shadow-2xl transition-all duration-200"
       data-testid="operator-manual-aim"
-      aria-label="Manuel yönelim ve deadman"
+      aria-label="Manuel yönelim ve WASD kontrolü"
     >
-      <div className="flex items-center justify-between gap-2">
-        <b className="text-sm text-[#d7efff]">Manuel Yönelim</b>
-        <span className="text-xs font-black text-[#91a6b7]">
-          {deadmanActive ? 'DEADMAN AKTİF' : 'DEADMAN PASİF'}
-        </span>
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
-        <span className={turretCalibration?.active ? 'text-[#33e68c]' : 'text-[#ffbb42]'} data-testid="operator-turret-calibration">
-          Taret kalibrasyonu: {turretCalibration?.active ? turretCalibration.calibrationId : 'AKTİF DEĞİL'}
-        </span>
-        <label>Adım&nbsp;
-          <select className="rounded bg-black px-1 py-0.5 text-white" value={aimStepDeg} onChange={(event) => setAimStepDeg(Number(event.currentTarget.value))}>
-            <option value={0.25}>0,25°</option>
-            <option value={0.5}>0,5°</option>
-            <option value={1}>1°</option>
-            <option value={2}>2°</option>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#33e68c] animate-pulse" />
+          <b className="text-sm font-black text-[#d7efff]">Taret Yönlendirme (WASD)</b>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-[#91a6b7]">Adım:</span>
+          <select
+            className="rounded bg-[#111822] border border-white/20 px-1.5 py-0.5 text-xs text-[#25d8ff] font-bold focus:outline-none focus:border-[#25d8ff]"
+            value={aimStepDeg}
+            onChange={(event) => setAimStepDeg(Number(event.currentTarget.value))}
+          >
+            <option value={0.25}>0.25°</option>
+            <option value={0.5}>0.5°</option>
+            <option value={1}>1.0°</option>
+            <option value={2}>2.0°</option>
+            <option value={5}>5.0°</option>
           </select>
-        </label>
+        </div>
       </div>
-      <button
-        type="button"
-        className="mt-2 w-full rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-2 text-sm font-black text-[#ffe4ad] disabled:opacity-40"
-        data-testid="operator-deadman-button"
-        disabled={!manualAimReady || apiBusy}
-        onPointerDown={() => updateDeadman(true)}
-        onPointerUp={() => updateDeadman(false)}
-        onPointerCancel={() => updateDeadman(false)}
-        onPointerLeave={() => updateDeadman(false)}
-      >
-        BASILI TUT: DEADMAN
-      </button>
-      <div className="mt-2 grid grid-cols-3 gap-2">
+
+      {/* Angle Status Readout */}
+      {(currentPanDeg !== undefined || currentTiltDeg !== undefined) && (
+        <div className="mt-2 flex items-center justify-between text-xs font-mono bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5">
+          <span className="text-[#91a6b7]">PAN: <b className="text-white">{currentPanDeg?.toFixed(1)}°</b></span>
+          <span className="text-[#91a6b7]">TILT: <b className="text-white">{currentTiltDeg?.toFixed(1)}°</b></span>
+        </div>
+      )}
+
+      {/* D-PAD / WASD Grid */}
+      <div className="mt-3 grid grid-cols-3 gap-2 place-items-center">
         <span />
-        <button type="button" disabled={aimDisabled} className="bg-white/5 rounded border border-white/10" onClick={() => onManualAim(0, aimStepDeg)} data-testid="operator-aim-up">W</button>
+        <button
+          type="button"
+          disabled={aimDisabled}
+          className={`w-14 h-12 rounded-lg font-mono font-black text-sm flex flex-col items-center justify-center transition-all active:scale-95 ${
+            activeKey === 'KeyW' || activeKey === 'ArrowUp'
+              ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
+              : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
+          }`}
+          onClick={() => onManualAim(aimStepDeg, 0)}
+          data-testid="operator-aim-up"
+          title="Pan CW — Motor 1 (W)"
+        >
+          <span className="text-xs">▲</span>
+          <span className="text-[10px] opacity-70">W</span>
+        </button>
         <span />
-        <button type="button" disabled={aimDisabled} className="bg-white/5 rounded border border-white/10" onClick={() => onManualAim(-aimStepDeg, 0)} data-testid="operator-aim-left">A</button>
-        <button type="button" disabled={aimDisabled} className="bg-white/5 rounded border border-white/10" onClick={() => onManualAim(0, -aimStepDeg)} data-testid="operator-aim-down">S</button>
-        <button type="button" disabled={aimDisabled} className="bg-white/5 rounded border border-white/10" onClick={() => onManualAim(aimStepDeg, 0)} data-testid="operator-aim-right">D</button>
+
+        <button
+          type="button"
+          disabled={aimDisabled}
+          className={`w-14 h-12 rounded-lg font-mono font-black text-sm flex flex-col items-center justify-center transition-all active:scale-95 ${
+            activeKey === 'KeyA' || activeKey === 'ArrowLeft'
+              ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
+              : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
+          }`}
+          onClick={() => onManualAim(0, -aimStepDeg)}
+          data-testid="operator-aim-left"
+          title="Tilt CCW — Motor 2 (A)"
+        >
+          <span className="text-xs">◀</span>
+          <span className="text-[10px] opacity-70">A</span>
+        </button>
+
+        <div
+          className="w-14 h-12 rounded-lg font-mono font-black text-xs flex flex-col items-center justify-center border border-white/10 bg-white/5 text-[#91a6b7] select-none"
+          title="Merkez Nişangâh"
+        >
+          <span className="text-sm text-[#25d8ff]">🎯</span>
+          <span className="text-[8px] opacity-70">NİŞAN</span>
+        </div>
+
+        <button
+          type="button"
+          disabled={aimDisabled}
+          className={`w-14 h-12 rounded-lg font-mono font-black text-sm flex flex-col items-center justify-center transition-all active:scale-95 ${
+            activeKey === 'KeyD' || activeKey === 'ArrowRight'
+              ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
+              : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
+          }`}
+          onClick={() => onManualAim(0, aimStepDeg)}
+          data-testid="operator-aim-right"
+          title="Tilt CW — Motor 2 (D)"
+        >
+          <span className="text-xs">▶</span>
+          <span className="text-[10px] opacity-70">D</span>
+        </button>
+
+        <span />
+        <button
+          type="button"
+          disabled={aimDisabled}
+          className={`w-14 h-12 rounded-lg font-mono font-black text-sm flex flex-col items-center justify-center transition-all active:scale-95 ${
+            activeKey === 'KeyS' || activeKey === 'ArrowDown'
+              ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
+              : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
+          }`}
+          onClick={() => onManualAim(-aimStepDeg, 0)}
+          data-testid="operator-aim-down"
+          title="Pan CCW — Motor 1 (S)"
+        >
+          <span className="text-xs">▼</span>
+          <span className="text-[10px] opacity-70">S</span>
+        </button>
+        <span />
       </div>
-      <p className="m-0 mt-2 text-[10px] text-[#91a6b7]">
-        Space tuşuna basılı tutarak WASD veya yön tuşları ile yönlendirin.
-      </p>
+
+      {turretCalibration?.active && (
+        <div className="mt-2 text-[10px] text-[#33e68c] font-mono text-center">
+          Kalibrasyon: {turretCalibration.calibrationId}
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between text-[10px] text-[#91a6b7] border-t border-white/10 pt-2">
+        <span>⌨ <b>W/S</b>: Pan (Motor 1) · <b>A/D</b>: Tilt (Motor 2) · Ok tuşları da kullanılabilir.</span>
+      </div>
     </section>
   );
 }

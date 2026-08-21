@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import pwd
 import subprocess
 import sys
 import tomllib
@@ -14,6 +13,13 @@ from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
+
+try:
+    import pwd
+    import grp
+except ImportError:
+    pwd = None  # type: ignore[assignment]
+    grp = None  # type: ignore[assignment]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = REPO_ROOT / "deploy/pi/manifest.toml"
@@ -205,19 +211,22 @@ def verify_host(data: dict[str, Any]) -> list[str]:
         errors.append(f"architecture mismatch: {platform.machine()}")
 
     runtime = data["runtime"]
-    try:
-        user = pwd.getpwnam(runtime["user"])
-    except KeyError:
-        errors.append(f"runtime user missing: {runtime['user']}")
+    if pwd is None or grp is None:
+        errors.append("pwd/grp module not available on this platform")
     else:
-        groups = {
-            entry.gr_name
-            for entry in __import__("grp").getgrall()
-            if user.pw_name in entry.gr_mem or entry.gr_gid == user.pw_gid
-        }
-        missing_groups = sorted(set(data["permissions"]["groups"]) - groups)
-        if missing_groups:
-            errors.append("runtime groups missing: " + ", ".join(missing_groups))
+        try:
+            user = pwd.getpwnam(runtime["user"])
+        except KeyError:
+            errors.append(f"runtime user missing: {runtime['user']}")
+        else:
+            groups = {
+                entry.gr_name
+                for entry in grp.getgrall()
+                if user.pw_name in entry.gr_mem or entry.gr_gid == user.pw_gid
+            }
+            missing_groups = sorted(set(data["permissions"]["groups"]) - groups)
+            if missing_groups:
+                errors.append("runtime groups missing: " + ", ".join(missing_groups))
 
     for path_key in ("install_dir", "venv_dir", "config_dir", "state_dir"):
         if not Path(runtime[path_key]).exists():

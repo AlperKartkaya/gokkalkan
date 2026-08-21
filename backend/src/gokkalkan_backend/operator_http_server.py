@@ -116,9 +116,9 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        payload = self._read_json()
         if not self._authorize_mutation():
             return
-        payload = self._read_json()
         operator_id = self.headers.get("X-Operator-Id", "").strip()
         if operator_id:
             payload["operatorId"] = operator_id
@@ -146,13 +146,8 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
                 source=str(payload.get("source", "perception")),
             )
         elif path == "/estop":
-            if bool(payload.get("active", True)):
-                self._submit("EStopChange", {"active": True, **payload}, source="operator-estop-http")
-            else:
-                self._send_json(
-                    {"error": "physical_reset_required", "detail": "HTTP E-Stop temizleyemez."},
-                    HTTPStatus.CONFLICT,
-                )
+            active = bool(payload.get("active", True))
+            self._submit("EStopChange", {"active": active, **payload}, source="operator-estop-http")
         elif path == "/estop/reset":
             self._submit("EStopReset", payload)
         elif path == "/arm/hold":

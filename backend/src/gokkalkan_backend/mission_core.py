@@ -539,6 +539,17 @@ class MissionCore:
                     healthy,
                     reason=str(payload.get("reason", "heartbeat")),
                 )
+            if envelope.kind == "RawLidarUpdate":
+                return self.service.update_raw_lidar(
+                    distance_m=(
+                        None
+                        if payload.get("distanceM") is None
+                        else float(payload["distanceM"])
+                    ),
+                    raw_hex=str(payload.get("rawHex", "")),
+                    valid=bool(payload.get("valid", True)),
+                    source=str(payload.get("source", "tfa50-l")),
+                )
             if envelope.kind == "FusedRangeUpdate":
                 if not envelope.source.startswith(("sensor-tfa50-l", "hil-tfa50-l")):
                     raise MessageContractError(
@@ -571,7 +582,7 @@ class MissionCore:
 
     def _tick_autonomous_controller(self) -> None:
         now = time.monotonic_ns()
-        if now - self._last_autonomous_tick_ns < 100_000_000:
+        if now - self._last_autonomous_tick_ns < 50_000_000:
             return
         self._last_autonomous_tick_ns = now
         action = self.autonomous_controller.tick(self.service.snapshot(), now_monotonic_ns=now)

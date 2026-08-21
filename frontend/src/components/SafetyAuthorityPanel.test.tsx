@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { SafetyAuthorityPanel } from './SafetyAuthorityPanel';
 import type { OperatorSafetyState } from '../operatorContracts';
 
@@ -20,31 +19,32 @@ const defaultSafety: OperatorSafetyState = {
 };
 
 describe('SafetyAuthorityPanel', () => {
-  it('renders E-Stop as ready when not active', () => {
-    render(<SafetyAuthorityPanel safety={defaultSafety} onEStop={vi.fn()} eStopBusy={false} />);
+  it('renders normal safety status when not blocked', () => {
+    render(<SafetyAuthorityPanel safety={defaultSafety} />);
     
-    const button = screen.getByRole('button', { name: 'Acil Durdur — Yazılım E-Stop' });
-    expect(button).toBeInTheDocument();
-    expect(button).not.toBeDisabled();
+    expect(screen.getByText('Emniyet Durumu')).toBeInTheDocument();
+    expect(screen.getByText('SİSTEM HAZIR · NORMAL')).toBeInTheDocument();
     expect(screen.getByText('Pasif ✓')).toBeInTheDocument();
   });
 
-  it('renders E-Stop as disabled and DURDURULDU when active', () => {
+  it('renders locked status and active warning when estop is active', () => {
     const activeSafety: OperatorSafetyState = { ...defaultSafety, estop: true, blockReason: 'BLOCKED_ESTOP' };
-    render(<SafetyAuthorityPanel safety={activeSafety} onEStop={vi.fn()} eStopBusy={false} />);
+    render(<SafetyAuthorityPanel safety={activeSafety} />);
     
-    const button = screen.getByRole('button', { name: 'Acil Durdur — Yazılım E-Stop' });
-    expect(button).toHaveClass('cursor-not-allowed');
-    expect(button).toBeDisabled();
+    expect(screen.getByText('KİLİTLİ / GÜVENLİK DEVREDE')).toBeInTheDocument();
     expect(screen.getByText('AKTİF ⚠️')).toBeInTheDocument();
   });
 
-  it('calls onEStop when clicked', async () => {
-    const mockEStop = vi.fn();
-    render(<SafetyAuthorityPanel safety={defaultSafety} onEStop={mockEStop} eStopBusy={false} />);
+  it('renders all evidence rows and block reason summary', () => {
+    const blockedSafety: OperatorSafetyState = {
+      ...defaultSafety,
+      motionZoneOk: false,
+      blockReason: 'BLOCKED_MOTION_ZONE',
+    };
+    render(<SafetyAuthorityPanel safety={blockedSafety} />);
     
-    const button = screen.getByRole('button', { name: 'Acil Durdur — Yazılım E-Stop' });
-    await userEvent.click(button);
-    expect(mockEStop).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Kilitli ⚠️')).toBeInTheDocument();
+    expect(screen.getByTestId('operator-safety-state')).toBeInTheDocument();
   });
 });
+

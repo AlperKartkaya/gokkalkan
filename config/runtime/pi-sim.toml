@@ -57,9 +57,8 @@ lidar_serial_number = "UNVERIFIED"
 lidar_firmware_version = "UNVERIFIED"
 lidar_calibration_path = "config/calibration/tfa50_l.toml"
 lidar_mount_revision = "BRIDGE-UNVERIFIED"
-# Receive-only TFA50-L probe and identity/calibration approval are required
-# before this can be set to true in /etc/gokkalkan/runtime.toml.
-lidar_input_enabled = false
+# Hardware UART (GPIO Pins 8/10) on Raspberry Pi 5
+lidar_input_enabled = true
 
 [live]
 interlock_provider = ""

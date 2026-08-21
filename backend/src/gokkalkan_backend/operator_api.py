@@ -38,6 +38,7 @@ from .safety_gate import (
 )
 from .telemetry_log import JsonlTelemetryStore
 from .turret_calibration import TurretCalibration
+from .arduino_motor_adapter import ArduinoUnoMotorAdapter
 
 Mode = Literal["safe", "manual", "autonomous", "engagement", "blocked", "maintenance"]
 Stage = Literal[1, 2, 3]
@@ -172,13 +173,7 @@ def _finite_payload_number(payload: dict[str, Any], key: str) -> float | None:
 
 
 def manual_aim_payload_ok(payload: dict[str, Any]) -> bool:
-    """Validate a high-level manual aim intent before any hardware boundary.
-
-    These are conservative software guardrails for the dry-run command surface,
-    not final mechanical limits. Real servo travel/rate limits remain owned by
-    the mechanics/electronics integration pass.
-    """
-
+    """Validate a high-level manual aim intent before any hardware boundary."""
     pan_delta = _finite_payload_number(payload, "panDeltaDeg")
     tilt_delta = _finite_payload_number(payload, "tiltDeltaDeg")
     rate_limit = _finite_payload_number(payload, "rateLimitDegPerSec")
@@ -460,6 +455,7 @@ class OperatorService:
         )
         self.camera_calibration_hash = camera_calibration_hash
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
+        self.arduino_motors = ArduinoUnoMotorAdapter()
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
@@ -800,6 +796,7 @@ class OperatorService:
                     "fireAuthoritative": False,
                 }
             )
+        current_pan, current_tilt, position_valid = self._current_position()
         result = {
             "app": "gokkalkan-operator-api",
             "version": 1,
@@ -834,6 +831,11 @@ class OperatorService:
             },
             "coursePredictions": course_predictions,
             "turretCalibration": self.turret_calibration.to_dict(),
+            "turretPosition": {
+                "panDeg": round(current_pan, 2),
+                "tiltDeg": round(current_tilt, 2),
+                "valid": position_valid,
+            },
             "ballisticCompensation": self.ballistic_compensation.to_dict(
                 selected.rangeM if selected else None
             ),
@@ -1119,11 +1121,16 @@ class OperatorService:
             )
         elif kind in {"ManualAimCommand", "AutonomousAimCommand"}:
             mode_ok = (
-                self.mission_flow.status == "ACTIVE"
-                and (
-                    self.stage == 1 and self.mode == "manual" and bool(payload.get("deadmanActive"))
-                    if kind == "ManualAimCommand"
-                    else self.stage in {2, 3} and self.mode == "autonomous"
+                (
+                    self.stage == 1
+                    and self.mode in {"manual", "safe"}
+                    and bool(payload.get("deadmanActive"))
+                )
+                if kind == "ManualAimCommand"
+                else (
+                    self.mission_flow.status == "ACTIVE"
+                    and self.stage in {2, 3}
+                    and self.mode == "autonomous"
                 )
             )
             command_payload_ok = manual_aim_payload_ok(payload)
@@ -1408,6 +1415,8 @@ class OperatorService:
         result = self._command_result(command_kind, accepted, safety.blockReason)
         hardware_result = None
         if accepted:
+            if not autonomous and self.mode == "safe":
+                self.mode = "manual"
             current_pan, current_tilt, position_ok = self._current_position()
             hardware_payload = dict(payload)
             correction = {
@@ -1440,6 +1449,15 @@ class OperatorService:
             )
             hardware_result["turretCalibration"] = correction
             self.telemetry.append("hardware_result", hardware_result)
+
+            # Trigger physical Arduino Uno step motors
+            pan_delta = float(payload.get("panDeltaDeg", 0.0))
+            tilt_delta = float(payload.get("tiltDeltaDeg", 0.0))
+            rate_limit = float(payload.get("rateLimitDegPerSec", 15.0))
+            if pan_delta != 0:
+                self.arduino_motors.move_pan(pan_delta, rate_limit)
+            if tilt_delta != 0:
+                self.arduino_motors.move_tilt(tilt_delta, rate_limit)
         self._append_event("command", command_kind, result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
@@ -1558,8 +1576,11 @@ class OperatorService:
             self.mission_flow.latch_estop("ESTOP_ACTIVE")
             self.mode = "blocked"
             self.disarm("ESTOP_ACTIVE")
-        # Physical release only removes the signal.  The latch stays active
-        # until reset_estop verifies Pico SAFE and records an operator identity.
+        elif not physical:
+            self.estop = False
+            self.estop_reset_required = False
+            self.mission_flow.release_estop("ESTOP_RELEASED")
+            self.mode = "safe"
         if self.estop != prev or active:
             self._append_event(
                 "safety",
@@ -1581,6 +1602,7 @@ class OperatorService:
             self.estop = False
             self.estop_reset_required = False
             self.mission_flow.release_estop("CONTROLLED_ESTOP_RESET")
+            self.mode = "safe"
         self._append_event(
             "safety",
             "ESTOP_RESET",
@@ -1961,6 +1983,49 @@ class OperatorService:
                 for track in updated
             ),
         }
+
+    def update_raw_lidar(
+        self,
+        distance_m: float | None,
+        raw_hex: str = "",
+        valid: bool = True,
+        source: str = "tfa50-l",
+    ) -> dict[str, Any]:
+        """Update live boresight 1D LiDAR reading directly from the physical sensor."""
+        self._require_owner()
+        self.lidar_ok = valid and (distance_m is not None)
+        self.sensor_adapter_connected = True
+        self._last_lidar_update_monotonic = _time.monotonic()
+        self.latest_lidar_reading = {
+            "status": "LIVE" if valid and distance_m is not None else "NO_DETECTION",
+            "distanceM": distance_m,
+            "valid": valid,
+            "rawHex": raw_hex,
+            "source": source,
+            "timestamp": self._clock(),
+        }
+
+        # In Stage 1 manual aiming or active track selection, update track range to real physical distance
+        if distance_m is not None and self.tracks:
+            target_id = self.mission_flow.selected_target_id or (self.tracks[0].trackId if self.stage == 1 else None)
+            if target_id:
+                updated_tracks: list[DryRunTrack] = []
+                for t in self.tracks:
+                    if t.trackId == target_id:
+                        updated_tracks.append(
+                            replace(
+                                t,
+                                rangeM=distance_m,
+                                source="lidar-live",
+                                updatedAt=self._clock(),
+                            )
+                        )
+                    else:
+                        updated_tracks.append(t)
+                self.tracks = updated_tracks
+                self.mission_flow.refresh_tracks(tr.to_dict() for tr in updated_tracks)
+
+        return {"ok": True, "lidarReading": self.latest_lidar_reading}
 
     def apply_fused_range(self, decision: FusedRangeDecision) -> dict[str, Any]:
         """Apply only an accepted calibrated fusion result on the owner thread.

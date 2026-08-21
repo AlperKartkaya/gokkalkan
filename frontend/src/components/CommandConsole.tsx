@@ -4,26 +4,26 @@ export function CommandConsole({
   apiBusy,
   fireReady,
   fireCaption,
-  operatorStopActive,
+  operatorStopActive: _operatorStopActive,
   maintenanceReady,
   maintenanceStatusCopy,
   maintenanceSessionActive,
   maintenanceRemainingSeconds,
   onSendFireIntent,
-  onTriggerOperatorStop,
+  onTriggerOperatorStop: _onTriggerOperatorStop,
   onOpenMaintenance,
   children,
 }: {
   apiBusy: boolean;
   fireReady: boolean;
   fireCaption: string;
-  operatorStopActive: boolean;
+  operatorStopActive?: boolean;
   maintenanceReady: boolean;
   maintenanceStatusCopy: string;
   maintenanceSessionActive: boolean;
   maintenanceRemainingSeconds: number;
   onSendFireIntent: () => void;
-  onTriggerOperatorStop: () => void;
+  onTriggerOperatorStop?: () => void;
   onOpenMaintenance: () => void;
   children?: React.ReactNode;
 }) {
@@ -32,7 +32,7 @@ export function CommandConsole({
       {children}
 
       <section className="operator-action-strip rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3" data-testid="operator-action-strip" aria-label="Operatör komutları">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-white/[.08] bg-black/20 p-1.5" data-testid="fire-cluster">
             <button
               className={`min-h-12 w-full rounded-lg px-3 text-sm font-black transition-all ${fireReady ? 'bg-[#ff3146] text-white shadow-[0_12px_24px_rgba(255,71,87,.28)] fire-ready-pulse' : 'bg-white/[.08] text-[#91a6b7]'}`}
@@ -46,18 +46,6 @@ export function CommandConsole({
             <p className="m-0 mt-1 text-center text-[11px] font-bold text-[#91a6b7]" data-testid="operator-fire-caption">
               {fireCaption}
             </p>
-          </div>
-
-          <div className="rounded-xl border border-white/[.08] bg-black/20 p-1.5">
-            <button
-              className={`min-h-12 w-full rounded-lg border px-3 text-sm font-black transition-all ${operatorStopActive ? 'border-[#ff4757]/80 bg-[#ff4757]/30 text-white' : 'border-[#ff4757]/35 bg-[#ff4757]/14 text-[#ffd3d7] opacity-60 hover:opacity-100'}`}
-              data-testid="operator-stop-button"
-              disabled={apiBusy || operatorStopActive}
-              onClick={onTriggerOperatorStop}
-              title={operatorStopActive ? "Acil Durdur kilidi aktif." : "Yazılım Acil Durdur isteği gönder"}
-            >
-              ACİL DURDUR
-            </button>
           </div>
 
           <div className="rounded-xl border border-white/[.08] bg-black/20 p-1.5">

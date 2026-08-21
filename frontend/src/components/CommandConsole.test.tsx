@@ -23,9 +23,22 @@ function renderConsole(overrides: Partial<Parameters<typeof CommandConsole>[0]> 
 }
 
 describe('CommandConsole', () => {
-  it('does not repeat the stop command while the mission is already locked', () => {
-    renderConsole({ operatorStopActive: true });
-    expect(screen.getByRole('button', { name: 'ACİL DURDUR' })).toBeDisabled();
+  it('disables the fire button when not ready or busy', () => {
+    renderConsole({ fireReady: false });
+    expect(screen.getByRole('button', { name: 'ATEŞ' })).toBeDisabled();
+  });
+
+  it('triggers fire intent when fire button is ready and clicked', async () => {
+    const onSendFireIntent = vi.fn();
+    renderConsole({
+      fireReady: true,
+      onSendFireIntent,
+    });
+
+    const fireButton = screen.getByRole('button', { name: 'ATEŞ' });
+    expect(fireButton).not.toBeDisabled();
+    await userEvent.click(fireButton);
+    expect(onSendFireIntent).toHaveBeenCalledOnce();
   });
 
   it('ends an active maintenance session through the visible maintenance control', async () => {
@@ -41,3 +54,4 @@ describe('CommandConsole', () => {
     expect(onOpenMaintenance).toHaveBeenCalledOnce();
   });
 });
+

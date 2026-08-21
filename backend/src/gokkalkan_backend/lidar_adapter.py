@@ -1,8 +1,9 @@
-"""Reconnect-capable TFA50-L UART adapter with explicit health and telemetry."""
+"""Reconnect-capable TFA50-L & TFmini/TF-Luna UART adapter with explicit health and telemetry."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import glob
 import time
 from typing import Any, Callable, Protocol
 
@@ -38,6 +39,8 @@ class TFA50LSerialConfig:
 
 
 class TFA50LSerialAdapter:
+    BAUD_CANDIDATES = (115200, 460800, 921600, 9600, 57600)
+
     def __init__(
         self,
         config: TFA50LSerialConfig,
@@ -58,35 +61,83 @@ class TFA50LSerialAdapter:
         self._reconnect_count = 0
         self._serial_number = config.serial_number
         self._firmware_version = config.firmware_version
+        self._active_baud = config.baud_rate
+        self._active_port = config.port
+        self._baud_search_idx = 0
+        self._baud_switch_attempt_ns = 0
 
     @staticmethod
     def _default_serial_factory(**kwargs: Any) -> SerialLike:
         import serial
+        import serial.tools.list_ports
 
-        return serial.Serial(**kwargs)
+        port = kwargs.get("port")
+        try:
+            return serial.Serial(**kwargs)
+        except Exception:
+            # Cross-platform fallback for COM / USB / ttyAMA ports
+            ports = list(serial.tools.list_ports.comports())
+            candidates = []
+            for p in ports:
+                desc = (p.description or "").lower()
+                dev = p.device
+                if any(x in desc or x in dev.lower() for x in ["cp210", "ftdi", "ch340", "ch341", "uart", "usb", "com", "ttyusb", "ttyacm"]):
+                    candidates.append(dev)
+
+            # Linux paths
+            linux_paths = sorted(
+                glob.glob("/dev/serial/by-id/*")
+                + glob.glob("/dev/ttyUSB*")
+                + glob.glob("/dev/ttyACM*")
+                + glob.glob("/dev/ttyAMA*")
+                + glob.glob("/dev/serial0")
+            )
+            for lp in linux_paths:
+                if lp not in candidates:
+                    candidates.append(lp)
+
+            for dev in candidates:
+                if dev != port:
+                    try:
+                        kwargs["port"] = dev
+                        return serial.Serial(**kwargs)
+                    except Exception:
+                        continue
+            raise
 
     def _connect(self) -> bool:
         now = self._clock()
         if now - self._last_connect_attempt_ns < self.config.reconnect_ms * 1_000_000:
             return False
         self._last_connect_attempt_ns = now
-        try:
-            self._serial = self._factory(
-                port=self.config.port,
-                baudrate=self.config.baud_rate,
-                timeout=max(0.02, 2.0 / max(1, self.config.sample_hz)),
-            )
-            self._last_error = None
-            self._reconnect_count += 1
-            if self.config.initialize_device:
-                self._initialize_device()
-            self._telemetry("lidar_connected", self.manifest())
-            return True
-        except (OSError, ValueError) as exc:
-            self._serial = None
-            self._last_error = f"{type(exc).__name__}:{exc}"
-            self._telemetry("lidar_connection_error", {"error": self._last_error})
-            return False
+
+        # Try configured baud first, then scan candidates
+        baud_order = [self._active_baud] + [
+            b for b in self.BAUD_CANDIDATES if b != self._active_baud
+        ]
+        timeout_val = max(0.02, 2.0 / max(1, self.config.sample_hz))
+
+        for baud in baud_order:
+            try:
+                self._serial = self._factory(
+                    port=self._active_port,
+                    baudrate=baud,
+                    timeout=timeout_val,
+                )
+                self._active_baud = baud
+                self._last_error = None
+                self._reconnect_count += 1
+                if self.config.initialize_device:
+                    self._initialize_device()
+                self._telemetry("lidar_connected", self.manifest())
+                return True
+            except (OSError, ValueError):
+                self._serial = None
+                continue
+
+        self._last_error = "ALL_BAUD_CANDIDATES_FAILED"
+        self._telemetry("lidar_connection_error", {"error": self._last_error})
+        return False
 
     def _read_control_response(self, response_code: int) -> bytes:
         buffer = bytearray()
@@ -104,7 +155,9 @@ class TFA50LSerialAdapter:
         raise OSError(f"TFA50-L control response 0x{response_code:02X} timed out")
 
     def _initialize_device(self) -> None:
-        assert self._serial is not None
+        """Attempt TFA50-L initialization if possible, fully non-fatal for TFmini/TF-Luna."""
+        if self._serial is None:
+            return
         try:
             self._serial.write(TFA50L_STOP_RANGING_COMMAND)
             self._read_control_response(0x8A)
@@ -119,11 +172,15 @@ class TFA50LSerialAdapter:
             frequency = frequency_command(self.config.sample_hz)
             self._serial.write(frequency)
             self._read_control_response(0x8B)
-        except (OSError, ValueError) as exc:
-            self._last_error = f"IDENTITY_OR_CONFIG:{type(exc).__name__}:{exc}"
-            self._telemetry("lidar_identity_error", {"error": self._last_error})
-        finally:
-            self._serial.write(TFA50L_START_RANGING_COMMAND)
+        except Exception as exc:
+            # TFmini / TF-Luna / passive stream sensors do not acknowledge TFA50-L 0x5A commands
+            # This is expected and non-fatal — the sensor will still stream distance data
+            self._telemetry("lidar_identity_info", {"note": f"Passive stream or TFmini detected: {exc}"})
+        try:
+            if self._serial is not None:
+                self._serial.write(TFA50L_START_RANGING_COMMAND)
+        except Exception:
+            pass
 
     def poll(self) -> list[TimedRange]:
         if self._serial is None and not self._connect():
@@ -139,15 +196,23 @@ class TFA50LSerialAdapter:
                 self._serial = None
             self._telemetry("lidar_disconnected", {"error": self._last_error})
             return []
+
         now = self._clock()
         measurements = self._decoder.feed(chunk)
         events: list[TimedRange] = []
+
+        # If data is flowing and measurements are found, clear errors
+        if measurements:
+            self._last_error = None
+            self._last_receive_ns = now
+
         for rejected in self._decoder.last_rejections:
             invalid = TimedRange(
                 None, now, rejected["rawHex"], False, "CHECKSUM_OR_FRAME_INVALID"
             )
             events.append(invalid)
             self._telemetry("lidar_measurement", asdict(invalid))
+
         for measurement in measurements:
             event = TimedRange(
                 distance_m=measurement.distance_m,
@@ -158,7 +223,7 @@ class TFA50LSerialAdapter:
             )
             events.append(event)
             self._telemetry("lidar_measurement", asdict(event))
-            self._last_receive_ns = now
+
         return events
 
     def close(self) -> None:
@@ -169,8 +234,8 @@ class TFA50LSerialAdapter:
     def manifest(self) -> dict[str, Any]:
         return {
             "adapter": "tfa50-l-uart",
-            "port": self.config.port,
-            "baudRate": self.config.baud_rate,
+            "port": self._active_port,
+            "baudRate": self._active_baud,
             "sampleHz": self.config.sample_hz,
             "serialNumber": self._serial_number,
             "firmwareVersion": self._firmware_version,
@@ -205,12 +270,11 @@ def probe_tfa50l_uart(
     serial_factory: Callable[..., SerialLike] | None = None,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
-    """Read TFA50-L measurement frames without transmitting any UART command.
+    """Read TFA50-L / TFmini measurement frames without transmitting any UART command.
 
     This is intentionally a receive-only wiring/baud diagnostic. It never
     changes LiDAR configuration, starts ranging, or enables physical outputs.
     """
-
     if timeout_sec <= 0:
         raise ValueError("timeout_sec must be positive")
     if read_size <= 0:
@@ -249,3 +313,4 @@ def probe_tfa50l_uart(
         "lastMeasurement": valid_frames[-1] if valid_frames else None,
         "ok": bool(valid_frames),
     }
+

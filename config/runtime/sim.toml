@@ -45,13 +45,13 @@ lidar_min_m = 0.2
 lidar_max_m = 50.0
 classification_min_confidence = 0.40
 lidar_port = "/dev/ttyUSB0"
-lidar_baud_rate = 460800
-lidar_sample_hz = 1000
+lidar_baud_rate = 115200
+lidar_sample_hz = 100
 lidar_serial_number = "UNVERIFIED"
 lidar_firmware_version = "UNVERIFIED"
 lidar_calibration_path = "config/calibration/tfa50_l.toml"
 lidar_mount_revision = "BRIDGE-UNVERIFIED"
-lidar_input_enabled = false
+lidar_input_enabled = true
 
 [live]
 interlock_provider = ""

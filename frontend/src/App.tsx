@@ -614,7 +614,6 @@ function BottomActionBar({
   roundTotal,
   roundHits,
   paused,
-  estop,
   fireDisabled,
   fireButtonText,
   fireReason,
@@ -625,7 +624,6 @@ function BottomActionBar({
   onMode,
   onPause,
   onReset,
-  onEstop,
 }: {
   stage: Stage;
   mode: Mode;
@@ -635,7 +633,6 @@ function BottomActionBar({
   roundTotal: number;
   roundHits: number;
   paused: boolean;
-  estop: boolean;
   fireDisabled: boolean;
   fireButtonText: string;
   fireReason: string;
@@ -646,7 +643,6 @@ function BottomActionBar({
   onMode: (mode: Mode) => void;
   onPause: () => void;
   onReset: () => void;
-  onEstop: () => void;
 }) {
   const controlButtonClass = (active = false, danger = false) => cx(
     'min-w-0 rounded-md border border-white/[.08] bg-white/[.055] text-xs font-black text-[#dcecf5] [overflow-wrap:anywhere]',
@@ -669,11 +665,10 @@ function BottomActionBar({
   return (
     <section className="bottom-action-bar mt-2 grid grid-cols-1 items-stretch gap-2 min-[1321px]:[grid-template-columns:minmax(0,1fr)_minmax(330px,.72fr)_minmax(280px,360px)]" data-testid="bottom-action-bar">
       <StageChecklist stage={stage} currentTarget={currentTarget} destroyedIds={destroyedIds} round={round} roundHits={roundHits} roundTotal={roundTotal} />
-      <div className="main-controls grid grid-cols-5 gap-1.5 rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)] p-2 max-[760px]:grid-cols-1">
+      <div className="main-controls grid grid-cols-4 gap-1.5 rounded-lg border border-[rgba(174,225,255,.13)] bg-[rgba(9,13,17,.96)] p-2 max-[760px]:grid-cols-1">
         <button className={controlButtonClass(mode === 'manual')} onClick={() => onMode('manual')}>Manuel</button>
         <button className={controlButtonClass(mode === 'autonomous')} onClick={() => onMode('autonomous')}>Otonom</button>
         <button className={controlButtonClass()} onClick={onPause}>{paused ? 'Devam' : 'Duraklat'}</button>
-        <button className={controlButtonClass(estop, true)} onClick={onEstop}>Acil Durdur</button>
         <button className={controlButtonClass()} onClick={onReset}>Sıfırla</button>
       </div>
       <div
@@ -1027,11 +1022,6 @@ function Console() {
     addEvent('mode', `MODE_${nextMode.toUpperCase()}`, `Mod ${modeCopy[nextMode]} olarak değişti`);
   };
 
-  const toggleEstop = () => {
-    setBaseSafety((previous) => ({ ...previous, estop: !previous.estop }));
-    addEvent('safety', baseSafety.estop ? 'ESTOP_OFF' : 'ESTOP_ON', baseSafety.estop ? 'Hakem/operatör onayıyla devam' : 'Hareket, zaman ve atış donduruldu');
-  };
-
   const nextTutorial = () => {
     if (tutorialIndex + 1 >= stageSteps.length) {
       dismissTutorialForCurrentStage();
@@ -1213,7 +1203,6 @@ function Console() {
         roundTotal={roundTotal}
         roundHits={roundHits}
         paused={paused || tutorialVisible}
-        estop={baseSafety.estop}
         fireDisabled={fireDisabled}
         fireButtonText={fireButtonText}
         fireReason={fireReason}
@@ -1224,7 +1213,6 @@ function Console() {
         onMode={handleMode}
         onPause={() => setPaused((value) => !value)}
         onReset={() => { resetStageState(stage); addEvent('telemetry', 'RESET_STAGE', `Aşama ${stage} sıfırlandı`); }}
-        onEstop={toggleEstop}
       />
       <DebugDrawer baseSafety={baseSafety} fireSafety={fireSafety} events={events} selectedTrack={selectedTrack} elapsed={elapsed} maintenanceBudget={maintenanceBudget} />
       {tutorialStep && (
@@ -1246,8 +1234,8 @@ function initialSurface(): AppSurface {
   const params = new URLSearchParams(window.location.search);
   if (params.has('landing')) return 'landing';
   if (params.has('console')) return 'simulator';
-  if (params.has('ai')) return 'ai';
-  return 'operator';
+  if (params.has('operator')) return 'operator';
+  return 'ai';
 }
 
 function OperatorWorkspace({
@@ -1268,7 +1256,7 @@ function OperatorWorkspace({
   const backendState = useOperatorBackendState(apiBaseUrl);
 
   if (surface === 'ai') {
-    return <AIPanel backendState={backendState} onOpenOperator={() => onSurface('operator')} />;
+    return <AIPanel apiBaseUrl={apiBaseUrl} backendState={backendState} onOpenOperator={() => onSurface('operator')} />;
   }
   return (
     <OperatorPanel

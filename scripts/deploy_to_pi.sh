@@ -91,4 +91,4 @@ ssh -t "${SSH_ARGS[@]}" "$PI_HOST" \
    systemctl is-enabled gokkalkan.target && systemctl is-active gokkalkan.target"
 
 echo "Deploy complete. Pi services persist after SSH disconnect and reboot."
-echo "Operator tunnel: ssh -N -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 $PI_HOST"
+echo "Operator tunnel: ssh -N -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 -L 8090:127.0.0.1:8090 $PI_HOST"

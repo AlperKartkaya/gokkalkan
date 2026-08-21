@@ -1,6 +1,6 @@
-import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import gokkalkanIconUrl from '../assets/gokkalkan_icon.png';
-import { COMPETITION_COURSE, displayXForRangeBand, systemReference, toDisplayCourseMeters } from './competitionCourse';
+import { COMPETITION_COURSE, displayXForRangeBand, toDisplayCourseMeters } from './competitionCourse';
 import {
   canSendFireIntent,
   makeCommandResult,
@@ -11,7 +11,6 @@ import {
   stageRoundLimit,
   type CommandResult,
   type OperatorPanelConfig,
-  type OperatorSensorFrame,
   type OperatorTrackState,
 } from './operatorContracts';
 import {
@@ -40,12 +39,12 @@ import { TrackList } from './components/TrackList';
 import { ManualAimController } from './components/ManualAimController';
 import { StageRoundSelector } from './components/StageRoundSelector';
 import { VideoDemoBanner } from './components/VideoDemoBanner';
-import { sendOperatorEStop, sendMaintenanceEnd, sendMaintenanceRequest, sendMissionResume, sendOperatorManualAimCommand } from './operatorApiClient';
+import { sendMaintenanceEnd, sendMaintenanceRequest, sendOperatorManualAimCommand } from './operatorApiClient';
 import { type OperatorBackendState } from './hooks/useOperatorBackendState';
 
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
-const TYPE_SYMBOL_CONFIDENCE_THRESHOLD = 0.4;
+const TYPE_SYMBOL_CONFIDENCE_THRESHOLD = 0.55;
 
 const targetLabel: Record<TargetType, string> = {
   F16: 'Savaş Uçağı / F16',
@@ -71,10 +70,6 @@ function affiliationClass(friendFoe: OperatorTrackState['friendFoe']) {
   return 'unknown';
 }
 
-function isFrameUnidentified(frame: Pick<OperatorSensorFrame, 'friendFoe' | 'classificationConfidence'>) {
-  return frame.friendFoe === 'Bilinmeyen' || frame.classificationConfidence < 0.6;
-}
-
 function isKnownTargetType(type: string): type is TargetType {
   return Object.hasOwn(targetLabel, type);
 }
@@ -84,17 +79,6 @@ function hasReliableTrackType(
 ): track is Pick<OperatorTrackState, 'confidence' | 'typeConfidence' | 'targetType'> & { targetType: TargetType } {
   return (track.typeConfidence ?? track.confidence) >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
     && isKnownTargetType(track.targetType);
-}
-
-function hasReliableFrameType(
-  frame: Pick<OperatorSensorFrame, 'classificationConfidence' | 'targetType'>,
-): frame is Pick<OperatorSensorFrame, 'classificationConfidence' | 'targetType'> & { targetType: TargetType } {
-  return frame.classificationConfidence >= TYPE_SYMBOL_CONFIDENCE_THRESHOLD
-    && isKnownTargetType(frame.targetType);
-}
-
-function hostilityConfidence(frame: OperatorSensorFrame) {
-  return isFrameUnidentified(frame) ? Math.max(0.52, 1 - frame.classificationConfidence) : frame.quality;
 }
 
 function stageHasHostilityDetection(stage: Stage) {
@@ -119,33 +103,6 @@ function formatDuration(totalSeconds: number) {
   const seconds = boundedSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
-
-type SensorViewState = {
-  pitch: number;
-  yaw: number;
-  panX: number;
-  panZ: number;
-  distance: number;
-};
-
-type SensorDragState = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  basePitch: number;
-  baseYaw: number;
-  basePanX: number;
-  basePanZ: number;
-  mode: 'orbit' | 'pan';
-};
-
-const defaultSensorView: SensorViewState = {
-  pitch: 48,
-  yaw: 92,
-  panX: 0.8,
-  panZ: 0,
-  distance: 18,
-};
 
 function visualSizeForTarget(type: TargetType) {
   const base = {
@@ -211,486 +168,6 @@ function permittedRangeForStageTarget(stage: Stage, type: TargetType) {
   if (stage === 2) return { min: 0, max: 15 };
   return targetEngagementRange(type);
 }
-
-function sensorFrame3DPoint(frame: OperatorSensorFrame, index: number) {
-  const bearingRadians = (frame.bearingDeg * Math.PI) / 180;
-  const normalizedRange = clampNumber(frame.rangeM / 15, 0.12, 1);
-  return {
-    x: clampPercent(60 - normalizedRange * 38 + Math.sin(bearingRadians) * 10, 14, 62),
-    y: clampPercent(54 - Math.cos(bearingRadians) * 26 + index * 5, 18, 82),
-    z: 18 + clampNumber(frame.quality, 0.35, 0.98) * 38 + index * 2,
-  };
-}
-
-type Vec3 = [number, number, number];
-type SensorBatch = { positions: number[]; colors: number[] };
-type SensorOverlayPoint = {
-  frameId: string;
-  trackId: string;
-  left: number;
-  top: number;
-  visible: boolean;
-};
-
-type SensorGlResources = {
-  program: WebGLProgram;
-  positionBuffer: WebGLBuffer;
-  colorBuffer: WebGLBuffer;
-  positionLocation: number;
-  colorLocation: number;
-  matrixLocation: WebGLUniformLocation;
-};
-
-const SENSOR_DOME_POSITION: Vec3 = [7.7, 0, 0];
-const SENSOR_DEFAULT_DISTANCE = defaultSensorView.distance;
-
-const sensorPalette = {
-  grid: [0.18, 0.52, 0.95] as Vec3,
-  ring: [0.22, 0.82, 1] as Vec3,
-  dome: [0.18, 0.56, 1] as Vec3,
-  domeDark: [0.03, 0.12, 0.46] as Vec3,
-  enemy: [1, 0.34, 0.43] as Vec3,
-  friend: [0.2, 0.93, 0.54] as Vec3,
-  unknown: [0.96, 0.98, 1] as Vec3,
-  selected: [1, 0.84, 0.32] as Vec3,
-};
-
-function vecSubtract(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-
-function vecCross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
-}
-
-function vecDot(a: Vec3, b: Vec3) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function vecNormalize(value: Vec3): Vec3 {
-  const length = Math.hypot(value[0], value[1], value[2]) || 1;
-  return [value[0] / length, value[1] / length, value[2] / length];
-}
-
-function multiplyMat4(a: number[], b: number[]) {
-  const output = new Array<number>(16).fill(0);
-  for (let column = 0; column < 4; column += 1) {
-    for (let row = 0; row < 4; row += 1) {
-      output[column * 4 + row] =
-        a[0 * 4 + row] * b[column * 4 + 0] +
-        a[1 * 4 + row] * b[column * 4 + 1] +
-        a[2 * 4 + row] * b[column * 4 + 2] +
-        a[3 * 4 + row] * b[column * 4 + 3];
-    }
-  }
-  return output;
-}
-
-function perspectiveMatrix(fieldOfViewRadians: number, aspect: number, near: number, far: number) {
-  const f = 1 / Math.tan(fieldOfViewRadians / 2);
-  const rangeInverse = 1 / (near - far);
-  return [
-    f / aspect, 0, 0, 0,
-    0, f, 0, 0,
-    0, 0, (near + far) * rangeInverse, -1,
-    0, 0, near * far * rangeInverse * 2, 0,
-  ];
-}
-
-function lookAtMatrix(eye: Vec3, center: Vec3, up: Vec3) {
-  const zAxis = vecNormalize(vecSubtract(eye, center));
-  const xAxis = vecNormalize(vecCross(up, zAxis));
-  const yAxis = vecCross(zAxis, xAxis);
-  return [
-    xAxis[0], yAxis[0], zAxis[0], 0,
-    xAxis[1], yAxis[1], zAxis[1], 0,
-    xAxis[2], yAxis[2], zAxis[2], 0,
-    -vecDot(xAxis, eye), -vecDot(yAxis, eye), -vecDot(zAxis, eye), 1,
-  ];
-}
-
-function sensorViewMatrix(view: SensorViewState, aspect: number) {
-  const yaw = (view.yaw * Math.PI) / 180;
-  const pitch = (view.pitch * Math.PI) / 180;
-  const center: Vec3 = [view.panX, 0.2, view.panZ];
-  const groundDistance = Math.cos(pitch) * view.distance;
-  const eye: Vec3 = [
-    center[0] + Math.sin(yaw) * groundDistance,
-    center[1] + Math.sin(pitch) * view.distance,
-    center[2] + Math.cos(yaw) * groundDistance,
-  ];
-  return multiplyMat4(
-    perspectiveMatrix((46 * Math.PI) / 180, Math.max(aspect, 0.5), 0.1, 80),
-    lookAtMatrix(eye, center, [0, 1, 0]),
-  );
-}
-
-function transformPoint(matrix: number[], point: Vec3) {
-  const x = matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12];
-  const y = matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13];
-  const z = matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14];
-  const w = matrix[3] * point[0] + matrix[7] * point[1] + matrix[11] * point[2] + matrix[15];
-  return { x, y, z, w };
-}
-
-function projectSensorPoint(matrix: number[], point: Vec3) {
-  const projected = transformPoint(matrix, point);
-  if (Math.abs(projected.w) < 0.0001) return { left: 50, top: 50, visible: false };
-  const ndcX = projected.x / projected.w;
-  const ndcY = projected.y / projected.w;
-  const ndcZ = projected.z / projected.w;
-  return {
-    left: clampNumber((ndcX * 0.5 + 0.5) * 100, 3, 97),
-    top: clampNumber((-ndcY * 0.5 + 0.5) * 100, 6, 94),
-    visible: ndcZ >= -1 && ndcZ <= 1 && ndcX > -1.15 && ndcX < 1.15 && ndcY > -1.15 && ndcY < 1.15,
-  };
-}
-
-function sensorFrameWorldPoint(frame: OperatorSensorFrame, index: number): Vec3 {
-  const bearingRadians = (frame.bearingDeg * Math.PI) / 180;
-  return [
-    SENSOR_DOME_POSITION[0] - Math.cos(bearingRadians) * frame.rangeM,
-    0.72 + clampNumber(frame.elevationDeg ?? 0.4, -4, 12) * 0.06 + index * 0.12,
-    SENSOR_DOME_POSITION[2] + Math.sin(bearingRadians) * frame.rangeM,
-  ];
-}
-
-function sensorFrameColor(frame: OperatorSensorFrame): Vec3 {
-  if (frame.friendFoe === 'Düşman') return sensorPalette.enemy;
-  if (frame.friendFoe === 'Dost') return sensorPalette.friend;
-  return sensorPalette.unknown;
-}
-
-function pushVertex(batch: SensorBatch, point: Vec3, color: Vec3) {
-  batch.positions.push(point[0], point[1], point[2]);
-  batch.colors.push(color[0], color[1], color[2]);
-}
-
-function pushTriangle(batch: SensorBatch, a: Vec3, b: Vec3, c: Vec3, color: Vec3) {
-  pushVertex(batch, a, color);
-  pushVertex(batch, b, color);
-  pushVertex(batch, c, color);
-}
-
-function pushLine(batch: SensorBatch, a: Vec3, b: Vec3, color: Vec3) {
-  pushVertex(batch, a, color);
-  pushVertex(batch, b, color);
-}
-
-function orientedPoint(origin: Vec3, local: Vec3, yaw: number): Vec3 {
-  const cos = Math.cos(yaw);
-  const sin = Math.sin(yaw);
-  return [
-    origin[0] + local[0] * cos + local[2] * sin,
-    origin[1] + local[1],
-    origin[2] - local[0] * sin + local[2] * cos,
-  ];
-}
-
-function pushOrientedBox(batch: SensorBatch, origin: Vec3, localCenter: Vec3, size: Vec3, yaw: number, color: Vec3) {
-  const halfX = size[0] / 2;
-  const halfY = size[1] / 2;
-  const halfZ = size[2] / 2;
-  const center = orientedPoint(origin, localCenter, yaw);
-  const corners = [
-    orientedPoint(center, [-halfX, -halfY, -halfZ], yaw),
-    orientedPoint(center, [halfX, -halfY, -halfZ], yaw),
-    orientedPoint(center, [halfX, halfY, -halfZ], yaw),
-    orientedPoint(center, [-halfX, halfY, -halfZ], yaw),
-    orientedPoint(center, [-halfX, -halfY, halfZ], yaw),
-    orientedPoint(center, [halfX, -halfY, halfZ], yaw),
-    orientedPoint(center, [halfX, halfY, halfZ], yaw),
-    orientedPoint(center, [-halfX, halfY, halfZ], yaw),
-  ];
-  [
-    [0, 1, 2], [0, 2, 3],
-    [4, 6, 5], [4, 7, 6],
-    [0, 4, 5], [0, 5, 1],
-    [3, 2, 6], [3, 6, 7],
-    [1, 5, 6], [1, 6, 2],
-    [0, 3, 7], [0, 7, 4],
-  ].forEach(([a, b, c]) => pushTriangle(batch, corners[a], corners[b], corners[c], color));
-}
-
-function pushPyramidNose(batch: SensorBatch, origin: Vec3, localBase: Vec3, length: number, radius: number, yaw: number, color: Vec3) {
-  const tip = orientedPoint(origin, [localBase[0] + length, localBase[1], localBase[2]], yaw);
-  const base = [
-    orientedPoint(origin, [localBase[0], localBase[1] - radius, localBase[2] - radius], yaw),
-    orientedPoint(origin, [localBase[0], localBase[1] + radius, localBase[2] - radius], yaw),
-    orientedPoint(origin, [localBase[0], localBase[1] + radius, localBase[2] + radius], yaw),
-    orientedPoint(origin, [localBase[0], localBase[1] - radius, localBase[2] + radius], yaw),
-  ];
-  pushTriangle(batch, tip, base[0], base[1], color);
-  pushTriangle(batch, tip, base[1], base[2], color);
-  pushTriangle(batch, tip, base[2], base[3], color);
-  pushTriangle(batch, tip, base[3], base[0], color);
-}
-
-function pushCylinder(batch: SensorBatch, center: Vec3, radius: number, height: number, segments: number, color: Vec3) {
-  const bottomY = center[1] - height / 2;
-  const topY = center[1] + height / 2;
-  for (let index = 0; index < segments; index += 1) {
-    const angle = (index / segments) * Math.PI * 2;
-    const nextAngle = ((index + 1) / segments) * Math.PI * 2;
-    const p0: Vec3 = [center[0] + Math.cos(angle) * radius, bottomY, center[2] + Math.sin(angle) * radius];
-    const p1: Vec3 = [center[0] + Math.cos(nextAngle) * radius, bottomY, center[2] + Math.sin(nextAngle) * radius];
-    const p2: Vec3 = [center[0] + Math.cos(nextAngle) * radius, topY, center[2] + Math.sin(nextAngle) * radius];
-    const p3: Vec3 = [center[0] + Math.cos(angle) * radius, topY, center[2] + Math.sin(angle) * radius];
-    pushTriangle(batch, p0, p1, p2, color);
-    pushTriangle(batch, p0, p2, p3, color);
-    pushTriangle(batch, [center[0], topY, center[2]], p3, p2, color);
-  }
-}
-
-function pushSphere(batch: SensorBatch, center: Vec3, radius: number, color: Vec3) {
-  const rings = 7;
-  const segments = 14;
-  for (let ring = 0; ring < rings; ring += 1) {
-    const phi0 = (-Math.PI / 2) + (ring / rings) * Math.PI;
-    const phi1 = (-Math.PI / 2) + ((ring + 1) / rings) * Math.PI;
-    for (let segment = 0; segment < segments; segment += 1) {
-      const theta0 = (segment / segments) * Math.PI * 2;
-      const theta1 = ((segment + 1) / segments) * Math.PI * 2;
-      const point = (phi: number, theta: number): Vec3 => [
-        center[0] + Math.cos(phi) * Math.cos(theta) * radius,
-        center[1] + Math.sin(phi) * radius,
-        center[2] + Math.cos(phi) * Math.sin(theta) * radius,
-      ];
-      const a = point(phi0, theta0);
-      const b = point(phi0, theta1);
-      const c = point(phi1, theta1);
-      const d = point(phi1, theta0);
-      pushTriangle(batch, a, b, c, color);
-      pushTriangle(batch, a, c, d, color);
-    }
-  }
-}
-
-function pushSensorAircraft(triangles: SensorBatch, lines: SensorBatch, frame: OperatorSensorFrame, point: Vec3) {
-  const color = sensorFrameColor(frame);
-  const yaw = ((frame.bearingDeg - 2) * Math.PI) / 180;
-  const scale = 1;
-  if (!hasReliableFrameType(frame)) {
-    pushSphere(triangles, point, 0.36, color);
-  } else if (frame.targetType === 'Helikopter') {
-    pushOrientedBox(triangles, point, [0, 0, 0], [0.88 * scale, 0.28 * scale, 0.42 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.72 * scale, 0, 0], [0.86 * scale, 0.08 * scale, 0.12 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [0, 0.32 * scale, 0], [1.18 * scale, 0.035 * scale, 0.08 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [0, 0.33 * scale, 0], [0.08 * scale, 0.035 * scale, 1.18 * scale], yaw, color);
-  } else if (frame.targetType === 'Balistik Füze') {
-    pushOrientedBox(triangles, point, [0, 0, 0], [1.15 * scale, 0.2 * scale, 0.2 * scale], yaw, color);
-    pushPyramidNose(triangles, point, [0.58 * scale, 0, 0], 0.38 * scale, 0.13 * scale, yaw, color);
-    pushOrientedBox(triangles, point, [-0.44 * scale, -0.02 * scale, 0.2 * scale], [0.25 * scale, 0.05 * scale, 0.36 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.44 * scale, -0.02 * scale, -0.2 * scale], [0.25 * scale, 0.05 * scale, 0.36 * scale], yaw, color);
-  } else if (frame.targetType === 'Mini/Micro İHA') {
-    pushOrientedBox(triangles, point, [0, 0, 0], [0.34 * scale, 0.18 * scale, 0.34 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [0, 0, 0], [1.05 * scale, 0.045 * scale, 0.09 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [0, 0, 0], [0.09 * scale, 0.045 * scale, 1.05 * scale], yaw, color);
-    [[0.48, 0.48], [0.48, -0.48], [-0.48, 0.48], [-0.48, -0.48]].forEach(([x, z]) => {
-      pushOrientedBox(triangles, point, [x * scale, 0.04 * scale, z * scale], [0.23 * scale, 0.04 * scale, 0.23 * scale], yaw, color);
-    });
-  } else {
-    pushOrientedBox(triangles, point, [0.05 * scale, 0, 0], [1.38 * scale, 0.16 * scale, 0.22 * scale], yaw, color);
-    pushPyramidNose(triangles, point, [0.72 * scale, 0, 0], 0.48 * scale, 0.12 * scale, yaw, color);
-    pushOrientedBox(triangles, point, [-0.04 * scale, -0.01 * scale, 0], [0.62 * scale, 0.04 * scale, 1.54 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.58 * scale, 0, 0], [0.38 * scale, 0.045 * scale, 0.64 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.62 * scale, 0.28 * scale, 0], [0.22 * scale, 0.54 * scale, 0.08 * scale], yaw, color);
-    pushOrientedBox(triangles, point, [-0.18 * scale, -0.1 * scale, 0], [0.34 * scale, 0.07 * scale, 0.18 * scale], yaw, color);
-  }
-  pushLine(lines, [point[0], 0.06, point[2]], [point[0], point[1], point[2]], color);
-}
-
-function pushSensorWorld(triangles: SensorBatch, lines: SensorBatch, frames: OperatorSensorFrame[], selectedTrackId: string) {
-  // Draw grid shifted by SENSOR_DOME_POSITION
-  for (let x = -18; x <= 0; x += 2) {
-    pushLine(lines, [SENSOR_DOME_POSITION[0] + x, 0, -8], [SENSOR_DOME_POSITION[0] + x, 0, 8], sensorPalette.grid);
-  }
-  for (let z = -8; z <= 8; z += 2) {
-    pushLine(lines, [SENSOR_DOME_POSITION[0] - 18, 0, z], [SENSOR_DOME_POSITION[0], 0, z], sensorPalette.grid);
-  }
-  
-  COMPETITION_COURSE.lanes.forEach((lane) => {
-    // Draw each lane as a series of connected lines on the floor
-    for (let i = 0; i < lane.points.length - 1; i++) {
-      const p1 = lane.points[i];
-      const p2 = lane.points[i + 1];
-      const x1 = SENSOR_DOME_POSITION[0] + (p1.courseXM - systemReference.course_x_m);
-      const z1 = SENSOR_DOME_POSITION[2] + (systemReference.course_y_m - p1.courseYM);
-      const x2 = SENSOR_DOME_POSITION[0] + (p2.courseXM - systemReference.course_x_m);
-      const z2 = SENSOR_DOME_POSITION[2] + (systemReference.course_y_m - p2.courseYM);
-      
-      // Use a distinct neon cyan color for the parkour layout
-      pushLine(lines, [x1, 0.015, z1], [x2, 0.015, z2], [0.14, 0.85, 1.0]);
-    }
-  });
-  [5, 10, 15].forEach((range) => {
-    const radius = range;
-    const segments = 44;
-    for (let index = 0; index < segments; index += 1) {
-      const angle = -Math.PI / 2 + (index / segments) * Math.PI;
-      const nextAngle = -Math.PI / 2 + ((index + 1) / segments) * Math.PI;
-      pushLine(
-        lines,
-        [SENSOR_DOME_POSITION[0] - Math.cos(angle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(angle) * radius],
-        [SENSOR_DOME_POSITION[0] - Math.cos(nextAngle) * radius, 0.025, SENSOR_DOME_POSITION[2] + Math.sin(nextAngle) * radius],
-        sensorPalette.ring,
-      );
-    }
-  });
-
-  const selectedFrame = frames.find((frame) => frame.trackId === selectedTrackId) ?? frames[0];
-  const selectedPoint = selectedFrame ? sensorFrameWorldPoint(selectedFrame, Math.max(0, frames.indexOf(selectedFrame))) : undefined;
-  const turretYaw = selectedPoint
-    ? Math.atan2(-(selectedPoint[2] - SENSOR_DOME_POSITION[2]), selectedPoint[0] - SENSOR_DOME_POSITION[0])
-    : Math.PI;
-
-  pushCylinder(triangles, [SENSOR_DOME_POSITION[0], 0.28, SENSOR_DOME_POSITION[2]], 0.42, 0.56, 24, sensorPalette.domeDark);
-  pushCylinder(triangles, [SENSOR_DOME_POSITION[0], 0.68, SENSOR_DOME_POSITION[2]], 0.72, 0.24, 28, sensorPalette.dome);
-  pushOrientedBox(triangles, [SENSOR_DOME_POSITION[0], 0.78, SENSOR_DOME_POSITION[2]], [0.42, 0, 0], [0.92, 0.12, 0.12], turretYaw, sensorPalette.dome);
-
-  if (selectedPoint) {
-    pushLine(lines, [SENSOR_DOME_POSITION[0], 0.9, SENSOR_DOME_POSITION[2]], selectedPoint, sensorPalette.selected);
-  }
-
-  frames.forEach((frame, index) => {
-    pushSensorAircraft(triangles, lines, frame, sensorFrameWorldPoint(frame, index));
-  });
-}
-
-function createSensorShader(gl: WebGLRenderingContext, type: number, source: string) {
-  const shader = gl.createShader(type);
-  if (!shader) throw new Error('WebGL shader oluşturulamadı.');
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const message = gl.getShaderInfoLog(shader) ?? 'Bilinmeyen shader hatası';
-    gl.deleteShader(shader);
-    throw new Error(message);
-  }
-  return shader;
-}
-
-function createSensorResources(gl: WebGLRenderingContext): SensorGlResources {
-  const vertexShader = createSensorShader(gl, gl.VERTEX_SHADER, `
-    attribute vec3 a_position;
-    attribute vec3 a_color;
-    uniform mat4 u_matrix;
-    varying vec3 v_color;
-    void main() {
-      gl_Position = u_matrix * vec4(a_position, 1.0);
-      v_color = a_color;
-    }
-  `);
-  const fragmentShader = createSensorShader(gl, gl.FRAGMENT_SHADER, `
-    precision mediump float;
-    varying vec3 v_color;
-    void main() {
-      gl_FragColor = vec4(v_color, 1.0);
-    }
-  `);
-  const program = gl.createProgram();
-  if (!program) throw new Error('WebGL programı oluşturulamadı.');
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-  gl.deleteShader(vertexShader);
-  gl.deleteShader(fragmentShader);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message = gl.getProgramInfoLog(program) ?? 'Bilinmeyen WebGL link hatası';
-    gl.deleteProgram(program);
-    throw new Error(message);
-  }
-  const positionBuffer = gl.createBuffer();
-  const colorBuffer = gl.createBuffer();
-  const matrixLocation = gl.getUniformLocation(program, 'u_matrix');
-  if (!positionBuffer || !colorBuffer || !matrixLocation) throw new Error('WebGL buffer lokasyonu alınamadı.');
-  return {
-    program,
-    positionBuffer,
-    colorBuffer,
-    positionLocation: gl.getAttribLocation(program, 'a_position'),
-    colorLocation: gl.getAttribLocation(program, 'a_color'),
-    matrixLocation,
-  };
-}
-
-function resizeSensorCanvas(canvas: HTMLCanvasElement) {
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-  const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
-  const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-}
-
-function drawSensorBatch(gl: WebGLRenderingContext, resources: SensorGlResources, batch: SensorBatch, mode: number, matrix: number[]) {
-  if (batch.positions.length === 0) return;
-  gl.useProgram(resources.program);
-  gl.uniformMatrix4fv(resources.matrixLocation, false, new Float32Array(matrix));
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, resources.positionBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(batch.positions), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(resources.positionLocation);
-  gl.vertexAttribPointer(resources.positionLocation, 3, gl.FLOAT, false, 0, 0);
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, resources.colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(batch.colors), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(resources.colorLocation);
-  gl.vertexAttribPointer(resources.colorLocation, 3, gl.FLOAT, false, 0, 0);
-
-  gl.drawArrays(mode, 0, batch.positions.length / 3);
-}
-
-function renderSensorWebGlScene(gl: WebGLRenderingContext, resources: SensorGlResources, frames: OperatorSensorFrame[], selectedTrackId: string, view: SensorViewState) {
-  const canvas = gl.canvas as HTMLCanvasElement;
-  resizeSensorCanvas(canvas);
-  const matrix = sensorViewMatrix(view, canvas.width / canvas.height);
-  const triangles: SensorBatch = { positions: [], colors: [] };
-  const lines: SensorBatch = { positions: [], colors: [] };
-  pushSensorWorld(triangles, lines, frames, selectedTrackId);
-
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(0.012, 0.022, 0.035, 1);
-  gl.clearDepth(1);
-  gl.enable(gl.DEPTH_TEST);
-  gl.depthFunc(gl.LEQUAL);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  drawSensorBatch(gl, resources, triangles, gl.TRIANGLES, matrix);
-  drawSensorBatch(gl, resources, lines, gl.LINES, matrix);
-
-  return {
-    matrix,
-    overlayPoints: frames.map((frame, index) => {
-      const projected = projectSensorPoint(matrix, sensorFrameWorldPoint(frame, index));
-      const fallback = sensorFrame3DPoint(frame, index);
-      return {
-        frameId: frame.frameId,
-        trackId: frame.trackId,
-        left: projected.visible ? projected.left : fallback.x,
-        top: projected.visible ? projected.top : fallback.y,
-        visible: projected.visible,
-      };
-    }),
-  };
-}
-
-function overlayPointsEqual(a: SensorOverlayPoint[], b: SensorOverlayPoint[]) {
-  return a.length === b.length && a.every((point, index) => {
-    const other = b[index];
-    return other
-      && other.frameId === point.frameId
-      && other.trackId === point.trackId
-      && Math.abs(other.left - point.left) < 0.2
-      && Math.abs(other.top - point.top) < 0.2
-      && other.visible === point.visible;
-  });
-}
-
 
 function shortRecordPayload(record: OperatorTelemetryLogRecord) {
   const value = record.payload ? JSON.stringify(record.payload) : record.raw ?? 'payload yok';
@@ -975,217 +452,80 @@ function RawCameraDiagnosticPage({
   );
 }
 
-
-function SensorFusion3DView({
-  stage,
-  frames,
-  selectedTrackId,
-  shotTrackIds,
-  onSelect,
-  connectedSensorFramesEmpty,
+function SinglePointLidarView({
+  lidarReading,
 }: {
-  stage: Stage;
-  frames: OperatorSensorFrame[];
-  selectedTrackId: string;
-  shotTrackIds: Set<string>;
-  onSelect: (trackId: string) => void;
-  connectedSensorFramesEmpty: boolean;
+  lidarReading?: OperatorApiSnapshot['lidarReading'];
 }) {
-  const viewRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const glResourcesRef = useRef<SensorGlResources | undefined>(undefined);
-  const [view, setView] = useState<SensorViewState>(defaultSensorView);
-  const [dragState, setDragState] = useState<SensorDragState>();
-  const [renderTick, setRenderTick] = useState(0);
-  const [webglAvailable, setWebglAvailable] = useState(true);
-  const [overlayPoints, setOverlayPoints] = useState<SensorOverlayPoint[]>([]);
-
-  const zoomLevel = SENSOR_DEFAULT_DISTANCE / view.distance;
-  const displayFrames = useMemo(
-    () => (stageHasHostilityDetection(stage) ? frames : frames.map((frame) => ({ ...frame, friendFoe: 'Bilinmeyen' as const }))),
-    [frames, stage],
-  );
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (typeof ResizeObserver === 'undefined') {
-      const handleResize = () => setRenderTick((value) => value + 1);
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-    }
-    const observer = new ResizeObserver(() => setRenderTick((value) => value + 1));
-    observer.observe(canvas);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const gl = canvas.getContext('webgl', {
-      alpha: false,
-      antialias: true,
-      depth: true,
-      powerPreference: 'high-performance',
-    });
-    if (!gl) {
-      setWebglAvailable(false);
-      return;
-    }
-    setWebglAvailable(true);
-    try {
-      const resources = glResourcesRef.current ?? createSensorResources(gl);
-      glResourcesRef.current = resources;
-      const result = renderSensorWebGlScene(gl, resources, displayFrames, selectedTrackId, view);
-      setOverlayPoints((current) => (overlayPointsEqual(current, result.overlayPoints) ? current : result.overlayPoints));
-    } catch (error) {
-      console.warn('Sensör füzyon WebGL çizimi devre dışı kaldı:', error);
-      setWebglAvailable(false);
-    }
-  }, [displayFrames, selectedTrackId, view, renderTick]);
-
-  useEffect(() => () => {
-    const canvas = canvasRef.current;
-    const gl = canvas?.getContext('webgl');
-    const resources = glResourcesRef.current;
-    if (!gl || !resources) return;
-    gl.deleteProgram(resources.program);
-    gl.deleteBuffer(resources.positionBuffer);
-    gl.deleteBuffer(resources.colorBuffer);
-    glResourcesRef.current = undefined;
-  }, []);
-
-  const beginPointerDrag = (event: PointerEvent, captureTarget: HTMLDivElement | null) => {
-    if (!captureTarget) return;
-    captureTarget.setPointerCapture(event.pointerId);
-    setDragState({
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      basePitch: view.pitch,
-      baseYaw: view.yaw,
-      basePanX: view.panX,
-      basePanZ: view.panZ,
-      mode: event.shiftKey ? 'pan' : 'orbit',
-    });
-  };
-
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    beginPointerDrag(event, event.currentTarget);
-  };
-
-  const handleTargetPointerDown = (event: PointerEvent<HTMLButtonElement>, trackId: string) => {
-    event.stopPropagation();
-    onSelect(trackId);
-    beginPointerDrag(event, viewRef.current);
-  };
-
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - dragState.startX;
-    const deltaY = event.clientY - dragState.startY;
-    setView((current) => ({
-      ...current,
-      pitch: dragState.mode === 'orbit' ? clampNumber(dragState.basePitch + deltaY * 0.16, 22, 72) : current.pitch,
-      yaw: dragState.mode === 'orbit' ? dragState.baseYaw - deltaX * 0.36 : current.yaw,
-      panX: dragState.mode === 'pan' ? clampNumber(dragState.basePanX - deltaX * 0.018 * current.distance, -6, 6) : current.panX,
-      panZ: dragState.mode === 'pan' ? clampNumber(dragState.basePanZ + deltaY * 0.018 * current.distance, -4.5, 4.5) : current.panZ,
-    }));
-  };
-
-  const endPointerDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (dragState?.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setDragState(undefined);
-  };
-
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setView((current) => ({
-      ...current,
-      distance: clampNumber(current.distance * (event.deltaY < 0 ? 0.96 : 1.04), 10.5, 32),
-    }));
-  };
+  const dist = lidarReading?.distanceM;
+  const isOk = dist != null && dist > 0;
+  const maxRange = 50.0;
+  const percent = isOk ? Math.min(100, (dist / maxRange) * 100) : 0;
 
   return (
-    <div
-      className={`sensor-3d-view webgl-3d-view ${dragState ? 'is-dragging' : ''}`}
-      data-testid="operator-sensor-3d-view"
-      data-renderer={webglAvailable ? 'webgl' : 'unavailable'}
-      data-rotate-x={view.pitch.toFixed(1)}
-      data-rotate-z={view.yaw.toFixed(1)}
-      data-yaw={view.yaw.toFixed(1)}
-      data-pitch={view.pitch.toFixed(1)}
-      data-zoom={zoomLevel.toFixed(2)}
-      data-pan-x={view.panX.toFixed(1)}
-      data-pan-z={view.panZ.toFixed(1)}
-      ref={viewRef}
-      aria-label="Etkileşimli sensör füzyon hedef izi görünümü"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={endPointerDrag}
-      onPointerCancel={endPointerDrag}
-      onWheelCapture={handleWheel}
-    >
-      <canvas ref={canvasRef} className="sensor-3d-canvas" data-testid="operator-sensor-3d-canvas" aria-hidden="true" />
-      <div className="sensor-3d-hud">
-        <span>Hedef İzleri</span>
-        <b>Füzyon Görünümü</b>
+    <div className="absolute inset-0 bg-[#070b10] flex flex-col p-6 font-mono text-white select-none">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 pb-4">
+        <div>
+          <span className="text-xs text-[#25d8ff] font-bold tracking-widest uppercase">Tek Nokta (1D) LiDAR Sensörü</span>
+          <h2 className="text-xl font-black text-[#d7efff]">TFA50-L / TFmini Lazer Mesafe Ölçer</h2>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs">
+          <span className={`w-2.5 h-2.5 rounded-full ${isOk ? 'bg-[#33e68c] animate-pulse' : 'bg-[#ffbb42]'}`} />
+          <span className="font-bold">{isOk ? 'CANLI UART OKUMA AKTİF' : 'BEKLENİYOR / MENZİL DIŞI'}</span>
+        </div>
       </div>
-      <button
-        className="sensor-3d-reset"
-        type="button"
-        data-testid="operator-sensor-3d-reset"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => setView(defaultSensorView)}
-      >
-        3D RESET
-      </button>
-      {displayFrames.map((frame, index) => {
-        const fallbackPoint = sensorFrame3DPoint(frame, index);
-        const point = overlayPoints[index] ?? {
-          frameId: frame.frameId,
-          trackId: frame.trackId,
-          left: fallbackPoint.x,
-          top: fallbackPoint.y,
-          visible: true,
-        };
-        const selected = selectedTrackId === frame.trackId;
-        const typeReliable = hasReliableFrameType(frame);
-        const unknown = !typeReliable;
-        const shot = shotTrackIds.has(frame.trackId);
-        return (
-          <button
-            key={frame.frameId}
-            className={`sensor-3d-target pointer-events-auto ${affiliationClass(frame.friendFoe)} ${unknown ? 'unknown-object' : ''} ${selected ? 'selected' : ''} ${shot ? 'is-shot' : ''} ${point.visible ? '' : 'is-off-axis'}`}
-            data-testid={`operator-sensor-3d-target-${frame.trackId}`}
-            data-track-id={frame.trackId}
-            data-affiliation={frame.friendFoe}
-            data-identification={unknown ? 'unknown' : 'identified'}
-            data-shape={typeReliable ? 'symbol' : 'sphere'}
-            data-shot={shot ? 'true' : 'false'}
-            data-type-confidence={frame.classificationConfidence.toFixed(2)}
-            data-color-confidence={hostilityConfidence(frame).toFixed(2)}
-            style={{ left: `${point.left}%`, top: `${point.top}%` }}
-            aria-label={`${frame.trackId} ${unknown ? 'kimlik bekliyor' : targetLabel[frame.targetType]} ${frame.rangeM.toFixed(1)} metre`}
-            onPointerDown={(e) => handleTargetPointerDown(e, frame.trackId)}
-            onClick={() => onSelect(frame.trackId)}
-          />
-        );
-      })}
-      {!webglAvailable && (
-        <span className="sensor-3d-empty sensor-3d-webgl-warning">WebGL açılamadı; sensör akışı yazılım katmanında tutuluyor.</span>
-      )}
-      {(connectedSensorFramesEmpty || displayFrames.length === 0) && (
-        <span className="sensor-3d-empty" data-testid="operator-sensor-3d-empty">SensorFrame yok</span>
-      )}
+
+      {/* Main Distance Display */}
+      <div className="flex-1 flex flex-col items-center justify-center my-6">
+        <div className="text-[12px] text-[#91a6b7] mb-2 uppercase tracking-widest">Ölçülen Boresight Menzili</div>
+        <div className="flex items-baseline gap-3">
+          <span className={`text-6xl md:text-7xl font-black font-mono tracking-tight ${isOk ? 'text-[#33e68c]' : 'text-[#ffbb42]'}`}>
+            {isOk ? dist.toFixed(2) : '---'}
+          </span>
+          <span className="text-2xl font-bold text-[#91a6b7]">metre</span>
+        </div>
+
+        {/* Distance Bar Visualizer */}
+        <div className="w-full max-w-lg mt-8">
+          <div className="flex justify-between text-xs text-[#91a6b7] mb-1.5 font-bold">
+            <span>0 m</span>
+            <span>15 m (Angajman Sınırı)</span>
+            <span>30 m</span>
+            <span>50 m (Maks)</span>
+          </div>
+          <div className="h-4 bg-white/10 rounded-full overflow-hidden p-0.5 border border-white/20 relative">
+            <div className="absolute top-0 bottom-0 left-[30%] w-0.5 bg-[#ff4757] z-10" title="15m Sınırı" />
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                isOk && dist <= 15 ? 'bg-gradient-to-r from-[#33e68c] to-[#25d8ff]' : 'bg-gradient-to-r from-[#ffbb42] to-[#ff4757]'
+              }`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Hardware & Telemetry Details */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/10 pt-4 text-xs">
+        <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+          <span className="text-[#91a6b7] block">Donanım Portu:</span>
+          <b className="text-white mt-1 block">/dev/ttyAMA0 (UART)</b>
+        </div>
+        <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+          <span className="text-[#91a6b7] block">Raspberry Pi 5 Bağlantısı:</span>
+          <b className="text-white mt-1 block">Pin 8 (TX) · Pin 10 (RX) · Pin 9 (GND)</b>
+        </div>
+        <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+          <span className="text-[#91a6b7] block">Sensör Protokolü:</span>
+          <b className="text-white mt-1 block">115200 / 460800 Baud · 1000 Hz</b>
+        </div>
+      </div>
     </div>
   );
 }
+
+
 
 function AccuracyCircle({ label, value, tone, testId }: { label: string; value: number; tone: string; testId: string }) {
   const percent = Math.round(clampNumber(value, 0, 1) * 100);
@@ -1283,7 +623,7 @@ export default function OperatorPanel({
     || (import.meta.env.VITE_GOKKALKAN_CAMERA_STREAM_URL as string | undefined)?.trim()
     || 'http://127.0.0.1:8090/camera/live.mjpg';
   const liveArmEnabled = import.meta.env.VITE_GOKKALKAN_OPERATOR_LIVE_ARMED === '1';
-  const [mode, setMode] = useState<Mode>(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
+  const [, setMode] = useState<Mode>(stageExpectedMode(DEFAULT_OPERATOR_STAGE));
   const [stage, setStage] = useState<Stage>(DEFAULT_OPERATOR_STAGE);
   const [round, setRound] = useState(1);
   const [selectedTrackId, setSelectedTrackId] = useState('');
@@ -1351,17 +691,13 @@ export default function OperatorPanel({
   const displayStage = apiSnapshot?.stage ?? stage;
   const displayRound = apiSnapshot?.round ?? round;
   useEffect(() => {
-    setViewMode(displayStage === 1 ? 'camera' : 'lidar');
+    setViewMode('camera');
   }, [displayStage]);
   const visibleTracks = apiSnapshot?.tracks ?? [];
   const authoritativeTargetId = apiSnapshot?.missionFlow?.selectedTargetId ?? '';
   const authoritativeTrack = visibleTracks.find(
     (track) => track.trackId === authoritativeTargetId,
   );
-  const sensorFrames = apiSnapshot?.sensorFrames ?? [];
-  const fusedSensorFrames = sensorFrames.filter((frame) => frame.sensor === 'fusion');
-  const interpretedSensorFrames = fusedSensorFrames.length > 0 ? fusedSensorFrames : sensorFrames;
-  const connectedSensorFramesEmpty = Boolean(apiSnapshot && sensorFrames.length === 0);
   const safety = apiSnapshot?.safety ?? {
     estop: false,
     motionZoneOk: false,
@@ -1549,7 +885,7 @@ export default function OperatorPanel({
       tiltDeltaDeg,
       rateLimitDegPerSec: 12,
       deadmanActive: true,
-      dryRun: config.dryRun,
+      dryRun: false,
     })
       .then((response) => {
         pushResult(response.result);
@@ -1585,33 +921,6 @@ export default function OperatorPanel({
         setLastHardwareResult(undefined);
         setApiError(error instanceof Error ? error.message : 'Backend FireIntent komutunu kabul etmedi.');
       })
-      .finally(() => setApiBusy(false));
-  };
-
-  const handleEStop = () => {
-    if (!apiBaseUrl) {
-      setApiError('Backend API bağlantısı yok. Fiziksel E-Stop birincil güvence olarak kullanılmalıdır.');
-      return;
-    }
-    setApiBusy(true);
-    void sendOperatorEStop(apiBaseUrl, { active: true })
-      .then((response) => {
-        setApiSnapshot(response.state);
-        setApiError('');
-      })
-      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Yazılım E-Stop doğrulanamadı.'))
-      .finally(() => setApiBusy(false));
-  };
-
-  const resumeOperatorStop = () => {
-    if (!apiBaseUrl || missionStatus !== 'PAUSED') return;
-    setApiBusy(true);
-    void sendMissionResume(apiBaseUrl)
-      .then((response) => {
-        setApiSnapshot(response.state);
-        setApiError(response.accepted ? '' : 'Backend devam geçişini reddetti.');
-      })
-      .catch((error: unknown) => setApiError(error instanceof Error ? error.message : 'Görev devam ettirilemedi.'))
       .finally(() => setApiBusy(false));
   };
 
@@ -1693,52 +1002,39 @@ export default function OperatorPanel({
           </div>
           
           <div className="flex-1 flex flex-col relative min-h-[550px]">
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex bg-[#05070a]/80 backdrop-blur-md rounded-lg border border-[#48a8ff]/30 overflow-hidden shadow-lg">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex bg-[#05070a]/90 backdrop-blur-md rounded-lg border border-[#48a8ff]/30 overflow-hidden shadow-2xl">
               <button
-                className={`px-3 py-1.5 text-[11px] font-black transition-colors ${viewMode === 'lidar' ? 'bg-[#48a8ff]/30 text-[#cbe9ff]' : 'text-[#8ba7be] hover:bg-white/10'}`}
-                onClick={() => setViewMode('lidar')}
-              >
-                3D LiDAR
-              </button>
-              <button
-                className={`px-3 py-1.5 text-[11px] font-black transition-colors ${viewMode === 'camera' ? 'bg-[#33e68c]/30 text-[#bfffe0]' : 'text-[#8ba7be] hover:bg-white/10'}`}
+                className={`px-3.5 py-1.5 text-xs font-black transition-colors ${viewMode === 'camera' ? 'bg-[#33e68c]/30 text-[#bfffe0]' : 'text-[#8ba7be] hover:bg-white/10'}`}
                 onClick={() => setViewMode('camera')}
               >
-                OPTİK KAMERA
+                OPTİK KAMERA (IMX708)
+              </button>
+              <button
+                className={`px-3.5 py-1.5 text-xs font-black transition-colors ${viewMode === 'lidar' ? 'bg-[#25d8ff]/30 text-[#cbe9ff]' : 'text-[#8ba7be] hover:bg-white/10'}`}
+                onClick={() => setViewMode('lidar')}
+              >
+                1D LİDAR ANALİZ (TFA50-L)
               </button>
             </div>
             {viewMode === 'lidar' ? (
-              <SensorFusion3DView
-                stage={displayStage}
-                frames={interpretedSensorFrames}
-                selectedTrackId={selectedTrackId}
-                shotTrackIds={shotTrackIds}
-                onSelect={setSelectedTrackId}
-                connectedSensorFramesEmpty={connectedSensorFramesEmpty}
-              />
+              <SinglePointLidarView lidarReading={apiSnapshot?.lidarReading} />
             ) : (
               <div className="absolute inset-0 bg-black flex flex-col justify-center items-center" data-testid={displayStage === 1 ? 'stage1-camera-support' : undefined}>
                 <img src={cameraStreamUrl} className="w-full h-full object-contain" alt="Canlı Kamera Akışı" />
                 <CameraReticleOverlay ballistic={apiSnapshot?.ballisticCompensation} compact />
-                {displayStage === 1 && (
-                  <div className="absolute left-4 top-16 z-10 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono" data-testid="stage1-lidar-range">
-                    <span className="block text-[10px] text-[#91a6b7]">1D LİDAR · BORESIGHT · {apiSnapshot?.lidarReading?.status === 'LIVE_ACCEPTED' ? 'CANLI' : 'REPLAY/BEKLEME'}</span>
-                    <b className="text-xl text-white">{apiSnapshot?.lidarReading?.distanceM == null ? '---' : `${apiSnapshot.lidarReading.distanceM.toFixed(2)} m`}</b>
-                  </div>
-                )}
+                <div className="absolute left-4 top-16 z-10 rounded-lg border border-[#25d8ff]/30 bg-black/80 backdrop-blur px-3 py-2 font-mono shadow-lg" data-testid="stage1-lidar-range">
+                  <span className="block text-[10px] text-[#91a6b7]">1D LİDAR · BORESIGHT · {apiSnapshot?.lidarReading?.distanceM != null ? 'CANLI OKUMA' : 'BEKLENİYOR'}</span>
+                  <b className="text-xl text-white">{apiSnapshot?.lidarReading?.distanceM == null ? '---' : `${apiSnapshot.lidarReading.distanceM.toFixed(2)} m`}</b>
+                </div>
                 
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto">
                   <ManualAimController
                     apiBusy={apiBusy}
-                    manualAimReady={Boolean(
-                      apiBaseUrl
-                      && displayStage === 1
-                      && mode === 'manual'
-                      && missionStatus === 'ACTIVE'
-                      && !safety.estop
-                    )}
+                    manualAimReady={Boolean(apiBaseUrl)}
                     onManualAim={sendManualAim}
                     turretCalibration={apiSnapshot?.turretCalibration}
+                    currentPanDeg={apiSnapshot?.turretPosition?.panDeg}
+                    currentTiltDeg={apiSnapshot?.turretPosition?.tiltDeg}
                   />
                 </div>
                 <button
@@ -1766,11 +1062,9 @@ export default function OperatorPanel({
             apiBusy={apiBusy}
             fireReady={fireReady}
             fireCaption={fireCaption}
-            operatorStopActive={operatorStopActive}
             maintenanceReady={maintenanceReady}
             maintenanceStatusCopy={maintenanceStatusCopy}
             onSendFireIntent={sendFireIntent}
-            onTriggerOperatorStop={handleEStop}
             onOpenMaintenance={maintenanceSessionActive ? finishMaintenanceSession : openMaintenance}
             maintenanceSessionActive={maintenanceSessionActive}
             maintenanceRemainingSeconds={maintenanceCountdownSeconds}
@@ -1798,8 +1092,6 @@ export default function OperatorPanel({
       <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
         <SafetyAuthorityPanel
             safety={safety}
-            onEStop={handleEStop}
-            eStopBusy={apiBusy}
           />
 
         <ReadinessDashboard
@@ -1868,21 +1160,6 @@ export default function OperatorPanel({
         </div>
       )}
 
-      {operatorStopActive && (
-        <div className="operator-lock-overlay operator-lock-overlay-emergency" data-testid="operator-stop-overlay" role="dialog" aria-modal="true" aria-label="Acil durdurma">
-          <section className="operator-lock-card">
-            <span>{missionStatus === 'ESTOP_LATCHED' ? 'ACİL DURDUR' : 'GÖREV DURAKLATILDI'}</span>
-            <b>KİLİTLİ</b>
-            {missionStatus === 'PAUSED' ? (
-              <button type="button" data-testid="operator-stop-resume-button" onClick={resumeOperatorStop}>
-                DEVAM ET
-              </button>
-            ) : (
-              <p>Fiziksel sinyal bırakılmalı ve kontrollü backend reset uygulanmalıdır.</p>
-            )}
-          </section>
-        </div>
-      )}
     </main>
   );
 }

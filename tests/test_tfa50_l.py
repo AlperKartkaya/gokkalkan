@@ -8,6 +8,7 @@ from gokkalkan_backend.tfa50_l import (
     TFA50LStreamDecoder,
     frequency_command,
     parse_measurement_frame,
+    parse_tfmini_frame,
     parse_identity_response,
 )
 from gokkalkan_backend.lidar_adapter import probe_tfa50l_uart
@@ -96,6 +97,36 @@ class TFA50LProtocolTest(unittest.TestCase):
             "V2.3",
         )
         self.assertEqual(frequency_command(1000), bytes.fromhex("5A 0B 02 E7 03 08"))
+
+    def test_tfmini_9byte_frame_decodes_distance_strength_and_temperature(self) -> None:
+        # Example 9-byte frame: 59 59 [Dist: 0x00FA = 250cm = 2.50m] [Strength: 0x03E8 = 1000] [Temp: 0x08FC = 2300 -> 31.5C] [Checksum = 0x9B]
+        raw = bytes.fromhex("59 59 FA 00 E8 03 FC 08 9B")
+        measurement = parse_tfmini_frame(raw)
+
+        self.assertTrue(measurement.valid)
+        self.assertFalse(measurement.no_detection)
+        self.assertEqual(measurement.distance_cm, 250)
+        self.assertAlmostEqual(measurement.distance_m or 0.0, 2.50)
+        self.assertEqual(measurement.signal_strength, 1000)
+        self.assertEqual(measurement.protocol, "TF-Luna/TFmini")
+
+    def test_tfmini_no_detection_handling(self) -> None:
+        # Distance = 0 or 0xFFFF
+        raw_zero = bytes.fromhex("59 59 00 00 00 00 00 00 B2")
+        meas_zero = parse_tfmini_frame(raw_zero)
+        self.assertTrue(meas_zero.no_detection)
+        self.assertFalse(meas_zero.valid)
+        self.assertIsNone(meas_zero.distance_m)
+
+    def test_stream_decoder_handles_mixed_tfmini_and_tfa50l_frames(self) -> None:
+        decoder = TFA50LStreamDecoder()
+        # Stream contains: 4-byte TFA50-L (43.54m), noise bytes, 9-byte TFmini (2.50m)
+        chunk = bytes.fromhex("5C 02 11 EC 00 FF 59 59 FA 00 E8 03 FC 08 9B")
+        measurements = decoder.feed(chunk)
+
+        self.assertEqual(len(measurements), 2)
+        self.assertEqual(measurements[0].distance_cm, 4354)
+        self.assertEqual(measurements[1].distance_cm, 250)
 
 
 if __name__ == "__main__":

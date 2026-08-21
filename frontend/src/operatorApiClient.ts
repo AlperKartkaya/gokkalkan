@@ -85,6 +85,11 @@ export interface OperatorApiSnapshot {
     };
   };
   coursePredictions?: OperatorCoursePrediction[];
+  turretPosition?: {
+    panDeg: number;
+    tiltDeg: number;
+    valid?: boolean;
+  };
   turretCalibration?: {
     calibrationId: string;
     status: string;
