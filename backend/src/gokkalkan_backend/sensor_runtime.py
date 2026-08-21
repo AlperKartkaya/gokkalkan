@@ -32,7 +32,7 @@ class TFA50LSensorRuntime:
         associator: Any,
         identity: SensorRuntimeIdentity,
         *,
-        interval_sec: float = 0.002,
+        interval_sec: float = 0.01,
         monotonic_ns: Callable[[], int] = time.monotonic_ns,
     ) -> None:
         self.core = core
@@ -44,6 +44,10 @@ class TFA50LSensorRuntime:
         self._thread: threading.Thread | None = None
         self._last_error: str | None = None
         self._decisions = 0
+        self._last_raw_publish_ns: int = 0
+        self._last_raw_distance_m: float | None = None
+        self._last_decision_publish_ns: int = 0
+        self._last_decision_accepted: bool | None = None
         self.pipeline = TFA50LFusionPipeline(
             adapter,
             associator,
@@ -55,6 +59,19 @@ class TFA50LSensorRuntime:
         )
 
     def _publish_raw_sample(self, sample: Any) -> None:
+        now_ns = self._clock()
+        dist = sample.distance_m
+        dist_changed = (
+            dist is not None
+            and self._last_raw_distance_m is not None
+            and abs(dist - self._last_raw_distance_m) >= 0.02
+        ) or (self._last_raw_distance_m is None and dist is not None)
+
+        if not dist_changed and (now_ns - self._last_raw_publish_ns) < 33_000_000:
+            return
+
+        self._last_raw_publish_ns = now_ns
+        self._last_raw_distance_m = dist
         try:
             self.core.publish_threadsafe(
                 "RawLidarUpdate",
@@ -150,12 +167,22 @@ class TFA50LSensorRuntime:
         return 0.0
 
     def _publish(self, decision: FusedRangeDecision) -> None:
-        self.core.publish_threadsafe(
-            "FusedRangeUpdate",
-            decision.to_dict(),
-            source="sensor-tfa50-l-runtime",
-        )
+        now_ns = self._clock()
+        status_changed = decision.accepted != self._last_decision_accepted
+        if not status_changed and (now_ns - self._last_decision_publish_ns) < 33_000_000:
+            return
+
+        self._last_decision_publish_ns = now_ns
+        self._last_decision_accepted = decision.accepted
         self._decisions += 1
+        try:
+            self.core.publish_threadsafe(
+                "FusedRangeUpdate",
+                decision.to_dict(),
+                source="sensor-tfa50-l-runtime",
+            )
+        except Exception:
+            pass
 
     def _verify_identity(self) -> None:
         health = self.adapter.health()

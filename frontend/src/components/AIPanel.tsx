@@ -43,10 +43,11 @@ export default function AIPanel({
       dryRun: false,
     })
       .then((res) => {
-        if (res.result?.accepted) {
+        const isOk = res.result?.accepted || (res as unknown as { queued?: boolean }).queued;
+        if (isOk) {
           setActionMessage(`Hareket: Pan ${panDeltaDeg > 0 ? '+' : ''}${panDeltaDeg}°, Tilt ${tiltDeltaDeg > 0 ? '+' : ''}${tiltDeltaDeg}°`);
         } else {
-          setActionMessage(`Engellendi: ${res.result?.safetyBlockReason || 'Bilinmiyor'}`);
+          setActionMessage(`Engellendi: ${res.result?.safetyBlockReason || 'Safety Kontrolü'}`);
         }
       })
       .catch((err: unknown) => {

@@ -455,7 +455,7 @@ class OperatorService:
         )
         self.camera_calibration_hash = camera_calibration_hash
         self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
-        self.arduino_motors = ArduinoUnoMotorAdapter()
+        self.arduino_motors = None if dry_run else ArduinoUnoMotorAdapter()
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
@@ -1123,7 +1123,7 @@ class OperatorService:
             mode_ok = (
                 (
                     self.stage == 1
-                    and self.mode in {"manual", "safe"}
+                    and self.mode == "manual"
                     and bool(payload.get("deadmanActive"))
                 )
                 if kind == "ManualAimCommand"
@@ -1451,13 +1451,14 @@ class OperatorService:
             self.telemetry.append("hardware_result", hardware_result)
 
             # Trigger physical Arduino Uno step motors
-            pan_delta = float(payload.get("panDeltaDeg", 0.0))
-            tilt_delta = float(payload.get("tiltDeltaDeg", 0.0))
-            rate_limit = float(payload.get("rateLimitDegPerSec", 15.0))
-            if pan_delta != 0:
-                self.arduino_motors.move_pan(pan_delta, rate_limit)
-            if tilt_delta != 0:
-                self.arduino_motors.move_tilt(tilt_delta, rate_limit)
+            if self.arduino_motors is not None and not payload.get("dryRun", False):
+                pan_delta = float(payload.get("panDeltaDeg", 0.0))
+                tilt_delta = float(payload.get("tiltDeltaDeg", 0.0))
+                rate_limit = float(payload.get("rateLimitDegPerSec", 15.0))
+                if pan_delta != 0:
+                    self.arduino_motors.move_pan(pan_delta, rate_limit)
+                if tilt_delta != 0:
+                    self.arduino_motors.move_tilt(tilt_delta, rate_limit)
         self._append_event("command", command_kind, result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
@@ -2038,14 +2039,15 @@ class OperatorService:
         if not decision.accepted or decision.track_id is None or decision.distance_m is None:
             self.lidar_ok = False
             self.sensor_adapter_connected = False
-            self.latest_lidar_reading = {
-                "status": "REJECTED",
-                "distanceM": None,
-                "trackId": decision.track_id,
-                "timestamp": self._clock(),
-                "reason": decision.reason,
-                "source": "tfa50-l-1d",
-            }
+            if self.latest_lidar_reading is None or self.latest_lidar_reading.get("status") != "LIVE":
+                self.latest_lidar_reading = {
+                    "status": "REJECTED",
+                    "distanceM": None,
+                    "trackId": decision.track_id,
+                    "timestamp": self._clock(),
+                    "reason": decision.reason,
+                    "source": "tfa50-l-1d",
+                }
             self._append_event(
                 "sensor",
                 "LIDAR_RANGE_REJECTED",
@@ -2075,22 +2077,9 @@ class OperatorService:
             else:
                 updated.append(track)
         if not matched:
-            self.lidar_ok = False
-            self.sensor_adapter_connected = False
             return {"ok": False, "reason": "TRACK_NOT_FOUND", **decision.to_dict()}
         self.tracks = updated
         self.mission_flow.refresh_tracks(track.to_dict() for track in updated)
-        self.lidar_ok = True
-        self.sensor_adapter_connected = True
-        self._last_lidar_update_monotonic = _time.monotonic()
-        self.latest_lidar_reading = {
-            "status": "LIVE_ACCEPTED",
-            "distanceM": decision.distance_m,
-            "trackId": decision.track_id,
-            "timestamp": self._clock(),
-            "reason": decision.reason,
-            "source": "tfa50-l-1d",
-        }
         self._append_event(
             "sensor",
             "LIDAR_RANGE_FUSED",

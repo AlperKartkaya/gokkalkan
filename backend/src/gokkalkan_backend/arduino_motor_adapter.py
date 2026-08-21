@@ -32,6 +32,7 @@ class ArduinoUnoMotorAdapter:
         self._last_error: str | None = None
         self._last_attempt_time = 0.0
         self.active_port: str | None = None
+        threading.Thread(target=self.connect, daemon=True).start()
 
     def _find_port(self) -> str | None:
         candidates = []
@@ -53,42 +54,21 @@ class ArduinoUnoMotorAdapter:
 
         try:
             linux_cands = sorted(
-                glob.glob("/dev/ttyACM*")
-                + glob.glob("/dev/serial/by-id/*")
+                glob.glob("/dev/serial/by-id/*")
                 + glob.glob("/dev/ttyUSB*")
+                + glob.glob("/dev/ttyACM*")
             )
             for c in linux_cands:
                 if c not in candidates:
-                    if "ttyACM" in c or "arduino" in c.lower():
-                        candidates.insert(0, c)
-                    else:
-                        candidates.append(c)
+                    candidates.insert(0, c)
         except Exception:
             pass
 
         if not candidates:
             return None
 
-        # Try candidates to find which one responds to PING
-        try:
-            import serial
-            for cand in candidates:
-                try:
-                    s = serial.Serial(cand, self.baudrate, timeout=0.15)
-                    time.sleep(0.15)
-                    s.reset_input_buffer()
-                    s.write(b"PING\n")
-                    time.sleep(0.08)
-                    resp = s.readline().decode("utf-8", errors="ignore").strip()
-                    s.close()
-                    if "PONG" in resp or "STATUS" in resp or "OK" in resp:
-                        return cand
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        return candidates[0] if candidates else None
+        # Return first recognized USB serial port directly
+        return candidates[0]
 
     def connect(self) -> bool:
         with self._lock:
@@ -96,7 +76,7 @@ class ArduinoUnoMotorAdapter:
                 return True
 
             now = time.monotonic()
-            if now - self._last_attempt_time < 2.0:
+            if now - self._last_attempt_time < 0.5:
                 return False
             self._last_attempt_time = now
 
@@ -107,8 +87,8 @@ class ArduinoUnoMotorAdapter:
 
             try:
                 import serial
-                self._serial = serial.Serial(target_port, self.baudrate, timeout=0.08)
-                time.sleep(0.3)
+                self._serial = serial.Serial(target_port, self.baudrate, timeout=0.04)
+                time.sleep(0.1)
                 self._connected = True
                 self.active_port = target_port
                 self._last_error = None
@@ -131,13 +111,8 @@ class ArduinoUnoMotorAdapter:
                 assert self._serial is not None
                 self._serial.reset_input_buffer()
                 self._serial.write((cmd.strip() + "\n").encode("ascii"))
-                time.sleep(0.04)
-                lines = []
-                while self._serial.in_waiting > 0:
-                    line = self._serial.readline().decode("utf-8", errors="ignore").strip()
-                    if line:
-                        lines.append(line)
-                return " | ".join(lines) if lines else "OK_SENT"
+                self._serial.flush()
+                return "OK_SENT"
             except Exception as exc:
                 self._connected = False
                 if self._serial:
@@ -162,18 +137,31 @@ class ArduinoUnoMotorAdapter:
     def move_pan(self, pan_delta_deg: float, rate_limit_deg_per_sec: float = 15.0) -> str:
         """Command Pan Motor (Pin 2/3). Positive -> CW (Right), Negative -> CCW (Left)."""
         direction = "CW" if pan_delta_deg >= 0 else "CCW"
-        steps = max(1, int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG)))
+        steps = max(50, int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG)))
         return self.step_pan(steps=steps, delay_us=800, direction=direction)
 
     def move_tilt(self, tilt_delta_deg: float, rate_limit_deg_per_sec: float = 15.0) -> str:
         """Command Tilt Motor (Pin 4/5). Positive -> CW (Up), Negative -> CCW (Down)."""
         direction = "CW" if tilt_delta_deg >= 0 else "CCW"
-        steps = max(1, int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG)))
+        steps = max(50, int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG)))
         return self.step_tilt(steps=steps, delay_us=800, direction=direction)
+
+    def run_pan_timed(self, duration_sec: int, delay_us: int = 800, direction: str = "CW") -> str:
+        """Run Pan Motor for a specific duration."""
+        cmd = f"RUN_PAN {duration_sec} {delay_us} {direction.upper()}"
+        return self.send_raw_command(cmd)
+
+    def run_tilt_timed(self, duration_sec: int, delay_us: int = 800, direction: str = "CW") -> str:
+        """Run Tilt Motor for a specific duration."""
+        cmd = f"RUN_TILT {duration_sec} {delay_us} {direction.upper()}"
+        return self.send_raw_command(cmd)
 
     def stop(self) -> str:
         """Emergency Halt all motors."""
         return self.send_raw_command("STOP")
+        
+    def emergency_stop(self) -> str:
+        return self.stop()
 
     def health(self) -> dict[str, Any]:
         return {

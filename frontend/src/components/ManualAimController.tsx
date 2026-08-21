@@ -15,7 +15,7 @@ export function ManualAimController({
   currentPanDeg?: number;
   currentTiltDeg?: number;
 }) {
-  const [aimStepDeg, setAimStepDeg] = useState(1.0);
+  const [aimStepDeg, setAimStepDeg] = useState(22.5);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const aimDisabled = !manualAimReady || apiBusy;
 
@@ -77,11 +77,11 @@ export function ManualAimController({
             value={aimStepDeg}
             onChange={(event) => setAimStepDeg(Number(event.currentTarget.value))}
           >
-            <option value={0.25}>0.25°</option>
-            <option value={0.5}>0.5°</option>
-            <option value={1}>1.0°</option>
-            <option value={2}>2.0°</option>
-            <option value={5}>5.0°</option>
+            <option value={5}>5.0° (Hassas)</option>
+            <option value={11.25}>11.25° (Normal)</option>
+            <option value={22.5}>22.5° (Hızlı)</option>
+            <option value={45}>45.0° (Geniş)</option>
+            <option value={90}>90.0° (Maks)</option>
           </select>
         </div>
       </div>

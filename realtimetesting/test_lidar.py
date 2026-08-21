@@ -278,6 +278,7 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
     print(f"[*] {port} açılıyor ({detected_baud} baud)...")
     try:
         ser = serial.Serial(port=port, baudrate=detected_baud, timeout=0.1)
+        ser.reset_input_buffer()
     except Exception as exc:
         print(f"{C_RED}[HATA] Port açılamadı ({port}): {exc}{C_RESET}")
         return 1
@@ -289,6 +290,7 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
     current_fps = 0.0
 
     last_reading: LidarReading | None = None
+    last_valid_packet_time = time.time()
     bytes_received = 0
     no_data_start = time.time()
 
@@ -296,7 +298,9 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
 
     try:
         while True:
-            chunk = ser.read(128)
+            available = getattr(ser, "in_waiting", 0)
+            read_len = max(64, int(available)) if available else 64
+            chunk = ser.read(read_len)
             now = time.time()
 
             if chunk:
@@ -306,12 +310,16 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
 
                 for r in readings:
                     last_reading = r
+                    last_valid_packet_time = now
                     fps_count += 1
 
             if now - fps_start >= 1.0:
                 current_fps = fps_count / (now - fps_start)
                 fps_count = 0
                 fps_start = now
+
+            if now - last_valid_packet_time > 0.3:
+                last_reading = None
 
             # Canlı HUD Çizimi
             if IS_WINDOWS:
@@ -344,9 +352,9 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
                 out.append(f"  {C_BOLD}⚡ Örnekleme Hızı:{C_RESET} {C_CYAN}{current_fps:5.1f} Hz / FPS{C_RESET}")
                 out.append(f"  {C_BOLD}📦 Ham Paket (Hex):{C_RESET} {C_YELLOW}{last_reading.raw_hex}{C_RESET}")
             else:
-                time_since_data = now - no_data_start
-                out.append(f"  {C_RED}[!] CANLI MESAFE VERİSİ ALINAMIYOR{C_RESET}")
-                out.append(f"  Son Veri Alınma : {time_since_data:.1f} saniye önce")
+                time_since_data = now - last_valid_packet_time
+                out.append(f"  {C_RED}[!] CANLI MESAFE VERİSİ ALINAMIYOR [STALE / NO NEW PACKETS]{C_RESET}")
+                out.append(f"  Son Geçerli Veri : {time_since_data:.1f} saniye önce")
                 out.append(f"  Toplam Bayt     : {bytes_received} bayt")
                 out.append("")
                 out.append(f"  {C_YELLOW}🛠️ DONANIM KONTROL LİSTESİ:{C_RESET}")
@@ -365,7 +373,7 @@ def run_lidar_diagnostics(port: str, baudrate: int | None = None) -> int:
             sys.stdout.write("\n".join(out) + "\n")
             sys.stdout.flush()
 
-            time.sleep(0.04)
+            time.sleep(0.015)
 
     except KeyboardInterrupt:
         pass

@@ -165,7 +165,8 @@ class WASDMotorController:
     # DM542 1600 Pulses/Rev: 1600 adım = 360° => 1° ≈ 4.4444 adım
     STEPS_PER_DEG = 1600.0 / 360.0
 
-    STEP_SIZES_DEG = [0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+    # 5.625°=25 steps, 11.25°=50 steps, 22.5°=100 steps, 45.0°=200 steps, 90.0°=400 steps
+    STEP_SIZES_DEG = [5.625, 11.25, 22.5, 45.0, 90.0]
     SPEED_PRESETS = {
         1: ("YAVAS (1500us / 333Hz)", 1500),
         2: ("NORMAL (800us / 625Hz)", 800),

@@ -187,7 +187,9 @@ class TFA50LSerialAdapter:
             return []
         assert self._serial is not None
         try:
-            chunk = self._serial.read(self.config.read_size)
+            available = getattr(self._serial, "in_waiting", 0)
+            read_size = max(self.config.read_size, int(available)) if available else self.config.read_size
+            chunk = self._serial.read(read_size)
         except (OSError, ValueError) as exc:
             self._last_error = f"{type(exc).__name__}:{exc}"
             try:
@@ -205,6 +207,23 @@ class TFA50LSerialAdapter:
         if measurements:
             self._last_error = None
             self._last_receive_ns = now
+        else:
+            age_ms = (
+                None
+                if self._last_receive_ns is None
+                else max(0.0, (now - self._last_receive_ns) / 1_000_000)
+            )
+            if age_ms is not None and age_ms > self.config.stale_ms:
+                stale_event = TimedRange(
+                    distance_m=None,
+                    receive_monotonic_ns=now,
+                    raw_hex="STALE",
+                    valid=False,
+                    reason="STALE_TIMEOUT",
+                )
+                events.append(stale_event)
+                self._last_receive_ns = None
+                self._telemetry("lidar_stale", asdict(stale_event))
 
         for rejected in self._decoder.last_rejections:
             invalid = TimedRange(
