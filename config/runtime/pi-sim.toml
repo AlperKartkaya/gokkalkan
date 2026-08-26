@@ -58,7 +58,7 @@ lidar_firmware_version = "UNVERIFIED"
 lidar_calibration_path = "config/calibration/tfa50_l.toml"
 lidar_mount_revision = "BRIDGE-UNVERIFIED"
 # Hardware UART (GPIO Pins 8/10) on Raspberry Pi 5
-lidar_input_enabled = true
+lidar_input_enabled = false
 
 [live]
 interlock_provider = ""

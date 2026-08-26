@@ -37,7 +37,7 @@ class HardwareBootstrap:
             raise RuntimeConfigurationError("hardware bootstrap is only valid for LIVE")
         port = settings.mcu.port
         if "/dev/serial/by-id/" not in port or "REPLACE_" in port or "UNVERIFIED" in port:
-            raise RuntimeConfigurationError("LIVE Pico identity is not a reviewed /dev/serial/by-id path")
+            raise RuntimeConfigurationError("LIVE Arduino identity is not a reviewed /dev/serial/by-id path")
 
         hashes = self._verify_evidence(evidence_files)
         monitor = monitor_factory(
@@ -53,7 +53,7 @@ class HardwareBootstrap:
             health: dict[str, Any] = {}
             while monotonic() < deadline:
                 health = dict(monitor.health_check())
-                if health.get("picoReachable"):
+                if health.get("arduinoReachable", health.get("picoReachable")):
                     break
                 sleep(self.poll_interval_sec)
             self._verify_health(health)
@@ -109,13 +109,13 @@ class HardwareBootstrap:
     def _verify_health(health: Mapping[str, Any]) -> None:
         status = health.get("mcuStatus")
         if not health.get("serialConnected") or not health.get("picoReachable"):
-            raise RuntimeConfigurationError("LIVE Pico monitor did not receive a fresh status")
+            raise RuntimeConfigurationError("LIVE Arduino monitor did not receive a fresh status")
         if int(health.get("protocolVersion", 0) or 0) != 1:
-            raise RuntimeConfigurationError("LIVE Pico protocol major mismatch")
+            raise RuntimeConfigurationError("LIVE Arduino protocol major mismatch")
         if not str(health.get("firmwareVersion") or "").strip():
-            raise RuntimeConfigurationError("LIVE Pico firmware identity is missing")
+            raise RuntimeConfigurationError("LIVE Arduino firmware identity is missing")
         if not isinstance(status, Mapping):
-            raise RuntimeConfigurationError("LIVE Pico status payload is missing")
+            raise RuntimeConfigurationError("LIVE Arduino status payload is missing")
         if bool(status.get("estopActive", True)):
             raise RuntimeConfigurationError("LIVE E-Stop safe-sense is not ready")
         if not bool(status.get("encoderOk", False)):
@@ -123,4 +123,4 @@ class HardwareBootstrap:
         if not bool(status.get("fireReady", False)):
             raise RuntimeConfigurationError("LIVE airsoft interlock/feedback readiness failed")
         if int(status.get("faultCode", status.get("errorCode", 1)) or 0) != 0:
-            raise RuntimeConfigurationError("LIVE Pico reports a fault")
+            raise RuntimeConfigurationError("LIVE Arduino reports a fault")

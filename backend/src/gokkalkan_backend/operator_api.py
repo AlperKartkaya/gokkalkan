@@ -6,7 +6,7 @@ seviyeli niyet olarak gelir; Safety Gate değerlendirmesi burada yapılır.
 
 HardwareAdapterBase:
   DryRunHardwareAdapter  — geliştirme/test, fiziksel çıkış yok
-  UsbSerialMcuAdapter    — USB CDC Serial üzerinden Pico RP2040
+  UsbSerialMcuAdapter    — legacy USB CDC/COBS taşıması
   CanMcuAdapter          — yalnız tarihsel CAN test uyumluluğu
 """
 
@@ -488,6 +488,11 @@ class OperatorService:
             {"dryRun": dry_run, "runtimeMode": self.runtime_mode},
         )
 
+    def close(self) -> None:
+        """Close all optional transports owned by the service."""
+        if self.arduino_motors is not None:
+            self.arduino_motors.close()
+
     def bind_owner_thread(self, thread_id: int) -> None:
         """Bind production mutations to the Mission Core reducer thread."""
 
@@ -848,12 +853,16 @@ class OperatorService:
 
     def _hardware_health_snapshot(self) -> dict[str, Any]:
         try:
-            return self.hardware.health_check()
+            result = dict(self.hardware.health_check())
+            if self.arduino_motors is not None:
+                result["arduinoMotor"] = self.arduino_motors.health()
+            return result
         except Exception as exc:
             return {
                 "adapter": type(self.hardware).__name__,
                 "busConnected": False,
                 "picoReachable": False,
+                "arduinoReachable": False,
                 "encoderOk": False,
                 "physicalOutputEnabled": False,
                 "healthError": f"{type(exc).__name__}:{exc}",

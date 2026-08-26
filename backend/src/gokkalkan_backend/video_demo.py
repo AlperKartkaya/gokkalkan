@@ -125,6 +125,7 @@ def start_run(
         "host": platform.node(),
         "gitRevision": _git_revision(),
         "snapshots": snapshots,
+        "initialEventIds": _event_ids(snapshots.get("state", {})),
     }
     (path / "start.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return VideoDemoRun(run_id=run_id, capability=capability, path=path, report=report)
@@ -154,6 +155,12 @@ def finish_run(
         "state": _fetch_json(api_url, "/state", timeout_sec),
         "events": _fetch_json(api_url, "/events", timeout_sec),
     }
+    initial_event_ids = {int(value) for value in started.get("initialEventIds", []) if isinstance(value, int)}
+    new_events = [
+        event for event in snapshots["events"].get("events", [])
+        if isinstance(event, dict) and isinstance(event.get("id"), int) and event["id"] not in initial_event_ids
+    ]
+    observations = _observations_for(str(started.get("capability", "")), new_events, snapshots["state"])
     report = {
         "schemaVersion": 1,
         "runId": started.get("runId"),
@@ -162,9 +169,50 @@ def finish_run(
         "physicalCapabilityVerified": False,
         "verificationNote": "Fiziksel video ve saha gözlemi incelenmeden otomatik başarı kararı verilmez.",
         "snapshots": snapshots,
+        "newEvents": new_events,
+        "observations": observations,
     }
     (path / "finish.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
+
+
+def _event_ids(snapshot: dict[str, Any]) -> list[int]:
+    return [event["id"] for event in snapshot.get("events", []) if isinstance(event, dict) and isinstance(event.get("id"), int)]
+
+
+def _observations_for(capability: str, events: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, bool]:
+    decisions = {str(event.get("decision", "")) for event in events}
+    physical_estop = any(
+        event.get("decision") == "ESTOP_CHANGE"
+        and bool(event.get("payload", {}).get("active"))
+        and event.get("payload", {}).get("source") == "gpio_or_can"
+        for event in events
+        if isinstance(event.get("payload"), dict)
+    )
+    result = {
+        "newTelemetryObserved": bool(events),
+        "physicalEStopObserved": physical_estop,
+        "motionIntentObserved": bool({"ManualAimCommand", "AutonomousAimCommand"} & decisions),
+        "fireIntentObserved": "FireIntent" in decisions,
+        "trackUpdateObserved": "TRACKS_UPDATE" in decisions,
+        "acceptedLidarRangeObserved": "LIDAR_RANGE_FUSED" in decisions,
+        "classifiedTrackVisibleAtFinish": any(
+            str(track.get("targetType", "Bilinmeyen")) not in {"", "Bilinmeyen"}
+            for track in state.get("tracks", []) if isinstance(track, dict)
+        ),
+    }
+    # These fields are observations only, not pass/fail claims.
+    if capability == "Y3":
+        result["expectedEventSequenceObserved"] = result["motionIntentObserved"] and physical_estop
+    elif capability == "Y4":
+        result["expectedEventSequenceObserved"] = result["fireIntentObserved"] and physical_estop
+    elif capability == "Y5":
+        result["expectedEventSequenceObserved"] = result["trackUpdateObserved"] and result["motionIntentObserved"]
+    elif capability == "Y6":
+        result["expectedEventSequenceObserved"] = result["trackUpdateObserved"] and result["classifiedTrackVisibleAtFinish"]
+    else:
+        result["expectedEventSequenceObserved"] = result["newTelemetryObserved"]
+    return result
 
 
 def latest_run_summary(output_root: str | Path) -> dict[str, Any]:

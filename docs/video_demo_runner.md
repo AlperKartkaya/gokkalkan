@@ -38,12 +38,14 @@ ssh -i ~/.ssh/gokkalkan_pi gokkalkan@gokkalkan.local \
 ```
 
 Bu komut `finish.json` içine bitiş anındaki `/health`, `/state` ve `/events`
-cevaplarını kaydeder. Fiziksel başarı hükmü vermez.
+cevaplarını kaydeder. Ayrıca başlangıçtan sonra oluşan olayları ayırır ve Y3/Y4
+için fiziksel E-Stop, hareket/ateş niyeti; Y5/Y6 için track güncellemesi gibi
+**gözlemleri** raporlar. Fiziksel başarı hükmü vermez.
 
 ## Manuel işaretleme sınırı
 
 Kamera görüntüsü üzerinde operatörün çizdiği bir kare yalnızca açıkça
-`Manuel İşaretleme / Demo Yardımı` olarak sunulabilir. Bu işaretleme AI tespiti,
+`Operatör ROI / Görsel İnceleme` olarak sunulabilir. Bu işaretleme AI tespiti,
 sınıflandırma, menzil ölçümü veya otonom angajman verisi değildir; `TrackState`
 üretmez ve Safety Gate'e giremez.
 

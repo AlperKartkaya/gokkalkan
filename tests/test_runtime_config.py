@@ -69,7 +69,7 @@ class RuntimeConfigTest(unittest.TestCase):
     def test_live_missing_interlock_provider_is_rejected(self) -> None:
         text = Path("config/runtime/live.toml").read_text(encoding="utf-8")
         text = text.replace(
-            'interlock_provider = "pico-and-physical-estop-chain"',
+            'interlock_provider = "arduino-and-physical-estop-chain"',
             'interlock_provider = ""',
         )
         with tempfile.TemporaryDirectory() as tmp:

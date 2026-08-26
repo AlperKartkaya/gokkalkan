@@ -37,6 +37,10 @@ def test_finish_run_records_end_observations_without_claiming_physical_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def fake_fetch(base_url: str, endpoint: str, timeout_sec: float):
+        if endpoint == "/events":
+            return {"events": [{"id": 9, "decision": "ESTOP_CHANGE", "payload": {"active": True, "source": "gpio_or_can"}}]}
+        if endpoint == "/state":
+            return {"events": [], "tracks": []}
         return {"endpoint": endpoint, "ok": True}
 
     monkeypatch.setattr("gokkalkan_backend.video_demo._fetch_json", fake_fetch)
@@ -44,6 +48,7 @@ def test_finish_run_records_end_observations_without_claiming_physical_success(
     finished = finish_run(run.path)
 
     assert finished["physicalCapabilityVerified"] is False
+    assert finished["observations"]["physicalEStopObserved"] is True
     assert (run.path / "finish.json").is_file()
 
 

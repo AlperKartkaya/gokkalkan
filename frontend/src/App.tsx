@@ -1256,7 +1256,7 @@ function OperatorWorkspace({
   const backendState = useOperatorBackendState(apiBaseUrl);
 
   if (surface === 'ai') {
-    return <AIPanel apiBaseUrl={apiBaseUrl} backendState={backendState} onOpenOperator={() => onSurface('operator')} />;
+    return <AIPanel backendState={backendState} onOpenOperator={() => onSurface('operator')} />;
   }
   return (
     <OperatorPanel

@@ -135,15 +135,14 @@ class MissionFlow:
         self._transition(reason)
 
     def release_estop(self, reason: str) -> None:
-        """Release estop and restore active/previous status directly."""
+        """Release the latch but require an explicit mission resume.
+
+        Clearing the physical/software E-Stop must never implicitly restart a
+        mission.  The previous status is retained so ``resume`` can be an
+        auditable, separate operator action.
+        """
         if self.status == "ESTOP_LATCHED":
-            resume_status = (
-                self.previous_status
-                if self.previous_status in {"ACTIVE", "ROUND_COMPLETE", "IDLE"}
-                else "ACTIVE"
-            )
-            self.status = resume_status
-            self.previous_status = None
+            self.status = "PAUSED"
             self._transition(reason)
 
     def reset(self, tracks: Iterable[Mapping[str, Any]]) -> None:

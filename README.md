@@ -6,16 +6,17 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü ve operatör paneli**. Aşama 1/2/3 senaryolarını görselleştirir; gerçek panel canlı kamera, 1D LiDAR menzili, manuel nişan ve Safety Gate durumunu backend’den alır.
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, USB seri loopback için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
-- `backend/hardware_mock/` — **Pico MCU simülatörü** ve firmware güvenlik modeli. Fiziksel olmayan contract/fault testleri.
-- `firmware/pico/` — Pico SDK hedefi, host-testli C++ güvenlik durum makinesi, USB CDC/COBS taşıması ve tarihsel CAN v1 payload codec çekirdeği.
+- `backend/hardware_mock/` — donanım olmadan contract/fault testleri için kuru çalışma adaptörü.
+- `realtimetesting/arduino_uno/` — imalat ekibinin doğruladığı Arduino Uno + iki DM542 sürücülü saha firmware'i ve Python test araçları.
+- `firmware/pico/` — **legacy** host-testli referans; sahadaki aktif mikrodenetleyici yolu değildir ve yeni özellik eklenmez.
 - `perception/` — **Tek Camera Module 3 Standard + HSV takipçi + AI HAT+ sağlık sınırı + perception bridge**. Pi'de Picamera2 ve Hailo-8 zorunlu health kontrolü, geliştirmede açıkça işaretli OpenCV fallback'i; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
   snapshot’ı, SSE operatör akışı ve ayrı perception process sınırı
   uygulanmıştır.
 - Faz 4–7 yazılımı; saf/fail-closed Safety Gate, canlı arm/E-Stop reset zinciri,
-  USB CDC/Pico çekirdeği, deterministik dijital ikiz ve doğrulanabilir telemetry
+  deterministik dijital ikiz ve doğrulanabilir telemetry
   session/replay zinciriyle tamamlanmıştır. Bunlar **yazılım/mock kanıtıdır**;
-  gerçek kamera, TFA50-L, Pico/USB, E-Stop, motor ve imha hattı kabulü imalat
+  gerçek kamera, TFA50-L, Arduino/USB, E-Stop, motor ve imha hattı kabulü imalat
   sonrası HIL/fiziksel kanıt olarak açık kalır. Kanonik sıra:
   `docs/imalat_oncesi_yazilim_todo.md`.
 
@@ -27,17 +28,17 @@ Operatör Paneli (UI)
 Backend API → bounded CommandEnvelope kuyruğu
       ↓  tek sahipli Mission Core reducer + immutable snapshot/SSE
 OperatorService + Safety Gate
-      ↓  HardwareAdapterBase.execute()
-UsbSerialMcuAdapter — pyserial / COBS + CRC16
+      ↓  HardwareAdapterBase.execute() (Safety Gate sonrası)
+ArduinoUnoMotorAdapter — pyserial / satır tabanlı STEP/JOG/STOP (saha motor yolu)
       ↓  USB CDC Serial (kısa veri kablosu)
-Pico RP2040 (MCU)
+Arduino Uno (Pin 2/3 PAN, Pin 4/5 TILT)
       ↓  STEP/DIR darbeleri
 DM542 → NEMA23 pan ekseni / NEMA17 tilt ekseni
 ```
 
 **E-Stop yolu (çift güvence):**
 ```
-Gwest E-Stop → 3SK1111/kontaktör + Pico GPIO → USB 0x201 → Safety Gate
+Gwest E-Stop → 3SK1111/kontaktör + Arduino STOP → Safety Gate
                                                                        ↑
 RPi5 GPIO header (GpioEStopMonitor, ikincil) ─────────────────────────┘
 ```
@@ -65,16 +66,16 @@ npm --prefix frontend run dev
 # http://127.0.0.1:5173/?operator=1
 ```
 
-`npm run desktop` güvenli SIM backend’ini başlatır. Fiziksel Pico HIL için
-`config/runtime/hil-physical.toml` içindeki `/dev/serial/by-id/...` yolu gerçek
-cihaz kimliğiyle değiştirilir; yalnız lamba/yapay yük kullanılır.
+`npm run desktop` güvenli SIM backend’ini başlatır. Arduino saha testi için
+`realtimetesting/README.md` içindeki port ve güvenli düşük enerji prosedürünü
+izleyin; yazılım testleri fiziksel hareket kabulü değildir.
 
-### LIVE hazırlığı (RPi5 + Pico USB CDC)
+### LIVE hazırlığı (RPi5 + Arduino Uno USB seri)
 
 Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek USB
-adapter’ı; `docs/adr/001-target-runtime.md` ve `docs/adr/005-pi-pico-usb-serial.md`
-gereğince fiziksel interlock, backend readiness ve ayrı arm zinciri tamamlandıktan
-sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan fiziksel Pico çıkışı açılmaz.
+Arduino seri adapter’ı; `docs/adr/006-arduino-uno-motor-transport.md` gereğince
+fiziksel interlock, backend readiness ve ayrı arm zinciri tamamlandıktan
+sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan fiziksel Arduino çıkışı açılmaz.
 
 ### Simülatör
 
@@ -109,14 +110,14 @@ Kanıt paketi üretimi ve bütünlük sınırları:
 | `/state/stream?after=N` | GET | SSE üzerinden immutable state snapshot akışı |
 | `/health` | GET | Backend sağlık |
 | `/commands/{commandId}` | GET | Kuyruktaki/tamamlanan komutun izlenebilir sonucu |
-| `/hardware/health` | **GET** | USB bağlantısı ve Pico MCU durumu |
+| `/hardware/health` | **GET** | USB bağlantısı ve Arduino MCU durumu |
 | `/mode` | POST | Mod değiştir |
 | `/stage` | POST | Aşama/tur değiştir |
 | `/manual-aim` | POST | Manuel pan/tilt komutu niyeti |
 | `/fire-intent` | POST | Ateş niyeti |
 | `/tracks/update` | **POST** | Perception bridge track besleme |
 | `/estop` | **POST** | E-Stop mandalını tetikle; HTTP ile temizlenemez |
-| `/estop/reset` | **POST** | Fiziksel bırakma + Pico SAFE sonrası kontrollü reset |
+| `/estop/reset` | **POST** | Fiziksel bırakma + Arduino SAFE sonrası kontrollü reset |
 | `/arm/hold` | **POST** | Kimlikli hold-to-arm keepalive |
 | `/arm/disarm` | **POST** | Canlı arm yetkisini düşür |
 | `/telemetry/export` | GET | JSONL telemetri dışa aktarma |
@@ -144,7 +145,7 @@ kullanmaz.
 # Frontend tip kontrolü
 cd frontend && npm run typecheck && npm run build
 
-# Pico firmware host çekirdeği
+# Legacy Pico referans çekirdeği (aktif saha yolu değil)
 cmake -S firmware/pico -B build/firmware-host -G Ninja
 cmake --build build/firmware-host
 ctest --test-dir build/firmware-host --output-on-failure
@@ -156,7 +157,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/MALZEME_LISTESI.md` — güncel malzeme, teslimat durumu, ürün bağlantıları ve doğrulama notları.
 - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` — imalat ekibi için bağlantı, ek BOM, lehimleme ve aşamalı kabul kılavuzu.
 - `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` — imalat ekibine iletilecek görsel, yazdırılabilir ve kapsamlı komponent bağlantı rehberi.
-- `docs/YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md` — Pico I/O'dan Aşama 2/3 saha kabulüne kadar kanonik, adım adım yazılım–donanım entegrasyon ve ilerleme planı.
+- `docs/adr/006-arduino-uno-motor-transport.md` — güncel Arduino Uno saha yolu ve sınırları.
 - `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
 - `docs/requirements_traceability.md` — requirement → modül/test/telemetri/video matrisi.
@@ -164,7 +165,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/adr/` — kabul edilmiş çalışma ortamı, Mission Core, USB ve kamera/LiDAR kararları.
 - `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
   geriye uyumluluk politikası.
-- `docs/usb_serial_mcu_protocol.md` — aktif USB CDC framing, CRC16, heartbeat ve ACK/NACK sözleşmesi.
+- `docs/usb_serial_mcu_protocol.md` — legacy USB framing sözleşmesi; Arduino satır protokolü için `realtimetesting/README.md` geçerlidir.
 - `docs/can_icd_v1.md` — USB zarfı içinde korunan tarihsel 8 baytlık MCU payload kimlikleri.
 - `docs/digital_twin_and_evidence.md` — Faz 6/7 senaryo, session, replay ve kanıt kullanımı.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
@@ -190,7 +191,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 UI doğrudan motor veya imha hattı sürmez. Komut akışı zorunlu olarak şu zincirden geçer:
 
 ```
-Operatör Paneli → Backend API → Safety Gate → HardwareAdapterBase → USB CDC → Pico MCU → DM542
+Operatör Paneli → Backend API → Safety Gate → HardwareAdapterBase → Arduino seri adapter → DM542
 ```
 
 Safety Gate; **E-Stop, hareket yasak bölge, atış yasak bölge, mod uyumu, hedef/menzil kapısı, bağlantı sağlığı ve arm durumunu** UI'dan bağımsız olarak kontrol eder.

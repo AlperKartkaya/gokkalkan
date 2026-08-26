@@ -48,7 +48,7 @@ ssh -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 pi@<pi-adresi>
 Ardından operatör bilgisayarında `http://127.0.0.1:4173` açılır.
 
 Kurulum `config/runtime/pi-sim.toml` dosyasını hedef runtime config’i yapar.
-`LIVE` otomatik etkinleştirilmez. Pico, USB CDC (`cdc_acm`) olarak bağlanır;
+`LIVE` otomatik etkinleştirilmez. Arduino Uno, USB seri (`cdc_acm` veya CH340) olarak bağlanır;
 manifest kararlı `/dev/serial/by-id/...` cihaz yolu ile 115200 teşhis ayarını
 sabitler. Gerçek cihaz kimliği imalat sırasında yazılmalı; USB disconnect,
 reconnect ve EMI HIL kabulü tamamlanmadan LIVE açılmamalıdır.

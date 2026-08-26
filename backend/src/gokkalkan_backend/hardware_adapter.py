@@ -1,7 +1,7 @@
 """Gökkalkan Donanım Adaptör Katmanı.
 
 Fiziksel haberleşme mimarisi:
-  RPi5 (bu modül, python-can) ←CAN bus→ Pico RP2040 (DM542 sürücü, enkoder, E-stop)
+  RPi5 (bu modül, python-can) ← legacy CAN bus → MCU (DM542 sürücü, enkoder, E-stop)
 
 CAN Mesaj Haritası:
   0x100  RPi5 → Pico  Pan/Tilt konum komutu (8 byte)
@@ -167,7 +167,7 @@ def pack_sys_cmd(arm: bool) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# CAN Mesaj Codec — Pico Durum Paketi (0x200)
+# CAN Mesaj Codec — legacy MCU Durum Paketi (0x200)
 # ---------------------------------------------------------------------------
 
 def pack_status(
@@ -261,7 +261,7 @@ class HardwareAdapterBase(ABC):
 # ---------------------------------------------------------------------------
 
 class CanMcuAdapter(HardwareAdapterBase):
-    """CAN bus üzerinden Pico RP2040 MCU'ya bağlanan gerçek donanım adaptörü.
+    """Legacy CAN bus MCU adaptörü (Arduino saha yolunu kullanmaz).
 
     Gerçek donanım adaptörü doğrudan oluşturulmamalıdır. LIVE yapılandırması,
     fiziksel interlock ve readiness kontrolü için ``runtime_mode`` factory'si

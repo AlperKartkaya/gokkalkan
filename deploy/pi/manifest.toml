@@ -44,7 +44,7 @@ operator_token_mode = "0640"
 
 [mcu]
 transport = "usb-cdc-serial"
-device_path = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_PICO"
+device_path = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
 kernel_driver = "cdc_acm"
 firmware_version = "UNVERIFIED"

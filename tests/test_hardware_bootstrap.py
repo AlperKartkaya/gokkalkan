@@ -27,7 +27,7 @@ class Monitor:
 
 def _settings(tmp_path: Path):
     text = Path("config/runtime/live.toml").read_text(encoding="utf-8")
-    text = text.replace("REPLACE_WITH_GOKKALKAN_PICO", "usb-GOKKALKAN_PICO_001")
+    text = text.replace("REPLACE_WITH_GOKKALKAN_ARDUINO", "usb-GOKKALKAN_ARDUINO_001")
     path = tmp_path / "live.toml"
     path.write_text(text, encoding="utf-8")
     return load_runtime_config(path)

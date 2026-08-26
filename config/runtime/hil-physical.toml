@@ -8,7 +8,7 @@ allowed_origins = ["http://127.0.0.1:4173"]
 
 [mcu]
 transport = "usb_serial"
-port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_PICO"
+port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
 heartbeat_timeout_ms = 1000
 

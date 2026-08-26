@@ -16,7 +16,7 @@
   - `docs/sartname_v4.txt:862-907` — Aşama 3’ün otonom doğru hedef ve doğru menzil yükümlülüğü.
   - `docs/Celikkubbe_Hava_Savunma_Sistemleri_Parkur_Cizim.pdf` — Tur, kol, A→B rota ve hedef yerleşimi için güncel çizim kaynağı.
   - `frontend/src/App.tsx`, `frontend/src/competitionSimulation.ts`, `frontend/src/competitionCourse.ts`, `frontend/src/safetyGate.ts` — mevcut React/Vite simülatör uygulaması.
-  - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md`, `docs/usb_serial_mcu_protocol.md` ve `docs/adr/ADR-005-pi-pico-usb-cdc.md` — imalat bağlantıları, kablo kimlikleri ve Pi↔Pico USB CDC kararı.
+  - `docs/adr/006-arduino-uno-motor-transport.md` ve `realtimetesting/README.md` — güncel imalat bağlantıları, kablo kimlikleri ve Pi↔Arduino seri kararı.
 
 ## Brand
 
@@ -143,6 +143,6 @@ Amaç, imalat ekibinin şema aramak yerine sistem haritasından bir bağlantıy�
 ## Open questions
 
 - [ ] TFA50-L güç/UART/hizalama ve 5/10/15 m fiziksel kabulü tamamlanacak / owner: elektronik + backend / impact: sensor adapter.
-- [ ] Pi↔Pico USB CDC hattının gerçek Pico üzerinde build/flash, reconnect ve watchdog HIL kabulü tamamlanacak / owner: elektronik + backend / impact: Hardware Adapter.
+- [ ] Pi↔Arduino USB seri hattının gerçek cihaz üzerinde reconnect ve güvenli duruş HIL kabulü tamamlanacak / owner: elektronik + backend / impact: Hardware Adapter.
 - [ ] Gerçek operatör paneli React/Vite içinde yeni route olarak mı kalacak, yoksa native kiosk/PySide6 alternatifi mi istenecek / owner: yazılım / impact: UI runtime.
 - [ ] Şartname veya hakem açıklaması kesin parkur ölçüsü/hız verirse simülasyon config’i güncellenecek / owner: UI + backend / impact: eğitim doğruluğu.

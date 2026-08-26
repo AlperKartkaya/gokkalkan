@@ -101,7 +101,7 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
         elif path == "/replay":
             self._send_json(self.operator_service.replay())
         elif path == "/hardware/health":
-            self._send_json(self.operator_service.hardware.health_check())
+            self._send_json(self.operator_service._hardware_health_snapshot())
         elif path == "/video-demo/session":
             self._send_json(latest_run_summary(self.video_runs_root))
         elif path.startswith("/commands/"):
@@ -147,6 +147,12 @@ class OperatorApiHandler(BaseHTTPRequestHandler):
             )
         elif path == "/estop":
             active = bool(payload.get("active", True))
+            if not active:
+                self._send_json(
+                    {"error": "estop_reset_requires_controlled_endpoint", "path": path},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
             self._submit("EStopChange", {"active": active, **payload}, source="operator-estop-http")
         elif path == "/estop/reset":
             self._submit("EStopReset", payload)
@@ -577,6 +583,7 @@ def main(argv: list[str] | None = None) -> None:
             sensor_runtime.start()
         except (OSError, ValueError) as exc:
             server.server_close()
+            service.close()
             service.hardware.close()
             telemetry.close()
             parser.error(f"TFA50-L production runtime başlatılamadı: {exc}")
@@ -598,6 +605,7 @@ def main(argv: list[str] | None = None) -> None:
         if sensor_runtime is not None:
             sensor_runtime.stop()
         server.server_close()
+        service.close()
         service.hardware.close()
         telemetry.close()
 

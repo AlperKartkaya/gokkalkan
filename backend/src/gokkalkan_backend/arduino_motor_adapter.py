@@ -27,12 +27,13 @@ class ArduinoUnoMotorAdapter:
         self.port = port
         self.baudrate = baudrate
         self._serial: Any | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._connected = False
         self._last_error: str | None = None
         self._last_attempt_time = 0.0
         self.active_port: str | None = None
-        threading.Thread(target=self.connect, daemon=True).start()
+        # Open lazily on the first command.  Construction must not spawn an
+        # unmanaged thread or touch hardware before the runtime gate starts.
 
     def _find_port(self) -> str | None:
         candidates = []
@@ -137,14 +138,27 @@ class ArduinoUnoMotorAdapter:
     def move_pan(self, pan_delta_deg: float, rate_limit_deg_per_sec: float = 15.0) -> str:
         """Command Pan Motor (Pin 2/3). Positive -> CW (Right), Negative -> CCW (Left)."""
         direction = "CW" if pan_delta_deg >= 0 else "CCW"
-        steps = max(50, int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG)))
-        return self.step_pan(steps=steps, delay_us=800, direction=direction)
+        if pan_delta_deg == 0:
+            return "OK_NOOP"
+        steps = int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG))
+        delay_us = self._delay_for_rate(rate_limit_deg_per_sec)
+        return self.step_pan(steps=steps, delay_us=delay_us, direction=direction)
 
     def move_tilt(self, tilt_delta_deg: float, rate_limit_deg_per_sec: float = 15.0) -> str:
         """Command Tilt Motor (Pin 4/5). Positive -> CW (Up), Negative -> CCW (Down)."""
         direction = "CW" if tilt_delta_deg >= 0 else "CCW"
-        steps = max(50, int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG)))
-        return self.step_tilt(steps=steps, delay_us=800, direction=direction)
+        if tilt_delta_deg == 0:
+            return "OK_NOOP"
+        steps = int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG))
+        delay_us = self._delay_for_rate(rate_limit_deg_per_sec)
+        return self.step_tilt(steps=steps, delay_us=delay_us, direction=direction)
+
+    @staticmethod
+    def _delay_for_rate(rate_limit_deg_per_sec: float) -> int:
+        # Keep the field firmware's safe lower bound while making the caller's
+        # rate limit meaningful (1600 pulses/rev).
+        rate = max(0.1, min(30.0, float(rate_limit_deg_per_sec)))
+        return max(200, min(5000, int(round(1_000_000 / (rate * 1600.0 / 360.0)))))
 
     def run_pan_timed(self, duration_sec: int, delay_us: int = 800, direction: str = "CW") -> str:
         """Run Pan Motor for a specific duration."""
@@ -163,9 +177,24 @@ class ArduinoUnoMotorAdapter:
     def emergency_stop(self) -> str:
         return self.stop()
 
+    def close(self) -> None:
+        with self._lock:
+            serial_obj, self._serial = self._serial, None
+            self._connected = False
+            if serial_obj is not None:
+                try:
+                    serial_obj.close()
+                except Exception:
+                    logger.debug("Arduino serial close failed", exc_info=True)
+
     def health(self) -> dict[str, Any]:
         return {
+            "adapter": "arduino_uno_serial",
             "connected": self._connected,
+            "arduinoReachable": self._connected,
+            # Compatibility for the legacy readiness shape.  New callers
+            # should consume arduinoReachable instead.
+            "picoReachable": False,
             "port": self.active_port or self.port,
             "lastError": self._last_error,
         }

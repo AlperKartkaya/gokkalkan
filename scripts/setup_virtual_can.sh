@@ -2,8 +2,8 @@
 # Gökkalkan — Tarihsel CAN regresyonları için sanal arayüz betiği
 #
 # Yalnız korunmuş CanMcuAdapter/dijital ikiz regresyonlarını çalıştırmak için
-# sanal bir CAN ağ arayüzü (vcan0) oluşturur. Aktif Pi–Pico runtime taşıması
-# USB CDC'dir; normal HIL için config/runtime/hil.toml içindeki loop:// kullanılır.
+# sanal bir CAN ağ arayüzü (vcan0) oluşturur. Aktif Pi–Arduino runtime taşıması
+# USB seri'dir; normal HIL için config/runtime/hil.toml içindeki loop:// kullanılır.
 #
 # Desteklenen platformlar:
 #   Linux (Raspberry Pi OS, Ubuntu) — tam destek (vcan0)

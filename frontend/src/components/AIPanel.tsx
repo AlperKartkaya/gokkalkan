@@ -1,22 +1,22 @@
-import { useMemo, useState } from 'react';
+import { type PointerEvent, useMemo, useState } from 'react';
+import type { OperatorTrackState, OperatorSensorFrame } from '../operatorContracts';
 import type { OperatorBackendState } from '../hooks/useOperatorBackendState';
-import { sendOperatorManualAimCommand } from '../operatorApiClient';
-import { ManualAimController } from './ManualAimController';
+
+import Navigation from './Navigation';
+import { VideoDemoBanner } from './VideoDemoBanner';
 
 export default function AIPanel({
-  apiBaseUrl,
   backendState,
   onOpenOperator,
 }: {
-  apiBaseUrl?: string;
   backendState: OperatorBackendState;
   onOpenOperator: () => void;
 }) {
   const { snapshot, error } = backendState;
   const [cameraFailed, setCameraFailed] = useState(false);
-  const [apiBusy, setApiBusy] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string>('');
-  const activeApiUrl = apiBaseUrl || 'http://127.0.0.1:8088';
+  const [manualMarkingEnabled, setManualMarkingEnabled] = useState(false);
+  const [markStart, setMarkStart] = useState<{ x: number; y: number }>();
+  const [manualBox, setManualBox] = useState<{ left: number; top: number; width: number; height: number }>();
 
   const cameraStreamUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -28,172 +28,248 @@ export default function AIPanel({
       || defaultStream;
   }, []);
 
-  const handleManualAim = (panDeltaDeg: number, tiltDeltaDeg: number) => {
-    if (!activeApiUrl) {
-      setActionMessage('HATA: API bağlantısı yok');
-      return;
-    }
-    setApiBusy(true);
-    sendOperatorManualAimCommand(activeApiUrl, {
-      kind: 'ManualAimCommand',
-      panDeltaDeg,
-      tiltDeltaDeg,
-      rateLimitDegPerSec: 15,
-      deadmanActive: true,
-      dryRun: false,
-    })
-      .then((res) => {
-        const isOk = res.result?.accepted || (res as unknown as { queued?: boolean }).queued;
-        if (isOk) {
-          setActionMessage(`Hareket: Pan ${panDeltaDeg > 0 ? '+' : ''}${panDeltaDeg}°, Tilt ${tiltDeltaDeg > 0 ? '+' : ''}${tiltDeltaDeg}°`);
-        } else {
-          setActionMessage(`Engellendi: ${res.result?.safetyBlockReason || 'Safety Kontrolü'}`);
-        }
-      })
-      .catch((err: unknown) => {
-        setActionMessage(`Hata: ${err instanceof Error ? err.message : 'Komut gönderilemedi'}`);
-      })
-      .finally(() => setApiBusy(false));
+  const getTargetColor = (friendFoe?: string, type?: string) => {
+    const f = friendFoe?.toLowerCase();
+    if (f === 'düşman' || type === 'balistik füze') return '#ff4757';
+    if (f === 'dost') return '#25d8ff';
+    return '#ffbb42';
   };
 
-  const lidarReading = snapshot?.lidarReading;
-  const currentPan = snapshot?.turretPosition?.panDeg ?? 0;
-  const currentTilt = snapshot?.turretPosition?.tiltDeg ?? 0;
+  const tracks = snapshot?.tracks ?? [];
+  const frames = snapshot?.sensorFrames ?? [];
+
+  const pointFor = (event: PointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100)),
+      y: Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100)),
+    };
+  };
+
+  const beginManualMarking = (event: PointerEvent<HTMLDivElement>) => {
+    if (!manualMarkingEnabled) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = pointFor(event);
+    setMarkStart(point);
+    setManualBox({ left: point.x, top: point.y, width: 0, height: 0 });
+  };
+
+  const updateManualMarking = (event: PointerEvent<HTMLDivElement>) => {
+    if (!manualMarkingEnabled || !markStart) return;
+    const point = pointFor(event);
+    setManualBox({
+      left: Math.min(markStart.x, point.x),
+      top: Math.min(markStart.y, point.y),
+      width: Math.abs(point.x - markStart.x),
+      height: Math.abs(point.y - markStart.y),
+    });
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#070a0e] text-[#8ba7be] overflow-auto p-4">
-      {/* Compact Top Bar */}
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-black text-[#d7efff]">GÖKKALKAN</h1>
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-mono">
-            <span className={`w-2 h-2 rounded-full ${snapshot && !error ? 'bg-[#33e68c] animate-pulse' : 'bg-[#ff4757]'}`} />
-            <span>{snapshot && !error ? 'CANLI' : 'BAĞLANTIYI BEKLİYOR'}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 rounded-lg border border-[#ffbb42]/30 bg-black/60 px-3 py-1.5 text-xs font-mono">
-            <span className={`w-2 h-2 rounded-full ${lidarReading?.distanceM != null ? 'bg-[#33e68c]' : 'bg-[#ffbb42]'}`} />
-            <span>LİDAR: <b>{lidarReading?.distanceM != null ? `${lidarReading.distanceM.toFixed(2)} m` : 'BEKLENİYOR'}</b></span>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenOperator}
-            className="rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs text-[#91a6b7] hover:text-white transition-colors"
-          >
-            Tam Panel →
-          </button>
-        </div>
+    <div className="flex flex-col h-screen bg-[#070a0e] text-[#8ba7be] overflow-auto pt-20 p-6">
+      <Navigation activeSurface="ai" onOpenOperator={onOpenOperator} onOpenAI={() => undefined} />
+      <header className="mb-6 border-b border-[#48a8ff]/20 pb-4">
+        <h1 className="text-2xl font-black text-[#d7efff]">Yapay Zeka & Algı (Perception) Paneli</h1>
+        <p className="mt-2 text-sm text-[#8ba7be]">Sentetik kamera, ROI geometrisi ve hedef takip telemetrisi özeti.</p>
       </header>
+      <VideoDemoBanner session={backendState.videoDemoSession} />
 
-      {/* Main Layout: Camera + Controls */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* Live Camera View */}
-        <div className="rounded-xl border border-[#48a8ff]/20 bg-black shadow-[0_8px_32px_rgba(72,168,255,.05)] overflow-hidden flex flex-col relative items-center justify-center">
-
-          {/* Top-Right LiDAR HUD (large, always visible) */}
-          <div className="absolute top-4 right-4 z-10 rounded-lg border border-[#ffbb42]/40 bg-black/80 backdrop-blur px-4 py-3 font-mono text-right shadow-lg">
-            <span className="block text-[#91a6b7] text-[10px]">1D LİDAR MENZİLİ</span>
-            <b className="text-2xl text-[#ffe4ad]">
-              {lidarReading?.distanceM != null ? `${lidarReading.distanceM.toFixed(2)} m` : '---'}
-            </b>
+        {/* Live Camera & Bounding Boxes */}
+        <div className="rounded-xl border border-[#48a8ff]/20 bg-[rgba(10,15,22,.9)] shadow-[0_8px_32px_rgba(72,168,255,.05)] lg:col-span-2 overflow-hidden flex flex-col relative items-center justify-center bg-black">
+          <div className="absolute top-4 left-4 z-10 rounded-lg border border-[#25d8ff]/30 bg-black/75 px-3 py-2 font-mono text-xs">
+             <span className="block text-[#91a6b7]">CANLI OPTİK / AI TESPİT</span>
+             <b className={snapshot && !error ? 'text-[#33e68c]' : 'text-[#ff4757]'}>
+               {snapshot && !error ? 'TELEMETRİ BAĞLI' : 'TELEMETRİ BEKLENİYOR'}
+             </b>
           </div>
 
-          {/* Action Message Feedback */}
-          {actionMessage && (
-            <div className="absolute top-4 left-4 z-10 rounded bg-[#25d8ff]/20 border border-[#25d8ff]/40 px-2.5 py-1 text-xs text-[#25d8ff] font-mono">
-              {actionMessage}
-            </div>
-          )}
-
-          {/* Camera Feed */}
-          <div className="relative w-full aspect-video bg-black flex items-center justify-center">
+          <div
+            className={`relative w-full max-w-[1200px] aspect-video ${manualMarkingEnabled ? 'cursor-crosshair' : ''}`}
+            onPointerDown={beginManualMarking}
+            onPointerMove={updateManualMarking}
+            onPointerUp={() => setMarkStart(undefined)}
+          >
             {cameraFailed ? (
-              <div className="absolute inset-0 grid place-items-center text-center text-[#ffbdc4] bg-black/90 p-6">
-                <div>
-                  <b className="text-lg text-white">KAMERA YAYINI BEKLENİYOR</b>
-                  <p className="text-sm mt-2 text-[#91a6b7]">
-                    Kamera akışına bağlanılamadı ({cameraStreamUrl}).
-                    <br />
-                    SSH tünelinde <b>8090</b> portunun yönlendirildiğinden emin olun:
-                    <br />
-                    <code className="inline-block mt-2 bg-black px-2 py-1 rounded text-[#25d8ff]">
-                      ssh -N -L 4173:127.0.0.1:4173 -L 8088:127.0.0.1:8088 -L 8090:127.0.0.1:8090 gokkalkan@gokkalkan
-                    </code>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setCameraFailed(false)}
-                    className="mt-4 px-4 py-2 bg-[#25d8ff]/20 hover:bg-[#25d8ff]/30 text-[#25d8ff] rounded-lg border border-[#25d8ff]/40 text-xs font-bold"
-                  >
-                    Yeniden Dene
-                  </button>
-                </div>
+              <div className="absolute inset-0 grid place-items-center text-center text-[#ffbdc4] bg-black/80">
+                <div><b>KAMERA AKIŞI BEKLENİYOR</b><p className="text-sm mt-2 text-[#91a6b7]">Sentetik AI katmanı veri bekliyor. ({cameraStreamUrl})</p></div>
               </div>
             ) : (
-              <img
-                src={cameraStreamUrl}
-                className="w-full h-full object-contain"
-                alt="Canlı Kamera Akışı"
-                onError={() => setCameraFailed(true)}
-              />
+              <img src={cameraStreamUrl} className="absolute inset-0 w-full h-full object-contain" alt="AI Canlı Kamera Akışı" onError={() => setCameraFailed(true)} />
             )}
 
-            {/* Crosshair */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-12 h-12 border border-white/30 rounded-full flex items-center justify-center">
-                <div className="w-2 h-2 bg-[#25d8ff]/80 rounded-full" />
-              </div>
-              <div className="absolute w-24 h-[1px] bg-white/20" />
-              <div className="absolute h-24 w-[1px] bg-white/20" />
-            </div>
+            {/* Bounding Boxes Overlay */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {tracks.map((t) => {
+                if (!t.bboxPx || !t.frameSizePx) return null;
+                const [cx, cy, width, height] = t.bboxPx;
+                const [frameWidth, frameHeight] = t.frameSizePx;
+                if (frameWidth <= 0 || frameHeight <= 0) return null;
+                const color = getTargetColor(t.friendFoe, t.targetType);
 
-            {/* Bottom Right Position HUD */}
-            <div className="absolute bottom-4 right-4 z-10 rounded-lg border border-white/20 bg-black/80 backdrop-blur px-3 py-1.5 font-mono text-xs text-white">
-              PAN: <b>{currentPan.toFixed(1)}°</b> | TILT: <b>{currentTilt.toFixed(1)}°</b>
+                return (
+                <div
+                  key={t.trackId}
+                  className="absolute border-2 bg-[rgba(0,0,0,0.1)] flex flex-col justify-end"
+                  style={{
+                    left: `${(cx / frameWidth) * 100}%`,
+                    top: `${(cy / frameHeight) * 100}%`,
+                    width: `${(width / frameWidth) * 100}%`,
+                    height: `${(height / frameHeight) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    borderColor: color,
+                    boxShadow: `0 0 10px ${color}80, inset 0 0 10px ${color}40`
+                  }}
+                >
+                  <div className="absolute -top-6 left-0 right-0 text-center font-mono text-[10px] font-black whitespace-nowrap bg-black/60 px-1 rounded border border-transparent" style={{ color, borderColor: `${color}40` }}>
+                    {t.targetType.toUpperCase()} · {t.fireCandidate === false ? 'ATIŞ DIŞI' : `${t.rangeM.toFixed(1)}m`}
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+            {manualBox && manualMarkingEnabled && (
+              <div
+                className="absolute border-2 border-[#ffbb42] bg-[#ffbb42]/10 pointer-events-none shadow-[0_0_18px_rgba(255,187,66,.55)]"
+                style={{ left: `${manualBox.left}%`, top: `${manualBox.top}%`, width: `${manualBox.width}%`, height: `${manualBox.height}%` }}
+                data-testid="manual-annotation-box"
+              >
+                <span className="absolute -top-7 left-0 whitespace-nowrap rounded border border-[#ffbb42]/50 bg-[#211a08]/95 px-2 py-1 font-mono text-[10px] font-black tracking-wide text-[#ffe4ad]">
+                  OPERATÖR ROI · GÖRSEL İNCELEME
+                </span>
+                <span className="absolute -left-1 -top-1 h-2 w-2 border-l-2 border-t-2 border-[#fff1bd]" />
+                <span className="absolute -right-1 -top-1 h-2 w-2 border-r-2 border-t-2 border-[#fff1bd]" />
+                <span className="absolute -bottom-1 -left-1 h-2 w-2 border-b-2 border-l-2 border-[#fff1bd]" />
+                <span className="absolute -bottom-1 -right-1 h-2 w-2 border-b-2 border-r-2 border-[#fff1bd]" />
+              </div>
+            )}
+            {tracks.length > 0 && tracks.every((track) => !track.bboxPx) && (
+              <div className="absolute bottom-3 right-3 rounded border border-[#ffbb42]/30 bg-black/75 px-3 py-2 text-xs text-[#ffe4ad]">
+                Track telemetrisi bağlı; piksel bbox verisi bekleniyor.
+              </div>
+            )}
+          </div>
+          <div className="flex w-full max-w-[1200px] items-center justify-between gap-3 border-t border-[#ffbb42]/20 bg-[#100f0b] px-3 py-2 text-xs">
+            <p className="text-[#d8c394]">Operatör ROI seçimi görsel inceleme içindir; TrackState, sınıflandırma, menzil veya otonom angajmanı değiştirmez.</p>
+            <div className="flex shrink-0 gap-2">
+              <button className="rounded border border-[#ffbb42]/45 px-2 py-1 font-bold text-[#ffe4ad]" onClick={() => setManualMarkingEnabled((value) => !value)}>
+                {manualMarkingEnabled ? 'ROI Seçimini Kapat' : 'ROI Seç'}
+              </button>
+              {manualBox && <button className="rounded border border-[#8ba7be]/35 px-2 py-1" onClick={() => setManualBox(undefined)}>Temizle</button>}
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar: WASD Controller */}
-        <div className="flex flex-col gap-4">
-          <ManualAimController
-            apiBusy={apiBusy}
-            manualAimReady={Boolean(apiBaseUrl)}
-            onManualAim={handleManualAim}
-            turretCalibration={snapshot?.turretCalibration}
-            currentPanDeg={currentPan}
-            currentTiltDeg={currentTilt}
-          />
+        {/* Track State Table */}
+        <div className="rounded-xl border border-[#48a8ff]/20 bg-[rgba(10,15,22,.9)] p-5 shadow-[0_8px_32px_rgba(72,168,255,.05)]">
+          <h2 className="text-lg font-bold text-[#cbe9ff] mb-4">Aktif Hedef İzleri (Tracks)</h2>
+          {tracks.length === 0 ? (
+            <p className="text-sm text-[#8ba7be]/70 italic">Algılanan hedef izi bulunmuyor.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#48a8ff]/20 text-[#8ba7be]">
+                    <th className="pb-2 font-semibold">Track ID</th>
+                    <th className="pb-2 font-semibold">Hedef Türü</th>
+                    <th className="pb-2 font-semibold">Güven %</th>
+                    <th className="pb-2 font-semibold">Menzil (m)</th>
+                    <th className="pb-2 font-semibold">Yönelim (°)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracks.map((t: OperatorTrackState) => (
+                    <tr key={t.trackId} className="border-b border-[#48a8ff]/10 hover:bg-[#48a8ff]/5">
+                      <td className="py-2 font-mono text-xs text-[#33e68c]">{t.trackId.slice(0, 8)}</td>
+                      <td className="py-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getTargetColor(t.friendFoe, t.targetType), boxShadow: `0 0 6px ${getTargetColor(t.friendFoe, t.targetType)}` }}></span>
+                          <span className="uppercase text-xs font-black" style={{ color: getTargetColor(t.friendFoe, t.targetType) }}>{t.targetType}</span>
+                        </span>
+                      </td>
+                      <td className="py-2">{(t.confidence * 100).toFixed(1)}%</td>
+                      <td className="py-2">{t.rangeM.toFixed(1)}</td>
+                      <td className="py-2">{t.bearingDeg.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
-          {/* Connection Status */}
-          <div className="rounded-xl border border-white/10 bg-[rgba(10,15,22,.9)] p-3 shadow-lg">
-            <h2 className="text-xs font-bold text-[#cbe9ff] mb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#25d8ff]" />
-              Bağlantı Durumu
-            </h2>
-            <div className="space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between items-center bg-white/5 px-2 py-1.5 rounded">
-                <span className="text-[#91a6b7]">Kamera</span>
-                <span className={cameraFailed ? 'text-[#ff4757] font-bold' : 'text-[#33e68c] font-bold'}>
-                  {cameraFailed ? 'BAĞLANTI YOK' : 'CANLI'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center bg-white/5 px-2 py-1.5 rounded">
-                <span className="text-[#91a6b7]">LiDAR</span>
-                <span className={lidarReading?.distanceM != null ? 'text-[#33e68c] font-bold' : 'text-[#ffbb42] font-bold'}>
-                  {lidarReading?.distanceM != null ? `${lidarReading.distanceM.toFixed(2)} m` : 'BEKLENİYOR'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center bg-white/5 px-2 py-1.5 rounded">
-                <span className="text-[#91a6b7]">Backend</span>
-                <span className={snapshot && !error ? 'text-[#33e68c] font-bold' : 'text-[#ff4757] font-bold'}>
-                  {snapshot && !error ? 'BAĞLI' : 'BAĞLANTI YOK'}
-                </span>
+        {/* Sensor Frames Table */}
+        <div className="rounded-xl border border-[#48a8ff]/20 bg-[rgba(10,15,22,.9)] p-5 shadow-[0_8px_32px_rgba(72,168,255,.05)]">
+          <h2 className="text-lg font-bold text-[#cbe9ff] mb-4">Sensör Frameleri (Fusion / Lidar)</h2>
+          {frames.length === 0 ? (
+            <p className="text-sm text-[#8ba7be]/70 italic">Kayıtlı sensör frame bulunmuyor.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[#48a8ff]/20 text-[#8ba7be]">
+                    <th className="pb-2 font-semibold">Frame ID</th>
+                    <th className="pb-2 font-semibold">Sensör</th>
+                    <th className="pb-2 font-semibold">Menzil (m)</th>
+                    <th className="pb-2 font-semibold">RCS / SNR</th>
+                    <th className="pb-2 font-semibold">Hedef</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {frames.slice(0, 10).map((f: OperatorSensorFrame) => (
+                    <tr key={f.frameId} className="border-b border-[#48a8ff]/10 hover:bg-[#48a8ff]/5">
+                      <td className="py-2 font-mono text-xs text-[#ffbb42]">{f.frameId.slice(0, 8)}</td>
+                      <td className="py-2 uppercase text-xs font-bold text-[#bfe7ff]">{f.sensor}</td>
+                      <td className="py-2">{f.rangeM.toFixed(1)}</td>
+                      <td className="py-2 text-xs">
+                        {f.rcsDbsm != null ? `${f.rcsDbsm.toFixed(1)} dB` : '-'} / {f.snrDb != null ? `${f.snrDb.toFixed(1)} dB` : '-'}
+                      </td>
+                      <td className="py-2 text-xs">
+                        <span className="inline-flex items-center gap-1.5">
+                          {f.targetType && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTargetColor('unknown', f.targetType) }}></span>}
+                          <span className="uppercase font-bold" style={{ color: f.targetType ? getTargetColor('unknown', f.targetType) : '#8ba7be' }}>{f.targetType || 'Bilinmiyor'}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {frames.length > 10 && <p className="text-xs mt-3 text-[#8ba7be] italic">+ {frames.length - 10} frame daha...</p>}
+            </div>
+          )}
+        </div>
+
+        {/* CAD & Synthetic Data Dashboard Placeholder */}
+        <div className="rounded-xl border border-[#ffbb42]/30 bg-[#ffbb42]/5 p-5 shadow-[0_8px_32px_rgba(255,187,66,.05)] lg:col-span-2">
+          <h2 className="text-lg font-bold text-[#ffe4ad] mb-4">Sentetik Veri ve ROI Pipeline</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-3 bg-[rgba(0,0,0,0.2)] rounded-lg border border-[#ffbb42]/20">
+              <div className="text-xs text-[#ffbb42]/70 uppercase font-black">Course Geometry</div>
+              <div className="text-[#ffe4ad] mt-1 font-mono text-sm">{snapshot?.courseGeometry?.datasetId ?? 'N/A'}</div>
+            </div>
+            <div className="p-3 bg-[rgba(0,0,0,0.2)] rounded-lg border border-[#ffbb42]/20">
+              <div className="text-xs text-[#ffbb42]/70 uppercase font-black">Route Count</div>
+              <div className="text-[#ffe4ad] mt-1 font-mono text-sm">{snapshot?.courseGeometry?.routeCount ?? '-'}</div>
+            </div>
+            <div className="p-3 bg-[rgba(0,0,0,0.2)] rounded-lg border border-[#ffbb42]/20">
+              <div className="text-xs text-[#ffbb42]/70 uppercase font-black">Target Prior Speed</div>
+              <div className="text-[#ffe4ad] mt-1 font-mono text-sm">{snapshot?.courseGeometry?.targetSpeedPriorMps ?? '-'} m/s</div>
+            </div>
+            <div className="p-3 bg-[rgba(0,0,0,0.2)] rounded-lg border border-[#ffbb42]/20">
+              <div className="text-xs text-[#ffbb42]/70 uppercase font-black">Perception Health</div>
+              <div className="text-[#ffe4ad] mt-1 font-mono text-sm">
+                {snapshot?.missionCore?.perceptionHealthy ? (
+                  <span className="text-[#33e68c]">Healthy</span>
+                ) : (
+                  <span className="text-[#ff4757]">Degraded</span>
+                )}
               </div>
             </div>
           </div>
+          <p className="mt-4 text-xs text-[#ffbb42]/60">
+            * Bu veriler yeni eklenen sentetik (CAD) veri hatları, ROI geometrisi ve yüksek çözünürlüklü frame kırpma hedeflerinden elde edilmektedir.
+          </p>
         </div>
       </div>
     </div>

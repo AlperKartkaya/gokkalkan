@@ -8,7 +8,8 @@ allowed_origins = ["http://127.0.0.1:4173"]
 
 [mcu]
 transport = "usb_serial"
-port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_PICO"
+# Arduino Uno USB-serial identity; replace with the reviewed by-id path.
+port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
 heartbeat_timeout_ms = 1000
 
@@ -56,6 +57,6 @@ lidar_mount_revision = "BRIDGE-UNVERIFIED"
 lidar_input_enabled = true
 
 [live]
-interlock_provider = "pico-and-physical-estop-chain"
+interlock_provider = "arduino-and-physical-estop-chain"
 readiness_provider = "backend-hardware-readiness"
 operator_token_file = "/etc/gokkalkan/operator.token"

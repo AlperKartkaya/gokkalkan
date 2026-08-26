@@ -1,4 +1,4 @@
-"""Fail-closed Raspberry Pi to Pico adapter over USB CDC serial."""
+"""Fail-closed legacy framed USB adapter (kept for regression/HIL tests)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class UsbSerialMcuAdapter(CanMcuAdapter):
 
     def __init__(
         self,
-        port: str = "/dev/serial/by-id/UNCONFIGURED-GOKKALKAN-PICO",
+        port: str = "/dev/serial/by-id/UNCONFIGURED-GOKKALKAN-ARDUINO",
         baudrate: int = 115_200,
         heartbeat_timeout_sec: float = HEALTH_TIMEOUT_SEC,
         estop_callback: EStopCallback | None = None,
@@ -81,7 +81,7 @@ class UsbSerialMcuAdapter(CanMcuAdapter):
                 write_timeout=0.25,
             )
             self._bus = self._serial
-            logger.info("Pico USB CDC açıldı: %s @ %d", self.port, self.baudrate)
+            logger.info("Legacy framed USB adapter açıldı: %s @ %d", self.port, self.baudrate)
         except Exception as exc:
             self._serial = None
             self._bus = None

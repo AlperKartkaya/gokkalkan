@@ -5,7 +5,7 @@ Bu klasördeki TOML dosyaları `gokkalkan_backend.runtime_config` tarafından
 
 - `SIM`: Fiziksel adapter oluşturmaz.
 - `HIL`: Varsayılan `hil.toml` `loop://` USB seri simülasyonu kullanır.
-  `hil-physical.toml` kararlı `/dev/serial/by-id/...` Pico yolunu yalnız
+  `hil-physical.toml` kararlı `/dev/serial/by-id/...` Arduino yolunu yalnız
   lamba/yapay yük kabulü için açar; gerçek imha çıkış yetkisi vermez.
 - `LIVE`: Fiziksel USB CDC cihazı, interlock/readiness sağlayıcı adları ve operatör token
   yolu zorunludur; API yalnız loopback adresinde dinler. Örnek dosyada

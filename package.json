@@ -49,7 +49,8 @@
     "model:compile:hailo": "bash scripts/compile_hailo_hef.sh",
     "model:predict:val": "bash scripts/predict_target_val.sh",
     "pi:deploy": "python scripts/deploy_to_pi.py",
-    "pico:motor-test:build": "bash scripts/build_pico_motor_test.sh",
-    "pico:motor-test:deploy": "bash scripts/deploy_pico_motor_test.sh"
+    "arduino:motor-test": "python3 realtimetesting/test_motor_15s.py",
+    "arduino:interactive": "python3 realtimetesting/interactive_motor_control.py",
+    "arduino:monitor": "python3 realtimetesting/test_lidar.py"
   }
 }
