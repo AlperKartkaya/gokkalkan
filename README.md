@@ -70,6 +70,11 @@ npm --prefix frontend run dev
 `realtimetesting/README.md` içindeki port ve güvenli düşük enerji prosedürünü
 izleyin; yazılım testleri fiziksel hareket kabulü değildir.
 
+SIM/HIL regresyonları legacy COBS/ACK taşımasını kullanır; Arduino satır
+protokolüne fiziksel komut ancak `ArduinoUnoMotorAdapter` üzerinden ve Safety
+Gate sonrasında gönderilir. Arduino güvenlik telemetrisi tamamlanmadan LIVE
+profili fail-closed kalır.
+
 ### LIVE hazırlığı (RPi5 + Arduino Uno USB seri)
 
 Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek USB

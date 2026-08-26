@@ -16,6 +16,10 @@ Pico firmware'i aktif donanım sözleşmesi değildir.
 - `ArduinoUnoMotorAdapter` komutları lazy-connect ile gönderir; bağlantı yoksa
   hata döndürür ve fiziksel çıkış üretmez. E-Stop ve arm yetkisi backend Safety
   Gate tarafından ayrıca korunur.
+- SIM/HIL regresyonları, mevcut COBS/ACK sözleşmesini sınamak için legacy
+  `UsbSerialMcuAdapter` ile çalışmaya devam eder. Bu adapter Arduino firmware'ine
+  gönderilmez; LIVE geçişi, Arduino'nun güvenlik telemetrisi için ayrı bir
+  protokol adapter'ı ve fiziksel HIL kanıtı tamamlanınca yapılacaktır.
 - `firmware/pico/`, `usb_serial_mcu_protocol.md` ve CAN codec dosyaları legacy
   referans olarak tutulur; yeni saha özelliği bu yola eklenmez.
 
@@ -25,4 +29,3 @@ Arduino firmware'i mevcut saha testinde motor/LiDAR teşhisi sağlar; encoder,
 ateşleme interlock'u ve heartbeat/ACK güvenlik telemetrisi henüz bu metin
 protokolünde yoktur. Bu nedenle LIVE fiziksel arm kapısı, ölçülmüş interlock ve
 HIL kanıtı olmadan açılamaz. Unit/SIM testleri fiziksel kabul anlamına gelmez.
-
