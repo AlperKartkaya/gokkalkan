@@ -140,25 +140,16 @@ class ArduinoUnoMotorAdapter:
         direction = "CW" if pan_delta_deg >= 0 else "CCW"
         if pan_delta_deg == 0:
             return "OK_NOOP"
-        steps = int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG))
-        delay_us = self._delay_for_rate(rate_limit_deg_per_sec)
-        return self.step_pan(steps=steps, delay_us=delay_us, direction=direction)
+        steps = max(50, int(round(abs(pan_delta_deg) * self.STEPS_PER_DEG)))
+        return self.step_pan(steps=steps, delay_us=800, direction=direction)
 
     def move_tilt(self, tilt_delta_deg: float, rate_limit_deg_per_sec: float = 15.0) -> str:
         """Command Tilt Motor (Pin 4/5). Positive -> CW (Up), Negative -> CCW (Down)."""
         direction = "CW" if tilt_delta_deg >= 0 else "CCW"
         if tilt_delta_deg == 0:
             return "OK_NOOP"
-        steps = int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG))
-        delay_us = self._delay_for_rate(rate_limit_deg_per_sec)
-        return self.step_tilt(steps=steps, delay_us=delay_us, direction=direction)
-
-    @staticmethod
-    def _delay_for_rate(rate_limit_deg_per_sec: float) -> int:
-        # Keep the field firmware's safe lower bound while making the caller's
-        # rate limit meaningful (1600 pulses/rev).
-        rate = max(0.1, min(30.0, float(rate_limit_deg_per_sec)))
-        return max(200, min(5000, int(round(1_000_000 / (rate * 1600.0 / 360.0)))))
+        steps = max(50, int(round(abs(tilt_delta_deg) * self.STEPS_PER_DEG)))
+        return self.step_tilt(steps=steps, delay_us=800, direction=direction)
 
     def run_pan_timed(self, duration_sec: int, delay_us: int = 800, direction: str = "CW") -> str:
         """Run Pan Motor for a specific duration."""

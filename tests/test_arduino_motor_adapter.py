@@ -29,11 +29,10 @@ def test_arduino_adapter_is_lazy_and_uses_field_protocol(monkeypatch):
 
     assert adapter.health()["connected"] is False
     assert adapter.move_pan(1.0, rate_limit_deg_per_sec=15.0) == "OK_SENT"
-    assert serial.commands == ["STEP_PAN 4 5000 CW"]
+    assert serial.commands == ["STEP_PAN 50 800 CW"]
 
     assert adapter.move_tilt(0.0) == "OK_NOOP"
     assert adapter.stop() == "OK_SENT"
     assert serial.commands[-1] == "STOP"
     adapter.close()
     assert serial.closed is True
-
