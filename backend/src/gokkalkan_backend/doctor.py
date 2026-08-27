@@ -165,11 +165,11 @@ def run_doctor(
     health = _api_json(f"{base_url.rstrip('/')}/health")
     if health is None:
         checks.append(DoctorCheck("api", "WARN", f"not reachable: {base_url}"))
-        pico_status: Status = "WARN" if settings.profile != "SIM" else "PASS"
+        arduino_status: Status = "WARN" if settings.profile != "SIM" else "PASS"
         checks.append(
             DoctorCheck(
-                "pico",
-                pico_status,
+                "arduino",
+                arduino_status,
                 "not queried because API is offline; no hardware connection attempted",
             )
         )
@@ -193,13 +193,13 @@ def run_doctor(
                 )
             )
         hardware = _api_json(f"{base_url.rstrip('/')}/hardware/health") or {}
-        reachable = hardware.get("picoReachable")
-        pico_status = "PASS" if reachable is True or settings.profile == "SIM" else "WARN"
+        reachable = hardware.get("arduinoReachable", hardware.get("picoReachable"))
+        arduino_status = "PASS" if reachable is True or settings.profile == "SIM" else "WARN"
         checks.append(
             DoctorCheck(
-                "pico",
-                pico_status,
-                f"picoReachable={reachable}; read-only API check",
+                "arduino",
+                arduino_status,
+                f"arduinoReachable={reachable}; read-only API check",
             )
         )
 

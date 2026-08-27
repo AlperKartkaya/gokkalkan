@@ -3,6 +3,12 @@
 > **Durum:** FAZ 0–13 yazılım uygulaması tamamlandı — fiziksel kalibrasyon, HIL ve saha kabul kapıları bilinçli olarak açık
 >
 > **Son güncelleme:** 11 Ağustos 2026
+
+> **Legacy notu (2026-08-26):** Bu plan Pico/COBS güvenlik MCU'su varsayımıyla
+> yazılmış tarihsel uygulama kaydıdır. Aktif saha yazılımı Arduino Uno'nun
+> `STEP/DIR/STOP` satır protokolünü, `ADR-006` ve `GKK-IO-REV-B_PIN_MAP.md`
+> belgelerini izler. Bu dosyadaki Pico/FIRE/encoder adımları yeni saha sözleşmesi
+> olarak yorumlanmamalıdır; yalnız geçmiş kararların izlenebilirliği için tutulur.
 >
 > **Kapsam:** WP-01 Manuel Mod, WP-02 Otonom Tespit ve Takip, WP-03 Dost-Düşman + Menzil, WP-04 Güvenlik Katmanı, WP-05 Log/Telemetri
 >
@@ -169,7 +175,7 @@ Bu tablo fazların **yazılım teslimini** ve ayrı tutulan **fiziksel kabul kap
 
 | Faz | Yazılım durumu | Uygulanan sonuç | Fiziksel kabul |
 |---|---|---|---|
-| FAZ 0 | Kısmi / fail-closed | `board_config.hpp`, pin çakışma/eksik pin kontrolleri ve `GKK-IO-REV-A_PIN_MAP.md` oluşturuldu. Gerçek pinler bilerek `UNVERIFIED`. | **AÇIK:** as-built pin/polarite/backfeed ölçümü |
+| FAZ 0 | Kısmi / fail-closed | `board_config.hpp`, pin çakışma/eksik pin kontrolleri ve `GKK-IO-REV-B_PIN_MAP.md` oluşturuldu. Gerçek pinler bilerek `UNVERIFIED`. | **AÇIK:** as-built pin/polarite/backfeed ölçümü |
 | FAZ 1 | Tamamlandı | Debounce, NC limitler, PC817 güvenli-hat anlamı ve encoder-health girişleri fail-closed HAL'e alındı. | **AÇIK:** gerçek kablo kopukluğu ve polarite ölçümü |
 | FAZ 2 | Çekirdek tamamlandı | İvme/rate limitli eksen denetleyicisi, referans zorunluluğu, limit ve encoder sapma fault'ları eklendi. | **AÇIK:** gerçek STEP/DIR/ENA GPIO/timer ve motor HIL |
 | FAZ 3 | Çekirdek tamamlandı | Süresi sınırlı FIRE çıkışı ve başarısız hardware sonucunda hedefi tamamlandı saymayan backend akışı eklendi. | **AÇIK:** PhotoMOS/kuru kontak, tetik feedback ve safe-load HIL |
@@ -265,7 +271,7 @@ Firmware'in tahminle değil imal edilen kart/pano revizyonuyla aynı pin, gerili
 ## Oluşturulacak/güncellenecek dosyalar
 
 - `firmware/pico/include/board_config.hpp`
-- `docs/hardware/GKK-IO-REV-A_PIN_MAP.md`
+- `docs/hardware/GKK-IO-REV-B_PIN_MAP.md`
 - `Gökkalkan Malzeme Listesi - Nihai Kablolama.xlsx`
 - `docs/IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`
 - `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`

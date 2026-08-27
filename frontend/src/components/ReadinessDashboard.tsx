@@ -59,7 +59,7 @@ export function ReadinessDashboard({
         <AdapterRow
           label="MCU / Hardware Protocol"
           item={readinessById.hardware_adapter}
-          fallback="Klasik CAN v1 / Pico ACK, encoder ve E-Stop hattı fiziksel HIL'de doğrulanacak."
+          fallback="Arduino Uno STEP/DIR/STOP yolu hazır; encoder, E-Stop telemetrisi ve FIRE hattı fiziksel HIL'de doğrulanacak."
         />
         <AdapterRow
           label="Canlı Arming / Interlock"

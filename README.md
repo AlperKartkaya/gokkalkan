@@ -70,17 +70,32 @@ npm --prefix frontend run dev
 `realtimetesting/README.md` içindeki port ve güvenli düşük enerji prosedürünü
 izleyin; yazılım testleri fiziksel hareket kabulü değildir.
 
-SIM/HIL regresyonları legacy COBS/ACK taşımasını kullanır; Arduino satır
-protokolüne fiziksel komut ancak `ArduinoUnoMotorAdapter` üzerinden ve Safety
-Gate sonrasında gönderilir. Arduino güvenlik telemetrisi tamamlanmadan LIVE
-profili fail-closed kalır.
+Onaylı düşük enerjili motor HIL oturumunda operatör panelini doğrudan Arduino
+profiliyle açmak için cihaz yolunu açıkça verin:
+
+```bash
+GOKKALKAN_MCU_PORT=/dev/serial/by-id/ARDUINO_CIHAZ_YOLU npm run desktop:hil
+```
+
+Bu komut PAN/TILT hareket çıkışını etkinleştirir. Fiziksel mantar E-Stop hazır,
+imha/ateşleme hattı enerjisiz ve çalışma alanı boş olmadan kullanılmamalıdır.
+Panelde hareket için deadman basılı tutulur; yazılım Acil Durdur komutu Arduino'ya
+koşulsuz `STOP` gönderir. Arduino firmware'inde `FIRE` olmadığı için ateşleme
+backend tarafından reddedilir.
+
+HIL loopback ve saha komutları aynı `ArduinoUnoMotorAdapter` satır protokolünü
+kullanır; backend Arduino'ya COBS/ACK çerçevesi göndermez. Legacy COBS/ACK
+adapter'ı yalnız ayrık tarihsel regresyon testlerinde tutulur. Arduino güvenlik
+telemetrisi tamamlanmadan LIVE profili fail-closed kalır.
 
 ### LIVE hazırlığı (RPi5 + Arduino Uno USB seri)
 
 Genel CLI fiziksel preflight üretmez ve `LIVE` başlatmayı reddeder. Gerçek USB
 Arduino seri adapter’ı; `docs/adr/006-arduino-uno-motor-transport.md` gereğince
 fiziksel interlock, backend readiness ve ayrı arm zinciri tamamlandıktan
-sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan fiziksel Arduino çıkışı açılmaz.
+sonra güvenli bootstrap üzerinden açılacaktır. Bu kapı tamamlanmadan LIVE
+ateşleme/otonom çıkışı açılmaz; yalnız açıkça seçilen HIL profilinde manuel
+PAN/TILT hareketi kullanılabilir.
 
 ### Simülatör
 
@@ -161,7 +176,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/CODEBASE_TUTORIAL.md` — kod tabanı ve mimari eğitim kılavuzu (Developer & Team Tutorial).
 - `docs/MALZEME_LISTESI.md` — güncel malzeme, teslimat durumu, ürün bağlantıları ve doğrulama notları.
 - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` — imalat ekibi için bağlantı, ek BOM, lehimleme ve aşamalı kabul kılavuzu.
-- `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` — imalat ekibine iletilecek görsel, yazdırılabilir ve kapsamlı komponent bağlantı rehberi.
+- `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` — legacy Pico bağlantı arşivi; sahada kullanılmaz.
 - `docs/adr/006-arduino-uno-motor-transport.md` — güncel Arduino Uno saha yolu ve sınırları.
 - `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.

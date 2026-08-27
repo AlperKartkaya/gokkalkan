@@ -22,6 +22,8 @@ export function parseDesktopArgs(argv = process.argv.slice(2), env = process.env
     noBrowser: env.GOKKALKAN_DESKTOP_NO_BROWSER === '1',
     smoke: false,
     browser: env.GOKKALKAN_DESKTOP_BROWSER || '',
+    runtimeMode: (env.GOKKALKAN_RUNTIME_MODE || 'SIM').toUpperCase(),
+    config: env.GOKKALKAN_RUNTIME_CONFIG || 'config/runtime/sim.toml',
     help: false,
   };
 
@@ -35,6 +37,8 @@ export function parseDesktopArgs(argv = process.argv.slice(2), env = process.env
     else if (arg === '--api-port') parsed.apiPort = Number(next());
     else if (arg === '--timeout-ms') parsed.timeoutMs = Number(next());
     else if (arg === '--browser') parsed.browser = next();
+    else if (arg === '--runtime-mode') parsed.runtimeMode = next().toUpperCase();
+    else if (arg === '--config') parsed.config = next();
     else if (arg === '--no-browser') parsed.noBrowser = true;
     else if (arg === '--smoke') parsed.smoke = true;
     else if (arg === '--help' || arg === '-h') parsed.help = true;
@@ -42,6 +46,7 @@ export function parseDesktopArgs(argv = process.argv.slice(2), env = process.env
   }
 
   if (!['dev', 'preview'].includes(parsed.mode)) throw new Error('--mode must be dev or preview');
+  if (!['SIM', 'HIL'].includes(parsed.runtimeMode)) throw new Error('--runtime-mode must be SIM or HIL');
   if (!parsed.uiPort) parsed.uiPort = parsed.mode === 'preview' ? 4173 : 5173;
   for (const [name, value] of [['ui-port', parsed.uiPort], ['api-port', parsed.apiPort], ['timeout-ms', parsed.timeoutMs]]) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`--${name} must be a positive number`);
@@ -116,7 +121,7 @@ export function browserCommandCandidates({ platform = process.platform, env = pr
 }
 
 function printHelp() {
-  console.log(`Gökkalkan desktop launcher\n\nUsage:\n  npm run desktop -- [options]\n  npm run desktop:preview\n  npm run desktop:check\n\nOptions:\n  --mode dev|preview      Start Vite dev server or built preview server\n  --host 127.0.0.1        UI bind host\n  --api-host 127.0.0.1    Backend API bind host\n  --ui-port 5173          UI port\n  --api-port 8088         Dry-run backend API port\n  --browser <path>        Explicit Chromium/Chrome/Edge executable\n  --no-browser            Start services without opening an app window\n  --smoke                 Verify services and exit cleanly\n  --timeout-ms <ms>       Startup wait timeout\n\nEnvironment:\n  GOKKALKAN_PYTHON, GOKKALKAN_DESKTOP_BROWSER, GOKKALKAN_DESKTOP_*\n`);
+  console.log(`Gökkalkan desktop launcher\n\nUsage:\n  npm run desktop -- [options]\n  npm run desktop:hil\n  npm run desktop:preview\n  npm run desktop:check\n\nOptions:\n  --mode dev|preview      Start Vite dev server or built preview server\n  --host 127.0.0.1        UI bind host\n  --api-host 127.0.0.1    Backend API bind host\n  --ui-port 5173          UI port\n  --api-port 8088         Backend API port\n  --browser <path>        Explicit Chromium/Chrome/Edge executable\n  --runtime-mode SIM|HIL  Expected backend profile; LIVE is unavailable here\n  --config <path>         Runtime TOML (default: config/runtime/sim.toml)\n  --no-browser            Start services without opening an app window\n  --smoke                 Verify services and exit cleanly\n  --timeout-ms <ms>       Startup wait timeout\n\nEnvironment:\n  GOKKALKAN_PYTHON, GOKKALKAN_RUNTIME_MODE, GOKKALKAN_RUNTIME_CONFIG,\n  GOKKALKAN_MCU_PORT, GOKKALKAN_DESKTOP_BROWSER, GOKKALKAN_DESKTOP_*\n`);
 }
 
 function spawnWithInheritedOutput(command, args, options = {}) {
@@ -149,10 +154,10 @@ function startVite({ mode, host, uiPort }) {
   return spawnWithInheritedOutput(process.execPath, args, { cwd: frontendDir, env: process.env });
 }
 
-function startBackend({ apiHost, apiPort }) {
+function startBackend({ apiHost, apiPort, config, runtimeMode }) {
   mkdirSync(telemetryDir, { recursive: true });
   const telemetryPath = join(telemetryDir, 'operator-api-desktop-dry-run.jsonl');
-  const configPath = join(repoRoot, 'config', 'runtime', 'sim.toml');
+  const configPath = resolve(repoRoot, config);
   const venvPython = process.platform === 'win32'
     ? join(repoRoot, '.venv', 'Scripts', 'python.exe')
     : join(repoRoot, '.venv', 'bin', 'python');
@@ -163,6 +168,7 @@ function startBackend({ apiHost, apiPort }) {
   const args = [
     '-m', 'gokkalkan_backend.operator_http_server',
     '--config', configPath,
+    '--runtime-mode', runtimeMode,
     '--host', apiHost,
     '--port', String(apiPort),
     '--telemetry-jsonl', telemetryPath,
@@ -186,10 +192,13 @@ export async function waitForHttp(url, { timeoutMs = 20_000, label = url } = {})
   throw new Error(`${label} did not become ready within ${timeoutMs}ms (${lastError})`);
 }
 
-export async function assertSafeBackendHealth(response) {
+export async function assertBackendHealth(response, expectedRuntimeMode = 'SIM') {
   const health = await response.json();
-  if (health.runtimeMode !== 'SIM' || health.physicalOutputEnabled !== false) {
-    throw new Error(`Unsafe desktop backend health: ${JSON.stringify(health)}`);
+  if (health.runtimeMode !== expectedRuntimeMode) {
+    throw new Error(`Unexpected desktop backend mode: ${JSON.stringify(health)}`);
+  }
+  if (expectedRuntimeMode === 'SIM' && health.physicalOutputEnabled !== false) {
+    throw new Error(`Unsafe SIM desktop backend health: ${JSON.stringify(health)}`);
   }
   return health;
 }
@@ -268,7 +277,7 @@ export async function runDesktopLauncher(rawOptions = parseDesktopArgs()) {
   });
 
   try {
-    console.log('[desktop] Starting dry-run backend API...');
+    console.log(`[desktop] Starting ${rawOptions.runtimeMode} backend API (${rawOptions.config})...`);
     const backend = await startBackend(rawOptions);
     children.push(backend.child);
 
@@ -277,7 +286,7 @@ export async function runDesktopLauncher(rawOptions = parseDesktopArgs()) {
     children.push(vite);
 
     const healthResponse = await waitForHttp(`${apiBaseUrl}/health`, { timeoutMs: rawOptions.timeoutMs, label: 'Operator API /health' });
-    await assertSafeBackendHealth(healthResponse);
+    await assertBackendHealth(healthResponse, rawOptions.runtimeMode);
     await waitForHttp(uiBaseUrl, { timeoutMs: rawOptions.timeoutMs, label: 'Operator UI' });
     console.log(`[desktop] Ready: ${operatorUrl}`);
 

@@ -16,6 +16,12 @@ export function MissionHeader({
   missionRemainingSeconds?: number;
 }) {
   const isTimeCritical = missionRemainingSeconds !== undefined && missionRemainingSeconds <= 30;
+  const runtimeLabel = config.connectionState === 'hil'
+    ? 'HIL · MOTOR'
+    : config.dryRun
+      ? 'DRY-RUN'
+      : 'CANLI';
+  const nonLiveRuntime = config.dryRun || config.connectionState === 'hil';
 
   return (
     <header className="operator-header mb-3 flex items-center justify-between gap-3 rounded-xl border border-[#25d8ff]/18 bg-[rgba(7,10,14,.94)] p-3 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
@@ -32,7 +38,7 @@ export function MissionHeader({
         )}
 
         <div className="flex flex-col gap-1">
-          <span className={`inline-flex items-center justify-center rounded px-2 py-0.5 text-[10px] font-black tracking-wider border ${config.dryRun ? 'bg-[#ffbb42]/10 border-[#ffbb42]/30 text-[#ffbb42]' : 'bg-[#ff4757]/10 border-[#ff4757]/30 text-[#ff4757]'}`}>{config.dryRun ? 'DRY-RUN' : 'CANLI'}</span>
+          <span className={`inline-flex items-center justify-center rounded px-2 py-0.5 text-[10px] font-black tracking-wider border ${nonLiveRuntime ? 'bg-[#ffbb42]/10 border-[#ffbb42]/30 text-[#ffbb42]' : 'bg-[#ff4757]/10 border-[#ff4757]/30 text-[#ff4757]'}`}>{runtimeLabel}</span>
           <span className={`inline-flex items-center justify-center rounded bg-[#33e68c]/10 border border-[#33e68c]/30 px-2 py-0.5 text-[10px] font-black tracking-wider text-[#bfffe0]`}>{config.connectionState.toUpperCase()}</span>
         </div>
       </div>

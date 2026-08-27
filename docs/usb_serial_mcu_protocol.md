@@ -1,5 +1,8 @@
 # Pi–Pico USB seri taşıma sözleşmesi v1
 
+> **Durum:** Legacy regresyon sözleşmesi. Aktif saha taşıması Arduino Uno
+> satır protokolüdür; bkz. `docs/adr/006-arduino-uno-motor-transport.md`.
+
 - Fiziksel hat: Raspberry Pi 5 USB-A host → kısa veri destekli kablo → Pico Micro-USB device.
 - Cihaz sınıfı: USB CDC serial.
 - Linux cihaz seçimi: yalnız kararlı `/dev/serial/by-id/...` yolu; `ttyACM0` sabit kabul edilmez.

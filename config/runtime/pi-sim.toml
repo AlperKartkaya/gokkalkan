@@ -11,7 +11,7 @@ allowed_origins = [
 ]
 
 [mcu]
-transport = "usb_serial"
+transport = "arduino_serial"
 port = "loop://"
 baudrate = 115200
 heartbeat_timeout_ms = 2000

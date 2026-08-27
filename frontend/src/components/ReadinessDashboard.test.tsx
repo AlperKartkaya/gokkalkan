@@ -20,7 +20,7 @@ describe('ReadinessDashboard', () => {
 
     expect(screen.getByText('TFA50-L 1D LiDAR')).toBeInTheDocument();
     expect(screen.getByText(/5\/10\/15 m fiziksel kalibrasyon kanıtı bekleniyor/)).toBeInTheDocument();
-    expect(screen.getByText(/Klasik CAN v1/)).toBeInTheDocument();
+    expect(screen.getByText(/Arduino Uno STEP\/DIR\/STOP/)).toBeInTheDocument();
     expect(screen.queryByText(/RPLIDAR|Livox|point cloud/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Radar/LiDAR Adapter')).not.toBeInTheDocument();
   });

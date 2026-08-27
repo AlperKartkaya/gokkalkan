@@ -320,11 +320,13 @@ export interface OperatorEStopResponse {
 export interface HardwareHealthResponse {
   adapter: string;
   busConnected: boolean;
-  picoReachable: boolean;
+  arduinoReachable?: boolean;
+  /** Legacy read-only alias retained for old recorded snapshots. */
+  picoReachable?: boolean;
   dryRun: boolean;
   physicalOutputEnabled: boolean;
   commandCount?: number;
-  transport?: 'usb_serial';
+  transport?: 'arduino_serial' | 'usb_serial';
   serialPort?: string;
   serialConnected?: boolean;
   baudrate?: number;
@@ -363,7 +365,7 @@ export async function sendOperatorEStop(baseUrl: string, payload: { active: bool
   return requestJson<OperatorEStopResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/estop`, payload);
 }
 
-/** GET /hardware/health — USB CDC bağlantısı ve Pico MCU durumu. */
+/** GET /hardware/health — Arduino Uno seri bağlantısı ve MCU durumu. */
 export async function fetchHardwareHealth(baseUrl: string): Promise<HardwareHealthResponse> {
   return requestJson<HardwareHealthResponse>(`${normalizeOperatorApiBaseUrl(baseUrl)}/hardware/health`);
 }

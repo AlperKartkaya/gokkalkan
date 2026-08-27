@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertSafeBackendHealth, browserCommandCandidates, buildOperatorUrl, parseDesktopArgs, pythonCandidates } from './desktop-launcher.mjs';
+import { assertBackendHealth, browserCommandCandidates, buildOperatorUrl, parseDesktopArgs, pythonCandidates } from './desktop-launcher.mjs';
 
 test('buildOperatorUrl opens the operator panel with backend API and desktop flag', () => {
   const url = buildOperatorUrl({ uiBaseUrl: 'http://127.0.0.1:5173', apiBaseUrl: 'http://127.0.0.1:8088', desktop: true });
@@ -26,6 +26,14 @@ test('parseDesktopArgs defaults to dev desktop ports', () => {
   assert.equal(parsed.mode, 'dev');
   assert.equal(parsed.uiPort, 5173);
   assert.equal(parsed.apiPort, 8088);
+  assert.equal(parsed.runtimeMode, 'SIM');
+  assert.equal(parsed.config, 'config/runtime/sim.toml');
+});
+
+test('parseDesktopArgs accepts the explicit physical HIL profile', () => {
+  const parsed = parseDesktopArgs(['--runtime-mode', 'HIL', '--config', 'config/runtime/hil-physical.toml'], {});
+  assert.equal(parsed.runtimeMode, 'HIL');
+  assert.equal(parsed.config, 'config/runtime/hil-physical.toml');
 });
 
 test('browserCommandCandidates are cross-platform and keep vendor viewers out of the main panel', () => {
@@ -48,16 +56,20 @@ test('pythonCandidates prefer Windows launcher on Windows and python3 elsewhere'
   assert.equal(pythonCandidates('linux', {})[0].command, 'python3');
 });
 
-test('assertSafeBackendHealth accepts only SIM with physical output disabled', async () => {
-  await assertSafeBackendHealth(new Response(JSON.stringify({
+test('assertBackendHealth keeps SIM output disabled and accepts explicit HIL', async () => {
+  await assertBackendHealth(new Response(JSON.stringify({
     runtimeMode: 'SIM',
     physicalOutputEnabled: false,
   })));
   await assert.rejects(
-    assertSafeBackendHealth(new Response(JSON.stringify({
-      runtimeMode: 'LIVE',
+    assertBackendHealth(new Response(JSON.stringify({
+      runtimeMode: 'SIM',
       physicalOutputEnabled: true,
     }))),
-    /Unsafe desktop backend health/,
+    /Unsafe SIM desktop backend health/,
   );
+  await assertBackendHealth(new Response(JSON.stringify({
+    runtimeMode: 'HIL',
+    physicalOutputEnabled: true,
+  })), 'HIL');
 });

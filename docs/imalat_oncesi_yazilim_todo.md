@@ -2,11 +2,10 @@
 
 > Amaç: Mekanik imalat tamamlandığında yazılımı ilk kez bir araya getirmek yerine; görev mantığı, güvenlik, firmware, donanım haberleşmesi, algı, telemetri, operatör arayüzü ve hata senaryolarını imalat öncesinde simülasyon ve düşük güçlü HIL masasında doğrulamak.
 >
-> **Durum notu (11 Ağustos 2026):** Bu dosya tamamlanan imalat öncesi
-> fazların tarihsel kanıtı olarak korunur. Fiziksel imalat sonrası eksikler,
-> yeni USB/Pico kararı, motor–enkoder–airsoft firmware'i, LIVE bootstrap ve
-> Aşama 2/3 kabul sırası için kanonik takip belgesi
-> `docs/YAZILIM_DONANIM_UCTAN_UCA_ENTEGRASYON_PLANI.md` dosyasıdır.
+> **Legacy durum notu (28 Ağustos 2026):** Bu dosya tamamlanan imalat öncesi
+> Pico fazlarının tarihsel kanıtıdır; yeni iş planı veya saha bağlantı kaynağı
+> olarak kullanılmaz. Aktif motor yolu için `docs/adr/006-arduino-uno-motor-transport.md`,
+> `docs/hardware/GKK-IO-REV-B_PIN_MAP.md` ve kök `README.md` geçerlidir.
 
 ## Kullanım
 

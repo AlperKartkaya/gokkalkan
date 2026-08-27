@@ -18,22 +18,22 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 
 | Dosya | Açıklama |
 |-------|----------|
-| [`tech_stack.md`](tech_stack.md) | Teknik yığın, donanım mimarisi, USB CDC MCU taşıması, tarihsel CAN sözleşmesi ve Safety Gate |
+| [`tech_stack.md`](tech_stack.md) | Teknik yığın, Arduino Uno saha taşıması, tarihsel CAN sözleşmesi ve Safety Gate |
 | [`taret_mekanik_ve_sensor_yerlesimi.md`](taret_mekanik_ve_sensor_yerlesimi.md) | Nihai iki eksenli taret, tabana göre 700 mm / yere göre yaklaşık 1300 mm LiDAR merkezi, tek kamera ve AI HAT+ referansı |
 | [`hedef_gorseli_yolo_veri_plani.md`](hedef_gorseli_yolo_veri_plani.md) | Video hedef baskıları, gerçek kamera veri toplama, grup split, augmentation, YOLO ve Hailo-8 kabul planı |
 | [`hedef_veri_seti_uygulama_rehberi.md`](hedef_veri_seti_uygulama_rehberi.md) | Çalışan augmentation, gerçek fotoğraf pull/import, YOLO dataset ve smoke eğitim komutları |
 | [`FIZIKSEL_VERI_ETIKETLEME_MODEL_VE_OPERATOR_AKISI.md`](FIZIKSEL_VERI_ETIKETLEME_MODEL_VE_OPERATOR_AKISI.md) | Tek model/iki inference yolu kararı, CVAT etiketleme, operatör canlı veri sözleşmesi ve Pi dağıtımı |
-| [`usb_serial_mcu_protocol.md`](usb_serial_mcu_protocol.md) | Aktif USB CDC/COBS/CRC16 taşıma ve fail-closed sözleşmesi |
+| [`usb_serial_mcu_protocol.md`](usb_serial_mcu_protocol.md) | Legacy Pico USB CDC/COBS/CRC16 regresyon sözleşmesi (saha yolu değildir) |
 | [`can_icd_v1.md`](can_icd_v1.md) | Tarihsel CAN payload kimlikleri ve v1 test sözleşmesi |
 | [`message_contracts.md`](message_contracts.md) | Mission Core komut/olay şeması ve mesaj sıralaması |
-| [`adr/`](adr/) | Mimari Karar Kayıtları (ADR-001 … ADR-005) |
+| [`adr/`](adr/) | Mimari Karar Kayıtları (ADR-001 … ADR-006) |
 
 ## 📅 Planlama ve Yol Haritası
 
 | Dosya | Açıklama |
 |-------|----------|
-| [`imalat_oncesi_yazilim_todo.md`](imalat_oncesi_yazilim_todo.md) | İmalat öncesi yazılım ana yol haritası (faz bazlı) |
-| [`operator_panel_interfaces_roadmap.md`](operator_panel_interfaces_roadmap.md) | Gerçek operatör paneli arayüz tabloları (KTR) |
+| [`imalat_oncesi_yazilim_todo.md`](imalat_oncesi_yazilim_todo.md) | Legacy imalat öncesi Pico planı; yalnız tarihsel kayıt |
+| [`operator_panel_interfaces_roadmap.md`](operator_panel_interfaces_roadmap.md) | Operatör panelinin tarihsel arayüz yol haritası; güncel yüzey `frontend/` |
 | [`celikkubbe_final_phase_real_competition_sim_specs.md`](celikkubbe_final_phase_real_competition_sim_specs.md) | Final aşaması simülasyon spesifikasyonu |
 | [`delivery_video_plan.md`](delivery_video_plan.md) | Güncel takvim ve sıralı video kanıt planı |
 | [`digital_twin_and_evidence.md`](digital_twin_and_evidence.md) | Dijital ikiz, senaryo, session, replay ve kanıt kullanımı |
@@ -45,9 +45,9 @@ Bu klasör Gökkalkan projesinin tüm teknik dokümanlarını barındırır.
 
 | Dosya | Açıklama |
 |-------|----------|
-| [`IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`](IMALAT_KOMPONENT_BAGLANTI_REHBERI.html) | İmalat ekibi için kaynaklı, yazdırılabilir komponent bağlantı, kablolama, lehim/krimp ve aşamalı kabul rehberi |
+| [`IMALAT_KOMPONENT_BAGLANTI_REHBERI.html`](IMALAT_KOMPONENT_BAGLANTI_REHBERI.html) | Legacy Pico bağlantı arşivi; güncel saha kararı için REV-B pin map + ADR-006 kullanılır |
 | [`IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md`](IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md) | Elektrik kablolama özeti, ek satın alma listesi ve imalat kontrol maddeleri |
-| [`IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`](IMALAT_EK_MALZEME_SIPARIS_LISTESI.html) | Güncel kablolama Excel'iyle eşleştirilmiş kısa satın alma ve bağlantı kararları |
+| [`IMALAT_EK_MALZEME_SIPARIS_LISTESI.html`](IMALAT_EK_MALZEME_SIPARIS_LISTESI.html) | Legacy satın alma notu; Arduino pin/protokolü için `hardware/` ve ADR-006 bağlayıcıdır |
 | [`MALZEME_LISTESI.md`](MALZEME_LISTESI.md) | Güncel malzeme ve teslimat durumlarının erişilebilir Markdown dökümü |
 | [`CODEBASE_TUTORIAL.md`](CODEBASE_TUTORIAL.md) | Kod tabanı ve mimari eğitim kılavuzu |
 | [`competition_hands_off_scenarios.md`](competition_hands_off_scenarios.md) | Yarışma hands-off senaryoları |

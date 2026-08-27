@@ -3,8 +3,8 @@
 Every frame is exactly eight bytes and CRC-8 protected. Commands use a META
 frame followed by a payload frame carrying the same sequence. The 16-bit
 command tag is a stable correlation value; the full command id remains in
-backend telemetry. Active physical transport wraps these payloads in the USB
-CDC/COBS/CRC16 envelope defined by ``usb_serial_protocol``.
+backend telemetry. This codec is legacy regression-only; the active field
+transport is Arduino Uno line serial.
 """
 
 from __future__ import annotations

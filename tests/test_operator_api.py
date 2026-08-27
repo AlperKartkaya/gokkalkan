@@ -62,6 +62,13 @@ class OperatorServiceTest(unittest.TestCase):
         )
         self.assertFalse(snapshot["courseGeometry"]["outsideReturnIncluded"])
 
+    def test_estop_always_sends_an_idempotent_hardware_stop(self) -> None:
+        self.service.set_estop(True, physical=False)
+
+        self.assertTrue(self.service.estop)
+        self.assertEqual(self.hardware.commands[-1]["command"]["kind"], "SysCmd")
+        self.assertFalse(self.hardware.commands[-1]["command"]["payload"]["arm"])
+
     def test_sensor_track_is_projected_to_canonical_poligon_route(self) -> None:
         route = self.service.course_geometry.route("POLIGON_ROUTE_2")
         waypoint = route.waypoints[20]
@@ -227,6 +234,8 @@ class OperatorServiceTest(unittest.TestCase):
 
     def test_manual_aim_payload_guard_rejects_malformed_values(self) -> None:
         self.assertTrue(manual_aim_payload_ok({"panDeltaDeg": 0, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
+        self.assertTrue(manual_aim_payload_ok({"panDeltaDeg": 11.25, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
+        self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": 22.5, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
         self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": "nan", "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
         self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": True, "tiltDeltaDeg": 0, "rateLimitDegPerSec": 12}))
         self.assertFalse(manual_aim_payload_ok({"panDeltaDeg": 2, "tiltDeltaDeg": 0}))

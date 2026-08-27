@@ -8,7 +8,7 @@ from typing import Any, Callable, Literal, Mapping
 from .hardware_adapter import HardwareAdapterBase
 from .operator_api import DryRunHardwareAdapter, OperatorService
 from .telemetry_log import JsonlTelemetryStore
-from .usb_serial_adapter import UsbSerialMcuAdapter
+from .arduino_motor_adapter import ArduinoUnoMotorAdapter
 
 RuntimeMode = Literal["SIM", "HIL", "LIVE"]
 McuAdapterFactory = Callable[..., HardwareAdapterBase]
@@ -27,7 +27,7 @@ class RuntimeLaunchConfig:
     """
 
     mode: RuntimeMode = "SIM"
-    mcu_transport: str = "usb_serial"
+    mcu_transport: str = "arduino_serial"
     mcu_port: str = "loop://"
     mcu_baudrate: int = 115_200
     heartbeat_timeout_sec: float = 2.0
@@ -61,7 +61,7 @@ def build_runtime_service(
     *,
     telemetry: JsonlTelemetryStore | None = None,
     live_preflight: LivePreflight | None = None,
-    mcu_adapter_factory: McuAdapterFactory = UsbSerialMcuAdapter,
+    mcu_adapter_factory: McuAdapterFactory = ArduinoUnoMotorAdapter,
     operator_options: dict[str, Any] | None = None,
 ) -> OperatorService:
     """Build a service without letting client input influence output authority."""
@@ -77,14 +77,14 @@ def build_runtime_service(
         )
 
     if config.mode == "HIL":
-        if config.mcu_transport != "usb_serial":
-            raise RuntimeConfigurationError("HIL requires the USB serial MCU transport")
+        if config.mcu_transport != "arduino_serial":
+            raise RuntimeConfigurationError("HIL requires the Arduino serial MCU transport")
         if (
             not _is_virtual_mcu_port(config.mcu_port)
             and not config.hil_physical_mcu_enabled
         ):
             raise RuntimeConfigurationError(
-                "HIL requires loop:// USB simulation unless the reviewed "
+                "HIL requires loop:// Arduino serial simulation unless the reviewed "
                 "safe-load physical MCU profile is explicitly enabled"
             )
         adapter = mcu_adapter_factory(
@@ -92,7 +92,10 @@ def build_runtime_service(
             baudrate=config.mcu_baudrate,
             heartbeat_timeout_sec=config.heartbeat_timeout_sec,
             dry_run=False,
-            physical_output_capable=False,
+            # The reviewed physical HIL profile may drive pan/tilt only.  The
+            # Arduino adapter still rejects FIRE because the field firmware
+            # does not implement an arm/fire protocol.
+            physical_output_capable=config.hil_physical_mcu_enabled,
         )
         _start_adapter(adapter)
         return OperatorService(
@@ -123,8 +126,8 @@ def build_runtime_service(
         )
     if not live_preflight.source.strip():
         raise RuntimeConfigurationError("LIVE preflight source must be auditable")
-    if config.mcu_transport != "usb_serial":
-        raise RuntimeConfigurationError("LIVE requires the USB serial MCU transport")
+    if config.mcu_transport != "arduino_serial":
+        raise RuntimeConfigurationError("LIVE requires the Arduino serial MCU transport")
     if _is_virtual_mcu_port(config.mcu_port):
         raise RuntimeConfigurationError("LIVE requires a physical USB serial device")
     if "/dev/serial/by-id/" not in config.mcu_port:

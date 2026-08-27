@@ -7,7 +7,7 @@ port = 8088
 allowed_origins = ["http://127.0.0.1:4173"]
 
 [mcu]
-transport = "usb_serial"
+transport = "arduino_serial"
 # Arduino Uno USB-serial identity; replace with the reviewed by-id path.
 port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200

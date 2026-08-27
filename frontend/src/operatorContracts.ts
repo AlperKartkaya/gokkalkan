@@ -1,13 +1,13 @@
 import type { BlockReason, FriendFoe, Mode, Stage, TargetType } from './types';
 
-export type OperatorConnectionState = 'offline' | 'dry-run' | 'live';
+export type OperatorConnectionState = 'offline' | 'dry-run' | 'hil' | 'live';
 export type OperatorCommandKind = 'ModeRequest' | 'StageRequest' | 'ManualAimCommand' | 'FireIntent';
 export type OperatorBlockReason = BlockReason | 'BLOCKED_ARMING' | 'BLOCKED_BACKEND' | 'BLOCKED_SENSOR' | 'BLOCKED_INVALID_COMMAND';
 export type OperatorSensorSource = 'radar' | 'lidar' | 'camera' | 'fusion' | 'dry-run';
 
 export const MANUAL_AIM_STEP_DEG = 2;
 export const MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 12;
-export const MAX_MANUAL_AIM_DELTA_DEG = 10;
+export const MAX_MANUAL_AIM_DELTA_DEG = 11.25;
 export const MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30;
 
 export interface OperatorPanelConfig {
@@ -162,6 +162,8 @@ export interface CommandResult {
   message: string;
   createdAt: string;
   physicalOutput?: boolean;
+  hardwareResultCode?: string;
+  blockReason?: string;
 }
 
 export const operatorBlockCopy: Record<OperatorBlockReason, string> = {

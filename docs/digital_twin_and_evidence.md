@@ -7,7 +7,8 @@ gösterimlerinin yerine geçmez.
 
 ## 1. Dijital ikiz
 
-`gokkalkan_backend.digital_twin` şu sınırları modellenebilir yapar:
+`gokkalkan_backend.digital_twin` şu sınırları modellenebilir yapar. Aşağıdaki
+COBS/ACK maddeleri aktif Arduino saha taşıması değil, legacy protokol regresyonudur:
 
 - USB taşımasında da korunan tarihsel v1 META + payload, sequence ve ACK/NACK;
 - ACK gecikmesi, drop/timeout, bozuk ACK, E-Stop, heartbeat ve encoder fault;

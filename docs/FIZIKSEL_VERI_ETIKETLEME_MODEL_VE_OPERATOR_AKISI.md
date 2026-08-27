@@ -155,7 +155,7 @@ Uygulanan panel davranışı:
 3. Aktif görevde aşama/tur düğmeleriyle rastgele atlama yoktur.
 4. Tur bitince yalnız backend sırasındaki sonraki tur/aşama başlatılabilir.
 5. Aşama 1 manuel yönelim yalnız `ACTIVE + manual + deadman` iken backend'e
-   `ManualAimCommand` yollar; backend Safety Gate'ten sonra USB/Pico adapterına
+   `ManualAimCommand` yollar; backend Safety Gate'ten sonra Arduino Uno adapterına
    aktarır.
 6. Bakım bitince önceki aktif mod ve görev timer'ı doğrudan sürer.
 7. Kırmızı komut `ACİL DURDUR` endpoint'ini kullanır; fiziksel buton yine
@@ -168,7 +168,7 @@ Uygulanan panel davranışı:
 | Track ve bbox | Perception API bağlı; SIM'de fixture | Camera Module 3 + gerçek HEF |
 | Tür/renk yüzdesi | Canlı track alanına bağlı | Gerçek veri kalibrasyonu |
 | 1D LiDAR menzili | Adapter sözleşmesi var; SIM/replay olabilir | TFA50-L saha doğrulaması |
-| Manuel yönelim | Backend/Safety/adapter bağlı | Pico firmware, motor, encoder HIL |
+| Manuel yönelim | Backend/Safety/adapter bağlı | Arduino firmware, motor ve yön HIL |
 | ATEŞ | Safety + adapter bağlı | Airsoft dry-contact HIL ve canlı arm kabulü |
 | Kamera nişangâhı | UI katmanı bağlı | Kamera-boresight ve balistik kalibrasyon |
 | 3D LiDAR görünümü | Replay/temsili sensor frame | Donanım 1D olduğundan karar ekranı değil, teşhis |
@@ -199,5 +199,5 @@ uzaktan bağlanacaksa yalnız SSH tüneli gerekir; tünel görev proseslerinin
 - Gerçek val/test oturumları ve insan review olmadan model release değildir.
 - HEF eşdeğerliği ve Pi 5 + AI HAT+ gecikmesi ölçülmeden SAHI hedef frekansı
   doğrulanmış değildir.
-- Pico USB, encoder, E-Stop ve airsoft dummy-load HIL tamamlanmadan LIVE arm
+- Arduino USB, encoder/E-Stop geri bildirimi ve airsoft dummy-load HIL tamamlanmadan LIVE arm
   açılmaz.

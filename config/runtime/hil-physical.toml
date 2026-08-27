@@ -4,10 +4,10 @@ profile = "HIL"
 [api]
 host = "127.0.0.1"
 port = 8088
-allowed_origins = ["http://127.0.0.1:4173"]
+allowed_origins = ["http://127.0.0.1:5173", "http://127.0.0.1:4173"]
 
 [mcu]
-transport = "usb_serial"
+transport = "arduino_serial"
 port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
 heartbeat_timeout_ms = 1000

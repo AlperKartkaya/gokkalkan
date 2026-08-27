@@ -4,6 +4,10 @@
 > **Son aktarım ve bağlantı kontrolü:** 11 Ağustos 2026
 > **Kullanım:** Bu dosya agentlar için hızlı başvuru kopyasıdır. Sipariş ve teslimat durumlarında Excel dosyası güncellendiyse bu Markdown da birlikte güncellenmelidir.
 
+> **MCU güncellemesi (2026-08-26):** Pico satırları yalnız envanter/tarihçe
+> bilgisidir. Aktif saha motor kontrolcüsü Arduino Uno'dur; taşıma ve pin
+> sözleşmesi ADR-006 ile `docs/hardware/GKK-IO-REV-B_PIN_MAP.md` içindedir.
+
 ## Özet
 
 - Toplam malzeme kalemi: **40**
@@ -67,7 +71,10 @@
 
 Bu bölüm, güncel Excel kopyasındaki alt tabloyu aynı kararlarla Markdown'a taşır. Üstteki envanter satın alma kaydını korur; aşağıdaki tablo ise **bundan sonra alınacak veya miktarı/modeli düzeltilmiş** kablolama ve güvenlik elemanlarını gösterir.
 
-> **Haberleşme kararı:** CAN donanımı satın alınmayacak; Raspberry Pi 5 ile Pico kısa, veri destekli USB-A → Micro-USB kablosuyla bağlanacaktır. Backend USB seri adapter, COBS+CRC16 framing, heartbeat/ACK ve Pico USB CDC firmware taşıması uygulanmıştır. Fiziksel USB/EMI/HIL kabulü tamamlanana kadar LIVE çıkış yine kapalıdır.
+> **Haberleşme kararı:** Aktif saha motor yolu Raspberry Pi 5 → Arduino Uno
+> 115200 USB seri satır protokolüdür. Pico USB CDC/COBS yolu yalnız legacy
+> regresyon olarak tutulur. Fiziksel USB/EMI/HIL kabulü tamamlanana kadar LIVE
+> çıkış kapalıdır.
 
 | No | Malzeme | Adet | Özellik | Satın alma bağlantısı | Not |
 |---:|---|---:|---|---|---|

@@ -108,10 +108,10 @@ REST polling kullanır. Ayrıntılar: ADR-004 ve `docs/message_contracts.md`.
 Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni, hedef menzili ve görev akışları burada denenmelidir. Mock katmanı gerçek donanım gibi davranan ama fiziksel çıkış üretmeyen adaptör olmalıdır.
 
 **Mevcut durum:** `mcu_simulator.py`, ortak firmware güvenlik modelini kullanarak
-E-Stop/FAULT sırasında komutları reddeder. Aktif `docs/usb_serial_mcu_protocol.md`,
-`usb_serial_protocol.py`, `usb_serial_adapter.py` ve legacy `firmware/pico/` altında
-COBS, CRC16, sequence, ACK/NACK, encoder geri bildirimi ve host-testli Pico
-güvenlik çekirdeği vardır. Tarihsel CAN payload codec'i regresyon uyumu için
+E-Stop/FAULT sırasında komutları reddeder. Aktif saha yolu Arduino Uno satır
+protokolüdür; STEP/JOG/STOP komutları `ArduinoUnoMotorAdapter` üzerinden gider.
+COBS, CRC16, sequence, ACK/NACK, encoder geri bildirimi ve Pico güvenlik çekirdeği
+legacy regresyon varlıklarıdır. Tarihsel CAN payload codec'i regresyon uyumu için
 korunur. Bu, fiziksel Arduino flash/USB/E-Stop/motor hattı kabulünün tamamlandığı anlamına
 gelmez; söz konusu kanıtlar imalat sonrası HIL ve saha testinde üretilecektir.
 
@@ -195,7 +195,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt, imha hattı enable/disable, durum geri bildirimi | **Uygulanan:** USB CDC Serial + COBS + CRC16 | `UsbSerialMcuAdapter`, `usb_serial_mcu_protocol.md` ve ADR-005 aktiftir; fiziksel HIL/EMI kabulü bekliyor |
+| Hardware Adapter ↔ MCU | pan/tilt STEP/DIR ve STOP | **Uygulanan:** Arduino Uno USB seri satır protokolü | `ArduinoUnoMotorAdapter`; fiziksel HIL ve güvenlik/ateşleme geri bildirimi bekliyor |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri

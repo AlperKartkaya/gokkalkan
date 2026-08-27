@@ -96,7 +96,7 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertFalse(factory.instances[0].options["dry_run"])
         self.assertFalse(factory.instances[0].options["physical_output_capable"])
 
-    def test_reviewed_hil_physical_usb_is_monitor_only_without_output_capability(
+    def test_reviewed_hil_physical_usb_enables_motor_output_capability(
         self,
     ) -> None:
         factory = RecordingFactory()
@@ -110,7 +110,8 @@ class RuntimeModeTest(unittest.TestCase):
         )
         self.assertEqual(service.runtime_mode, "HIL")
         self.assertTrue(factory.instances[0].started)
-        self.assertFalse(factory.instances[0].options["physical_output_capable"])
+        self.assertTrue(factory.instances[0].options["physical_output_capable"])
+        self.assertTrue(service.snapshot()["physicalOutputEnabled"])
 
     def test_live_mode_requires_explicit_enable_before_adapter_construction(self) -> None:
         factory = RecordingFactory()

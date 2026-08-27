@@ -8,7 +8,7 @@
   1. `frontend/` yarışma eğitim simülatörü.
   2. Planlanan gerçek operatör paneli.
   3. KTR/rapor arayüz ve mimari kanıtları.
-  4. `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` imalat bağlantı handbook'u.
+  4. `docs/hardware/GKK-IO-REV-B_PIN_MAP.md` ve ADR-006 Arduino saha sözleşmesi.
 - Evidence reviewed:
   - `docs/sartname_v4.txt:720-755` — Manuel/Otonom Mod, bakım, Acil Durdur ve patlayıcı yasağı.
   - `docs/sartname_v4.txt:701-718` — kırmızı/mavi hedef ve kırmızı imha balonu kuralları.

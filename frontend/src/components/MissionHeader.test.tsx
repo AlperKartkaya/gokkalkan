@@ -68,4 +68,18 @@ describe('MissionHeader', () => {
     await userEvent.click(resetButton);
     expect(mockReset).toHaveBeenCalledTimes(1);
   });
+
+  it('labels HIL explicitly instead of presenting physical motor tests as dry-run', () => {
+    render(
+      <MissionHeader
+        apiBusy={false}
+        config={{ ...mockConfig, dryRun: true, connectionState: 'hil' }}
+        onRawCameraOpen={vi.fn()}
+        onReset={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('HIL · MOTOR')).toBeInTheDocument();
+    expect(screen.queryByText('DRY-RUN')).not.toBeInTheDocument();
+  });
 });

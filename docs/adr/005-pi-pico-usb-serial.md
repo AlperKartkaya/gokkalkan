@@ -1,6 +1,6 @@
 # ADR-005 — Pi–Pico haberleşmesinde USB CDC Serial
 
-- Durum: **Kabul edildi; fiziksel HIL kabulü bekliyor**
+- Durum: **Yerine geçti — ADR-006 Arduino Uno saha yolu**
 - Tarih: **11.08.2026**
 - Yerine geçtiği karar: `ADR-002` fiziksel CAN hattı
 

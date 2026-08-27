@@ -43,7 +43,7 @@ runtime_config_mode = "0640"
 operator_token_mode = "0640"
 
 [mcu]
-transport = "usb-cdc-serial"
+transport = "arduino-uno-serial"
 device_path = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
 kernel_driver = "cdc_acm"

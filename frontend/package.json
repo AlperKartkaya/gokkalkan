@@ -10,6 +10,7 @@
     "dev": "vite --host 127.0.0.1",
     "desktop": "node scripts/desktop-launcher.mjs --mode dev",
     "desktop:dev": "node scripts/desktop-launcher.mjs --mode dev",
+    "desktop:hil": "node scripts/desktop-launcher.mjs --mode dev --runtime-mode HIL --config config/runtime/hil-physical.toml",
     "desktop:preview": "npm run build && node scripts/desktop-launcher.mjs --mode preview",
     "desktop:check": "node scripts/desktop-launcher.mjs --mode dev --no-browser --smoke --ui-port 5183 --api-port 8089 --timeout-ms 20000",
     "build": "npm run typecheck && vite build",

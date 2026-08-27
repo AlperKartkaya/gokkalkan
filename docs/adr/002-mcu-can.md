@@ -1,6 +1,6 @@
 # ADR-002 — MCU ve Saha Haberleşmesi
 
-- Durum: **ADR-005 tarafından fiziksel taşıma açısından geçersiz kılındı; tarihsel payload sözleşmesi korunuyor**
+- Durum: **ADR-006 tarafından fiziksel taşıma açısından geçersiz kılındı; tarihsel payload sözleşmesi korunuyor**
 - Tarih: **25.07.2026**
 - İlgili işler: `ADR-002`, `FW-001`–`FW-007`, `SAFE-002`
 

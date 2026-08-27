@@ -493,7 +493,7 @@ def main(argv: list[str] | None = None) -> None:
         if configured:
             source_files[label] = Path(configured)
     source_files["pinMap"] = Path(
-        os.environ.get("GOKKALKAN_PIN_MAP_FILE", "docs/hardware/GKK-IO-REV-A_PIN_MAP.md")
+        os.environ.get("GOKKALKAN_PIN_MAP_FILE", "docs/hardware/GKK-IO-REV-B_PIN_MAP.md")
     )
     source_files["physicalAcceptance"] = Path(
         os.environ.get(

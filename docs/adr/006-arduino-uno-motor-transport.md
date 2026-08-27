@@ -16,10 +16,14 @@ Pico firmware'i aktif donanım sözleşmesi değildir.
 - `ArduinoUnoMotorAdapter` komutları lazy-connect ile gönderir; bağlantı yoksa
   hata döndürür ve fiziksel çıkış üretmez. E-Stop ve arm yetkisi backend Safety
   Gate tarafından ayrıca korunur.
-- SIM/HIL regresyonları, mevcut COBS/ACK sözleşmesini sınamak için legacy
-  `UsbSerialMcuAdapter` ile çalışmaya devam eder. Bu adapter Arduino firmware'ine
-  gönderilmez; LIVE geçişi, Arduino'nun güvenlik telemetrisi için ayrı bir
-  protokol adapter'ı ve fiziksel HIL kanıtı tamamlanınca yapılacaktır.
+- SIM/HIL çalışma yolu Arduino adapter'ının `loop://` seri bağlantısını kullanır;
+  backend artık Arduino'ya COBS/CAN çerçevesi göndermez. Eski COBS/ACK adapter'ı
+  yalnız tarihsel regresyon testleri için açıkça çağrılabilir.
+- `hil-physical.toml`, açıkça seçildiğinde yalnız manuel PAN/TILT hareketine
+  fiziksel çıkış yetkisi verir. Operatör deadman'i bırakıldığında yeni hareket
+  gönderilmez; yazılım Acil Durdur ve kontrollü durdurma akışları Arduino'ya
+  idempotent `STOP` gönderir. Encoder/konum geri bildirimi eklenene kadar
+  `AutonomousAimCommand` adaptör sınırında reddedilir.
 - `firmware/pico/`, `usb_serial_mcu_protocol.md` ve CAN codec dosyaları legacy
   referans olarak tutulur; yeni saha özelliği bu yola eklenmez.
 

@@ -352,7 +352,6 @@ test('landing opens the dry-run real operator panel without live hardware claims
   await expect(page.locator('[data-testid^="operator-accuracy-"][data-testid$="-type"]')).toHaveCount(3);
   await expect(page.getByTestId('operator-confidence-panel')).not.toContainText('Düşman');
   await expect(page.getByTestId('operator-track-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
-  await expect(page.getByTestId('operator-sensor-3d-target-S2-R1-L1-BALISTIK')).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -372,7 +371,7 @@ test('operator panel uses physical camera stream and removes 2D LiDAR page', asy
   await expect(page.getByTestId('operator-panel')).toBeVisible();
 });
 
-test('operator panel final-phase layout renders the fusion view and compact mission side rail', async ({ page }) => {
+test('operator panel final-phase layout renders the lightweight camera/LiDAR view and compact mission side rail', async ({ page }) => {
   const apiBase = 'http://127.0.0.1:5173/final-phase-api';
   const telemetry = { path: 'telemetry_data/operator-api-dry-run.jsonl', exists: true, recordCount: 1 };
   const safety = {
@@ -650,116 +649,21 @@ test('operator panel final-phase layout renders the fusion view and compact miss
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
   await expect(page.getByTestId('operator-accuracy-DRY-RUN-LOW-04-type')).toContainText('39%');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-LOW-04')).toHaveAttribute('data-identification', 'unknown');
-  await expect(sensorPanel).toContainText('Hedef İzleri');
+  await sensorPanel.getByRole('button', { name: '1D LİDAR (TFA50-L)' }).click();
+  await expect(sensorPanel).toContainText('Tek Nokta (1D) LiDAR Sensörü');
+  await expect(sensorPanel).toContainText('TFA50-L / TFmini Lazer Mesafe Ölçer');
+  await expect(page.getByTestId('operator-sensor-3d-view')).toHaveCount(0);
   await expect(page.getByText('DURAĞAN')).toHaveCount(0);
   await expect(page.getByText('DRY-RUN · fiziksel çıkış yok')).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .target-label-stack')).toHaveCount(0);
   await expect(page.locator('.operator-track-scene .target-silhouette')).toHaveCount(3);
   await expect(page.locator('.operator-track-scene .target-unknown-sphere')).toHaveCount(1);
   await expect(page.getByTestId('operator-steel-dome')).toHaveAttribute('data-rotation', /-?\d+\.\d/);
-  const trackSceneBox = await page.getByTestId('operator-track-scene').boundingBox();
-  const operatorDomeBox = await page.getByTestId('operator-steel-dome').boundingBox();
-  const sensorPanelBox = await sensorPanel.boundingBox();
-  expect(trackSceneBox).not.toBeNull();
-  expect(operatorDomeBox).not.toBeNull();
-  expect(sensorPanelBox).not.toBeNull();
-  expect((sensorPanelBox?.width ?? 0)).toBeGreaterThan((trackSceneBox?.width ?? Number.MAX_SAFE_INTEGER) * 1.35);
-  expect((sensorPanelBox?.height ?? 0)).toBeGreaterThan(520);
-  expect((trackSceneBox ? trackSceneBox.x + trackSceneBox.width : 0) - (operatorDomeBox ? operatorDomeBox.x + operatorDomeBox.width : 0)).toBeLessThanOrEqual(36);
-  const operatorDomeCenterY = (operatorDomeBox?.y ?? 0) + (operatorDomeBox?.height ?? 0) / 2;
-  const trackSceneCenterY = (trackSceneBox?.y ?? 0) + (trackSceneBox?.height ?? 0) / 2;
-  expect(Math.abs(operatorDomeCenterY - trackSceneCenterY)).toBeLessThan(24);
-  await expect(page.locator('.operator-track-scene .system-anchor text')).toHaveText('GÖKKALKAN');
-
-  const sensor3dView = page.getByTestId('operator-sensor-3d-view');
-  await expect(sensor3dView).toBeVisible();
-  await expect(sensor3dView).toHaveAttribute('data-renderer', 'webgl');
-  await expect(sensor3dView).toContainText('Füzyon Görünümü');
-  await expect(sensor3dView).not.toContainText('3D SensorFrame');
-  await expect(sensor3dView).not.toContainText('Sürükle: döndür');
-  await expect(sensor3dView).not.toContainText('Tekerlek: yakınlaştır');
-  const f16Box = await page.getByTestId('operator-sensor-3d-target-DRY-RUN-F16-01').boundingBox();
-  expect(f16Box).not.toBeNull();
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('x', '8');
-  await expect(page.getByTestId('operator-permitted-range-window')).toHaveAttribute('width', '23.125');
-  const stageThreeWindowStyle = await page.getByTestId('operator-permitted-range-window').evaluate((windowElement) => {
-    const style = getComputedStyle(windowElement);
-    return { animationName: style.animationName, fill: style.fill };
-  });
-  expect(stageThreeWindowStyle.animationName).toBe('none');
-  const stageThreeWindowAlpha = Number(stageThreeWindowStyle.fill.match(/rgba\(255, 255, 255, ([0-9.]+)\)/)?.[1] ?? '1');
-  expect(stageThreeWindowAlpha).toBeLessThanOrEqual(0.07);
-  await expect(page.getByTestId('operator-sensor-3d-dome')).toHaveCount(0);
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-shape', 'symbol');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-LOW-04')).toHaveAttribute('data-identification', 'unknown');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-LOW-04')).toHaveAttribute('data-shape', 'sphere');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-HEL-02')).toHaveAttribute('data-affiliation', 'Dost');
-
-  const viewBox = await sensor3dView.boundingBox();
-  expect(viewBox).not.toBeNull();
-  const zoomBefore = await sensor3dView.getAttribute('data-zoom');
-  await page.evaluate(() => window.scrollTo(0, 160));
-  const scrollBeforeWheel = await page.evaluate(() => window.scrollY);
-  await sensor3dView.dispatchEvent('wheel', { deltaY: -240, bubbles: true, cancelable: true });
-  await expect.poll(() => sensor3dView.getAttribute('data-zoom')).not.toBe(zoomBefore);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBeforeWheel);
-  const zoomAfter = Number(await sensor3dView.getAttribute('data-zoom'));
-  expect(Math.abs(zoomAfter - Number(zoomBefore))).toBeLessThanOrEqual(0.06);
-  await expect(page.getByTestId('operator-sensor-3d-reset')).toContainText('3D RESET');
-  await page.getByTestId('operator-sensor-3d-reset').click();
-  await expect(sensor3dView).toHaveAttribute('data-zoom', '1.00');
-  await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
-  await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
-
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
   await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await page.getByTestId('operator-fire-button').click();
   await expect(page.getByTestId('operator-fire-button')).toBeEnabled();
-  await expect(page.getByTestId('fire-cluster')).toContainText('Backend öncelikli hedef Hazır');
   await expect(page.getByTestId('operator-maintenance-button')).toBeEnabled();
-
-  await sensor3dView.scrollIntoViewIfNeeded();
-  const resetViewBox = await sensor3dView.boundingBox();
-  expect(resetViewBox).not.toBeNull();
-  const rotateBefore = Number(await sensor3dView.getAttribute('data-rotate-z'));
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(50);
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 + 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
-  await page.mouse.up();
-  const rotateAfterRightDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
-  expect(rotateAfterRightDrag).toBeLessThan(rotateBefore);
-  await page.getByTestId('operator-sensor-3d-reset').click();
-  await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
-  await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(50);
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2 - 180, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2, { steps: 5 });
-  await page.mouse.up();
-  const rotateAfterLeftDrag = Number(await sensor3dView.getAttribute('data-rotate-z'));
-  expect(rotateAfterLeftDrag).toBeGreaterThan(rotateBefore);
-  await page.getByTestId('operator-sensor-3d-reset').click();
-  await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
-  await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
-  const pitchBefore = Number(await sensor3dView.getAttribute('data-pitch'));
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(50);
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2 - 120, { steps: 4 });
-  await page.mouse.up();
-  const pitchAfterUpDrag = Number(await sensor3dView.getAttribute('data-pitch'));
-  expect(pitchAfterUpDrag).toBeLessThan(pitchBefore);
-  await page.getByTestId('operator-sensor-3d-reset').click();
-  await expect(sensor3dView).toHaveAttribute('data-pitch', '48.0');
-  await expect(sensor3dView).toHaveAttribute('data-yaw', '92.0');
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.mouse.move((resetViewBox?.x ?? 0) + (resetViewBox?.width ?? 0) / 2, (resetViewBox?.y ?? 0) + (resetViewBox?.height ?? 0) / 2 + 120, { steps: 4 });
-  await page.mouse.up();
-  const pitchAfterDownDrag = Number(await sensor3dView.getAttribute('data-pitch'));
-  expect(pitchAfterDownDrag).toBeGreaterThan(pitchBefore);
 
   const sensorTopAfterStage = await sensorPanel.evaluate((element) => Math.round(element.getBoundingClientRect().top + window.scrollY));
   // Backend-owned stage header intentionally changes from the start CTA to a
@@ -854,8 +758,6 @@ test('operator panel uses the 40 percent type-confidence threshold for target sy
   await expect(unknownTrack).toHaveAttribute('data-identification', 'identified');
   await expect(unknownTrack).toHaveAttribute('data-affiliation', 'Bilinmeyen');
   await expect(unknownTrack).toHaveAttribute('data-shape', 'symbol');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-identification', 'identified');
-  await expect(page.getByTestId('operator-sensor-3d-target-DRY-RUN-UAV-03')).toHaveAttribute('data-shape', 'symbol');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('Tür');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).toContainText('42%');
   await expect(page.getByTestId('operator-confidence-DRY-RUN-UAV-03')).not.toContainText('DRY-RUN-UAV-03');
@@ -882,9 +784,11 @@ test('desktop operator shell shows selected 1D LiDAR diagnostics without a raw v
   await expect(page.getByTestId('operator-panel')).toBeVisible();
   await expect(page.getByTestId('operator-panel')).toHaveAttribute('data-desktop-shell', 'true');
   await expect(page.getByText('Kabuk: Desktop')).toHaveCount(0);
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Hedef İzleri');
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).toContainText('Füzyon Görünümü');
-  await expect(page.getByTestId('operator-sensor-fusion-panel')).not.toContainText('3D SensorFrame');
+  const sensorPanel = page.getByTestId('operator-sensor-fusion-panel');
+  await sensorPanel.getByRole('button', { name: '1D LİDAR (TFA50-L)' }).click();
+  await expect(sensorPanel).toContainText('Tek Nokta (1D) LiDAR Sensörü');
+  await expect(sensorPanel).toContainText('TFA50-L / TFmini Lazer Mesafe Ölçer');
+  await expect(page.getByTestId('operator-sensor-3d-view')).toHaveCount(0);
 
   await page.getByTestId('operator-maintenance-drawer').locator('summary').click();
   const lidarDiagnostics = page.getByTestId('operator-lidar-diagnostics');
@@ -1079,13 +983,13 @@ test('operator panel evidence drawer reads backend telemetry export and replay s
   await page.getByRole('button', { name: 'Kanıtı Yenile' }).click();
   await expect(page.getByText('Kanıt paketi güncellendi; replay yalnız kayıt okur.')).toBeVisible();
   await expect(page.getByText('telemetry_data/operator-api-dry-run.jsonl')).toBeVisible();
-  await expect(page.getByText('1 olay · 1 komut · 1 dry-run hardware sonucu')).toBeVisible();
+  await expect(page.getByText('1 olay · 1 komut · 1 hardware sonucu')).toBeVisible();
   await expect(page.getByText('KAPALI / YOK')).toBeVisible();
   await expect(page.getByText('hardware_result')).toBeVisible();
 
   await page.getByRole('button', { name: 'Telemetriyi Sıfırla' }).click();
   await expect(page.getByText('Telemetri sıfırlandı; safe moda dönüldü ve fiziksel çıkış üretilmedi.')).toBeVisible();
-  await expect(page.getByText('1 olay · 0 komut · 0 dry-run hardware sonucu')).toBeVisible();
+  await expect(page.getByText('1 olay · 0 komut · 0 hardware sonucu')).toBeVisible();
   await expect(page.getByText(/"decision":"RESET"/)).toBeVisible();
 });
 

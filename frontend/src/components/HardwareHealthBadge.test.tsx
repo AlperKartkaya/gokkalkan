@@ -38,7 +38,24 @@ describe('HardwareHealthBadge', () => {
     });
     
     // Physical Output Should be Kapalı
-    expect(screen.getByText(/Fiziksel Çıkış Kapalı/)).toBeInTheDocument();
+    expect(screen.getByText(/Fiziksel hareket çıkışı: KAPALI/)).toBeInTheDocument();
+  });
+
+  it('warns explicitly when the physical HIL motion path is enabled', async () => {
+    (globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        adapter: 'arduino_uno_serial',
+        busConnected: true,
+        arduinoReachable: true,
+        dryRun: false,
+        physicalOutputEnabled: true,
+      })
+    });
+
+    render(<HardwareHealthBadge apiBaseUrl="http://api" />);
+
+    expect(await screen.findByText(/Fiziksel hareket çıkışı: AÇIK/)).toBeInTheDocument();
   });
 
   it('renders warning state when hardware is not ok', async () => {
@@ -60,8 +77,8 @@ describe('HardwareHealthBadge', () => {
       expect(screen.getByText('test-adapter')).toBeInTheDocument();
     });
 
-    // Active Pi-Pico transport is USB CDC.
-    const usb = screen.getByText(/USB CDC/);
+    // Active field transport is Arduino USB serial.
+    const usb = screen.getByText(/Arduino USB Seri/);
     expect(usb).toBeInTheDocument();
   });
 });

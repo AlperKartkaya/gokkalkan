@@ -1,6 +1,11 @@
 # Gerçek Operatör Paneli ve Arayüz Yol Haritası
 
-Bu doküman, simülatörden ayrı gerçek operatör panelinin arayüz kararlarını ve KTR’de anlatılacak sınırları toplar. Yol haritasının ana yazılım yüzeyi uygulanmıştır; fiziksel kamera, TFA50-L, Pico/CAN, motor, E-Stop ve imha hattı kabulü açık kalır. Güncel saha kullanımı için `taret_ve_asama1_operator_destegi.md`, mimari durum için `tech_stack.md` esas alınmalıdır.
+> **Durum (2026-08-28):** Yol haritasının ana yazılım yüzeyi uygulanmıştır.
+> Aşağıdaki Pico/CAN ifadeleri tarihsel tasarım kaydıdır; aktif saha taşıması
+> Arduino Uno seri adaptörüdür. Güncel kullanım için kök `README.md`, ADR-006
+> ve `frontend/` esas alınır.
+
+Bu doküman, simülatörden ayrı gerçek operatör panelinin arayüz kararlarını ve KTR’de anlatılacak sınırları toplar. Fiziksel kamera, TFA50-L, motor, E-Stop ve imha hattı saha kabulü ayrı kalır.
 
 ## 1. Neden ayrı bir operatör paneli?
 

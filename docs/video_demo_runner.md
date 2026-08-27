@@ -1,6 +1,6 @@
 # Görev Kabiliyeti Gösterim Videosu — Pi Oturum Komutları
 
-Bu komutlar kamera, algı, Pico ve operatör API'si çalışan Pi üzerinde ilgili
+Bu komutlar kamera, algı, Arduino Uno ve operatör API'si çalışan Pi üzerinde ilgili
 video yeteneği için zaman damgalı bir **kanıt oturumu** açar. Komut fiziksel
 hareket, atış, Acil Durdur reseti veya hedef tespiti üretmez; bunlar gerçek
 operatör ve donanım olayları olarak video/telemetride görünmelidir.

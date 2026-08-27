@@ -18,15 +18,7 @@ export function EvidenceRow({ label, value }: { label: string; value: string }) 
   );
 }
 
-export function SafetyAuthorityPanel({
-  safety,
-  onEStop: _onEStop,
-  eStopBusy: _eStopBusy,
-}: {
-  safety: OperatorSafetyState;
-  onEStop?: () => void;
-  eStopBusy?: boolean;
-}) {
+export function SafetyAuthorityPanel({ safety }: { safety: OperatorSafetyState }) {
   const estopActive = safety.estop;
   const blocked = safety.blockReason !== 'ALLOWED';
 

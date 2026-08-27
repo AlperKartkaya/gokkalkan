@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const AIM_STEP_DEG = 11.25;
 
 export function ManualAimController({
   apiBusy,
@@ -15,9 +17,15 @@ export function ManualAimController({
   currentPanDeg?: number;
   currentTiltDeg?: number;
 }) {
-  const [aimStepDeg, setAimStepDeg] = useState(22.5);
+  const [deadmanActive, setDeadmanActive] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const aimDisabled = !manualAimReady || apiBusy;
+  const deadmanRef = useRef(false);
+  const aimDisabled = !manualAimReady || !deadmanActive || apiBusy;
+
+  const updateDeadman = (active: boolean) => {
+    deadmanRef.current = active;
+    setDeadmanActive(active);
+  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -25,19 +33,25 @@ export function ManualAimController({
       const editing = target?.matches('input, select, textarea, [contenteditable="true"]') ?? false;
       if (editing) return;
 
-      if (apiBusy) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        updateDeadman(manualAimReady && !apiBusy);
+        return;
+      }
 
-      // WASD: W/S = Motor 1 (Pan CW/CCW), A/D = Motor 2 (Tilt CCW/CW)
-      // Arrow keys: keep traditional directional mapping
+      if (!deadmanRef.current || apiBusy || !manualAimReady) return;
+
+      // Field controller mapping: W/S = TILT CW/CCW, A/D = PAN CCW/CW.
+      // Keep arrow keys aligned with the same physical axes.
       const delta = {
-        KeyW: [aimStepDeg, 0],      // Pan CW (Motor 1)
-        KeyS: [-aimStepDeg, 0],     // Pan CCW (Motor 1)
-        KeyD: [0, aimStepDeg],      // Tilt CW (Motor 2)
-        KeyA: [0, -aimStepDeg],     // Tilt CCW (Motor 2)
-        ArrowUp: [0, aimStepDeg],
-        ArrowDown: [0, -aimStepDeg],
-        ArrowLeft: [-aimStepDeg, 0],
-        ArrowRight: [aimStepDeg, 0],
+        KeyW: [0, AIM_STEP_DEG],      // Tilt CW (Motor 2)
+        KeyS: [0, -AIM_STEP_DEG],     // Tilt CCW (Motor 2)
+        KeyD: [AIM_STEP_DEG, 0],      // Pan CW (Motor 1)
+        KeyA: [-AIM_STEP_DEG, 0],     // Pan CCW (Motor 1)
+        ArrowUp: [0, AIM_STEP_DEG],
+        ArrowDown: [0, -AIM_STEP_DEG],
+        ArrowLeft: [-AIM_STEP_DEG, 0],
+        ArrowRight: [AIM_STEP_DEG, 0],
       }[event.code];
 
       if (delta) {
@@ -47,17 +61,24 @@ export function ManualAimController({
       }
     };
 
-    const handleKeyUp = () => {
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        updateDeadman(false);
+      }
       setActiveKey(null);
     };
+    const releaseDeadmanOnBlur = () => updateDeadman(false);
 
     window.addEventListener('keydown', handleKeyDown, { passive: false });
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', releaseDeadmanOnBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', releaseDeadmanOnBlur);
     };
-  }, [aimStepDeg, apiBusy, onManualAim]);
+  }, [apiBusy, manualAimReady, onManualAim]);
 
   return (
     <section
@@ -70,21 +91,21 @@ export function ManualAimController({
           <span className="w-2 h-2 rounded-full bg-[#33e68c] animate-pulse" />
           <b className="text-sm font-black text-[#d7efff]">Taret Yönlendirme (WASD)</b>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-[#91a6b7]">Adım:</span>
-          <select
-            className="rounded bg-[#111822] border border-white/20 px-1.5 py-0.5 text-xs text-[#25d8ff] font-bold focus:outline-none focus:border-[#25d8ff]"
-            value={aimStepDeg}
-            onChange={(event) => setAimStepDeg(Number(event.currentTarget.value))}
-          >
-            <option value={5}>5.0° (Hassas)</option>
-            <option value={11.25}>11.25° (Normal)</option>
-            <option value={22.5}>22.5° (Hızlı)</option>
-            <option value={45}>45.0° (Geniş)</option>
-            <option value={90}>90.0° (Maks)</option>
-          </select>
-        </div>
+        <span className="text-[10px] font-bold text-[#25d8ff]">Saha adımı: {AIM_STEP_DEG}°</span>
       </div>
+
+      <button
+        type="button"
+        className="mt-2 w-full rounded-lg border border-[#ffbb42]/35 bg-[#ffbb42]/10 px-3 py-2 text-xs font-black text-[#ffe4ad] disabled:opacity-40"
+        data-testid="operator-deadman-button"
+        disabled={!manualAimReady || apiBusy}
+        onPointerDown={() => updateDeadman(true)}
+        onPointerUp={() => updateDeadman(false)}
+        onPointerCancel={() => updateDeadman(false)}
+        onPointerLeave={() => updateDeadman(false)}
+      >
+        {deadmanActive ? 'DEADMAN AKTİF' : 'BASILI TUT: DEADMAN'}
+      </button>
 
       {/* Angle Status Readout */}
       {(currentPanDeg !== undefined || currentTiltDeg !== undefined) && (
@@ -105,9 +126,9 @@ export function ManualAimController({
               ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
               : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
           }`}
-          onClick={() => onManualAim(aimStepDeg, 0)}
+          onClick={() => onManualAim(0, AIM_STEP_DEG)}
           data-testid="operator-aim-up"
-          title="Pan CW — Motor 1 (W)"
+          title="Tilt CW — Motor 2 (W)"
         >
           <span className="text-xs">▲</span>
           <span className="text-[10px] opacity-70">W</span>
@@ -122,9 +143,9 @@ export function ManualAimController({
               ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
               : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
           }`}
-          onClick={() => onManualAim(0, -aimStepDeg)}
+          onClick={() => onManualAim(-AIM_STEP_DEG, 0)}
           data-testid="operator-aim-left"
-          title="Tilt CCW — Motor 2 (A)"
+          title="Pan CCW — Motor 1 (A)"
         >
           <span className="text-xs">◀</span>
           <span className="text-[10px] opacity-70">A</span>
@@ -146,9 +167,9 @@ export function ManualAimController({
               ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
               : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
           }`}
-          onClick={() => onManualAim(0, aimStepDeg)}
+          onClick={() => onManualAim(AIM_STEP_DEG, 0)}
           data-testid="operator-aim-right"
-          title="Tilt CW — Motor 2 (D)"
+          title="Pan CW — Motor 1 (D)"
         >
           <span className="text-xs">▶</span>
           <span className="text-[10px] opacity-70">D</span>
@@ -163,9 +184,9 @@ export function ManualAimController({
               ? 'bg-[#25d8ff] text-black border-[#25d8ff] shadow-[0_0_15px_rgba(37,216,255,0.6)]'
               : 'bg-white/10 hover:bg-white/20 text-white border border-white/20 hover:border-[#25d8ff]/50'
           }`}
-          onClick={() => onManualAim(-aimStepDeg, 0)}
+          onClick={() => onManualAim(0, -AIM_STEP_DEG)}
           data-testid="operator-aim-down"
-          title="Pan CCW — Motor 1 (S)"
+          title="Tilt CCW — Motor 2 (S)"
         >
           <span className="text-xs">▼</span>
           <span className="text-[10px] opacity-70">S</span>
@@ -180,7 +201,7 @@ export function ManualAimController({
       )}
 
       <div className="mt-3 flex items-center justify-between text-[10px] text-[#91a6b7] border-t border-white/10 pt-2">
-        <span>⌨ <b>W/S</b>: Pan (Motor 1) · <b>A/D</b>: Tilt (Motor 2) · Ok tuşları da kullanılabilir.</span>
+        <span>⌨ <b>Space + W/S</b>: Tilt · <b>Space + A/D</b>: Pan</span>
       </div>
     </section>
   );

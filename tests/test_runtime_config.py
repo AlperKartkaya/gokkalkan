@@ -51,7 +51,7 @@ class RuntimeConfigTest(unittest.TestCase):
 
         self.assertEqual(launch.mode, "HIL")
         self.assertEqual(launch.mcu_baudrate, 115_200)
-        self.assertEqual(launch.mcu_transport, "usb_serial")
+        self.assertEqual(launch.mcu_transport, "arduino_serial")
         self.assertEqual(launch.heartbeat_timeout_sec, 2.0)
         self.assertLess(
             settings.safety.pan_min_deg,

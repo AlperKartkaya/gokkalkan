@@ -6,7 +6,7 @@ seviyeli niyet olarak gelir; Safety Gate değerlendirmesi burada yapılır.
 
 HardwareAdapterBase:
   DryRunHardwareAdapter  — geliştirme/test, fiziksel çıkış yok
-  UsbSerialMcuAdapter    — legacy USB CDC/COBS taşıması
+  ArduinoUnoMotorAdapter — saha Arduino Uno satır protokolü
   CanMcuAdapter          — yalnız tarihsel CAN test uyumluluğu
 """
 
@@ -70,7 +70,8 @@ BlockReason = Literal[
 
 VALID_MODES: set[str] = {"safe", "manual", "autonomous", "engagement", "blocked", "maintenance"}
 ENGAGEMENT_MODES: set[str] = {"autonomous", "engagement"}
-MAX_MANUAL_AIM_DELTA_DEG = 10.0
+# Field firmware uses a minimum 50-pulse move at 1600 pulse/rev: 11.25°.
+MAX_MANUAL_AIM_DELTA_DEG = 11.25
 MAX_MANUAL_AIM_RATE_LIMIT_DEG_PER_SEC = 30.0
 # Şartname v1.4: toplam bakım bütçesi 10 dakika (600 saniye), her istek min 30 sn
 MAINTENANCE_BUDGET_SEC = 600
@@ -358,6 +359,7 @@ class DryRunHardwareAdapter(HardwareAdapterBase):
         return {
             "adapter": "hardware_mock.dry_run",
             "busConnected": False,
+            "arduinoReachable": False,
             "picoReachable": False,
             "encoderOk": True,
             "dryRun": True,
@@ -454,8 +456,11 @@ class OperatorService:
             ballistic_compensation or BallisticCompensation.unverified()
         )
         self.camera_calibration_hash = camera_calibration_hash
-        self.hardware: HardwareAdapterBase = hardware or DryRunHardwareAdapter(clock=clock)
-        self.arduino_motors = None if dry_run else ArduinoUnoMotorAdapter()
+        self.hardware: HardwareAdapterBase = hardware or (
+            ArduinoUnoMotorAdapter(dry_run=False, physical_output_capable=False)
+            if not dry_run
+            else DryRunHardwareAdapter(clock=clock)
+        )
         self.telemetry = telemetry or JsonlTelemetryStore(clock=clock)
         self.tracks: list[DryRunTrack] = self._tracks_for_stage(self.stage, self.round)
         self.sensor_frames: list[SensorFrame] = self._sensor_frames_for_stage(self.stage, self.round, self.tracks)
@@ -478,7 +483,7 @@ class OperatorService:
         self.mission_time_limit_sec: int = STAGE1_TIME_LIMIT_SEC
         boot_msg = {
             "SIM": "SIM modunda başlatıldı; fiziksel adapter yüklenmedi.",
-            "HIL": "HIL modunda başlatıldı; fiziksel çıkış kapalı, yalnız lamba/yapay yük kullanılabilir.",
+            "HIL": "HIL modunda başlatıldı; fiziksel hareket yalnız açıkça etkinleştirilen Arduino HIL profilinde kullanılabilir.",
             "LIVE": "LIVE modunda başlatıldı; fiziksel çıkış ayrıca arm edilene kadar kapalı.",
         }[self.runtime_mode]
         self._append_event(
@@ -490,8 +495,7 @@ class OperatorService:
 
     def close(self) -> None:
         """Close all optional transports owned by the service."""
-        if self.arduino_motors is not None:
-            self.arduino_motors.close()
+        self.hardware.close()
 
     def bind_owner_thread(self, thread_id: int) -> None:
         """Bind production mutations to the Mission Core reducer thread."""
@@ -786,6 +790,10 @@ class OperatorService:
         }
 
     def snapshot(self) -> dict[str, Any]:
+        hardware_health = self._hardware_health_snapshot()
+        physical_output_enabled = bool(
+            hardware_health.get("physicalOutputEnabled", False)
+        )
         selected = self._find_track(self.mission_flow.selected_target_id or "")
         course_predictions = []
         for state in self.course_estimator.predicted_states():
@@ -826,7 +834,7 @@ class OperatorService:
             ).to_dict(),
             "commandResults": self.command_results[:8],
             "events": self.events[:20],
-            "physicalOutputEnabled": False,
+            "physicalOutputEnabled": physical_output_enabled,
             "telemetry": self.telemetry.metadata(),
             "missionFlow": self.mission_flow.to_dict(),
             "courseGeometry": {
@@ -845,7 +853,7 @@ class OperatorService:
                 selected.rangeM if selected else None
             ),
             "lidarReading": self.latest_lidar_reading,
-            "hardwareHealth": self._hardware_health_snapshot(),
+            "hardwareHealth": hardware_health,
         }
         result.update(self._mission_timer())
         result.update(self._maintenance_state())
@@ -854,8 +862,6 @@ class OperatorService:
     def _hardware_health_snapshot(self) -> dict[str, Any]:
         try:
             result = dict(self.hardware.health_check())
-            if self.arduino_motors is not None:
-                result["arduinoMotor"] = self.arduino_motors.health()
             return result
         except Exception as exc:
             return {
@@ -881,13 +887,16 @@ class OperatorService:
         }
 
     def health(self) -> dict[str, Any]:
+        hardware_health = self._hardware_health_snapshot()
         return {
             "ok": True,
             "service": "gokkalkan-operator-api",
             "mode": self.mode,
             "dryRun": self.dry_run,
             "runtimeMode": self.runtime_mode,
-            "physicalOutputEnabled": False,
+            "physicalOutputEnabled": bool(
+                hardware_health.get("physicalOutputEnabled", False)
+            ),
             "telemetry": self.telemetry.metadata(),
             "timestamp": self._clock(),
         }
@@ -960,8 +969,8 @@ class OperatorService:
                 "Hardware Adapter",
                 "partial",
                 "Backend + Elektronik",
-                "USB CDC/COBS/CRC16 taşıması, sequence/ACK, firmware sağlık/encoder geri bildirimi ve host-testli Pico güvenlik çekirdeği hazır.",
-                "Pico'yu flashla; gerçek USB disconnect/reconnect, EMI, E-Stop ve imha hattı interlock'unu güvenli yükle HIL'de doğrula.",
+                "Arduino Uno satır protokolü ile Pan/Tilt STEP/DIR ve STOP komutları tek adapter üzerinden gönderiliyor; firmware sağlık/encoder/ateşleme geri bildirimi henüz yok.",
+                "Arduino firmware'ine güvenlik/konum/ateşleme geri bildirim protokolünü ekle ve fiziksel E-Stop ile güvenli yük HIL'ini doğrula.",
                 "HardwareCommand, HardwareResult",
             ),
             self._readiness_item(
@@ -1452,22 +1461,32 @@ class OperatorService:
             hardware_result = self.hardware.execute(
                 {
                     "commandId": result["commandId"],
-                    "kind": "ManualAimCommand",
+                    "kind": command_kind,
                     "payload": hardware_payload,
                 }
             )
             hardware_result["turretCalibration"] = correction
             self.telemetry.append("hardware_result", hardware_result)
+            hardware_accepted = bool(hardware_result.get("accepted", False))
+            hardware_completed = bool(hardware_result.get("completed", False))
+            if hardware_accepted and hardware_completed:
+                result["completed"] = True
+                result["physicalOutput"] = bool(
+                    hardware_result.get("physicalOutput", False)
+                )
+                if result["physicalOutput"]:
+                    result["message"] = "Arduino HIL motor hareketi gönderildi."
+            else:
+                result["accepted"] = False
+                result["completed"] = False
+                result["message"] = "Hardware hareket komutunu kabul etmedi."
+                result["safetyBlockReason"] = "BLOCKED_BACKEND"
+                hardware_result_code = str(
+                    hardware_result.get("resultCode", "HARDWARE_MOTION_REJECTED")
+                )
+                result["hardwareResultCode"] = hardware_result_code
+                result["blockReason"] = hardware_result_code
 
-            # Trigger physical Arduino Uno step motors
-            if self.arduino_motors is not None and not payload.get("dryRun", False):
-                pan_delta = float(payload.get("panDeltaDeg", 0.0))
-                tilt_delta = float(payload.get("tiltDeltaDeg", 0.0))
-                rate_limit = float(payload.get("rateLimitDegPerSec", 15.0))
-                if pan_delta != 0:
-                    self.arduino_motors.move_pan(pan_delta, rate_limit)
-                if tilt_delta != 0:
-                    self.arduino_motors.move_tilt(tilt_delta, rate_limit)
         self._append_event("command", command_kind, result["message"], {"safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
@@ -1486,13 +1505,21 @@ class OperatorService:
             hardware_accepted = bool(hardware_result.get("accepted", False))
             hardware_completed = bool(hardware_result.get("completed", False))
             if hardware_accepted and hardware_completed:
+                result["completed"] = True
+                result["physicalOutput"] = bool(
+                    hardware_result.get("physicalOutput", False)
+                )
                 self.mission_flow.record_engagement(str(payload.get("targetId", "")))
             else:
                 result["accepted"] = False
+                result["completed"] = False
                 result["message"] = "Hardware FIRE komutunu tamamlamadı."
-                result["blockReason"] = str(
+                result["safetyBlockReason"] = "BLOCKED_BACKEND"
+                hardware_result_code = str(
                     hardware_result.get("resultCode", "HARDWARE_FIRE_INCOMPLETE")
                 )
+                result["hardwareResultCode"] = hardware_result_code
+                result["blockReason"] = hardware_result_code
         self._append_event("fire", "FireIntent", result["message"], {"target": target_dict, "safety": safety.to_dict(), "result": result, "hardwareResult": hardware_result})
         return {"result": result, "safety": safety.to_dict(), "hardwareResult": hardware_result, "state": self.snapshot()}
 
@@ -1647,14 +1674,14 @@ class OperatorService:
 
     def disarm(self, reason: str = "OPERATOR_DISARM") -> dict[str, Any]:
         self._require_owner()
-        was_armed = self.live_arm_enabled
         self.arm_controller.disarm(reason)
         self.live_arm_enabled = False
-        if was_armed:
-            result = self.hardware.execute(
-                {"kind": "SysCmd", "payload": {"arm": False}, "commandId": self._active_command_id}
-            )
-            self.telemetry.append("hardware_result", result)
+        # STOP is idempotent and must reach the Arduino even in physical HIL,
+        # where LIVE arming is intentionally unavailable but motors may move.
+        result = self.hardware.execute(
+            {"kind": "SysCmd", "payload": {"arm": False}, "commandId": self._active_command_id}
+        )
+        self.telemetry.append("hardware_result", {**result, "reason": reason})
         return {"ok": True, "arm": self.arm_controller.snapshot(), "physicalOutput": False}
 
     def _all_live_health_ok(self) -> bool:
@@ -1712,8 +1739,10 @@ class OperatorService:
             status = health.get("mcuStatus", {})
             if not isinstance(status, dict):
                 status = {}
-            self.can_ok = bool(health.get("busConnected", False))
-            self.pico_heartbeat_ok = bool(health.get("picoReachable", False))
+            self.can_ok = bool(health.get("busConnected", health.get("serialConnected", False)))
+            self.pico_heartbeat_ok = bool(
+                health.get("arduinoReachable", health.get("picoReachable", False))
+            )
             self.encoder_ok = bool(health.get("encoderOk", status.get("encoderOk", False)))
             self.pico_state = str(status.get("state", "")).upper()
             self.pico_safe = (

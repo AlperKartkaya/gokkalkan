@@ -72,12 +72,12 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         raise ManifestError("packages.apt contains duplicates")
     mcu = data["mcu"]
     if (
-        mcu.get("transport") != "usb-cdc-serial"
+        mcu.get("transport") != "arduino-uno-serial"
         or not str(mcu.get("device_path", "")).startswith("/dev/serial/by-id/")
         or mcu.get("baudrate") != 115200
         or mcu.get("kernel_driver") != "cdc_acm"
     ):
-        raise ManifestError("MCU transport must match ADR-005 USB CDC contract")
+        raise ManifestError("MCU transport must match ADR-006 Arduino Uno serial contract")
     if data["verification"].get("runtime_profile") != "SIM":
         raise ManifestError("clean image verification must start in SIM")
     camera = data["camera"]

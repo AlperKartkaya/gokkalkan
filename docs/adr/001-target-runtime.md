@@ -4,6 +4,9 @@
 - Tarih: **25.07.2026**
 - İlgili işler: `ADR-001`, `ENV-003`–`ENV-006`, `CORE-001`–`CORE-005`
 
+> **Güncelleme (2026-08-26):** Saha MCU'su Pico/RP2040 değil Arduino Uno'dur;
+> aktif transport ve pin sözleşmesi `ADR-006` ile `GKK-IO-REV-B` belgesindedir.
+
 ## Bağlam
 
 Sistem; kamera işleme, görev mantığı, kullanıcı arayüzü, telemetri ve gerçek

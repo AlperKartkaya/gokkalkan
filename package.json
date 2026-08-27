@@ -17,6 +17,7 @@
     "dev:check": "npm run desktop:check",
     "desktop": "npm --prefix frontend run desktop --",
     "desktop:dev": "npm --prefix frontend run desktop:dev --",
+    "desktop:hil": "npm --prefix frontend run desktop:hil --",
     "desktop:check": "npm --prefix frontend run desktop:check --",
     "desktop:preview": "npm --prefix frontend run desktop:preview --",
     "test:desktop": "npm --prefix frontend run test:desktop --",

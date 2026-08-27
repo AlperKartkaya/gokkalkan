@@ -2,7 +2,7 @@
  * HardwareHealthBadge — Adım 4b
  *
  * GET /hardware/health endpoint'ini 3 saniyede bir polling yaparak
- * USB CDC bağlantısı, Pico MCU erişilebilirlik ve physicalOutput durumunu gösterir.
+ * Arduino Uno seri bağlantısı, MCU erişilebilirlik ve physicalOutput durumunu gösterir.
  *
  * Güvenlik notu: Yazılım katmanı ikincil izleme aracıdır.
  * Fiziksel mantar E-Stop birincil güvencedir.
@@ -86,17 +86,25 @@ export function HardwareHealthBadge({
 
       {health ? (
         <div className="grid grid-cols-2 gap-2">
-          <StatusDot ok={health.serialConnected ?? health.busConnected} label="USB CDC" />
-          <StatusDot ok={health.picoReachable} label="Pico MCU" />
+          <StatusDot ok={health.serialConnected ?? health.busConnected} label="Arduino USB Seri" />
+          <StatusDot ok={health.arduinoReachable ?? health.picoReachable ?? false} label="Arduino Uno" />
           <StatusDot ok={health.dryRun} label="Dry-Run Modu" />
-          <StatusDot ok={!health.physicalOutputEnabled} label="Fiziksel Çıkış Kapalı" />
+          <span className="flex items-center gap-1.5 text-xs">
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${health.physicalOutputEnabled ? 'bg-[#ffbb42] shadow-[0_0_6px_#ffbb42]' : 'bg-[#33e68c] shadow-[0_0_6px_#33e68c]'}`}
+              aria-hidden="true"
+            />
+            <span className={health.physicalOutputEnabled ? 'font-black text-[#ffe4ad]' : 'text-[#bfffe0]'}>
+              Fiziksel hareket çıkışı: {health.physicalOutputEnabled ? 'AÇIK' : 'KAPALI'}
+            </span>
+          </span>
           <StatusDot ok={!snapshot?.safety.estop} label="E-Stop Pasif" />
           <StatusDot ok={Boolean(snapshot?.sensorHealth?.perceptionConnected)} label="Kamera/Perception" />
           <StatusDot ok={Boolean(snapshot?.sensorHealth?.adapterConnected)} label="LiDAR Adapter" />
           <StatusDot ok={Boolean(snapshot?.telemetry?.exists)} label="Kayıt/Telemetri" />
           <StatusDot ok={Boolean(health.encoderOk)} label="Enkoder" />
           <span className="col-span-2 text-xs text-[#91a6b7]">
-            Pico: <b className="text-[#c8d8e2]">{health.serialPort ?? 'cihaz yolu yok'}</b>
+            Arduino: <b className="text-[#c8d8e2]">{health.serialPort ?? 'cihaz yolu yok'}</b>
             {' · '}FW: <b className="text-[#c8d8e2]">{health.firmwareVersion ?? 'bilinmiyor'}</b>
             {' · '}Protokol: <b className="text-[#c8d8e2]">v{health.protocolVersion ?? 0}</b>
           </span>

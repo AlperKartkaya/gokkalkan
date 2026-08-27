@@ -13,25 +13,43 @@ import glob
 import logging
 import threading
 import time
+from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
+
+from .hardware_adapter import HardwareAdapterBase
 
 logger = logging.getLogger("gokkalkan.arduino_motor")
 
 
-class ArduinoUnoMotorAdapter:
+class ArduinoUnoMotorAdapter(HardwareAdapterBase):
     """Manages serial communication with Arduino Uno running the dual DM542 firmware."""
 
     STEPS_PER_DEG = 1600.0 / 360.0  # 1600 Pulses/Rev microstep setting
 
-    def __init__(self, port: str | None = None, baudrate: int = 115200) -> None:
+    def __init__(
+        self,
+        port: str | None = None,
+        baudrate: int = 115200,
+        *,
+        heartbeat_timeout_sec: float = 2.0,
+        dry_run: bool = False,
+        physical_output_capable: bool = False,
+        serial_factory: Any | None = None,
+    ) -> None:
         self.port = port
         self.baudrate = baudrate
+        self.heartbeat_timeout_sec = heartbeat_timeout_sec
+        self.dry_run = dry_run
+        self.physical_output_capable = physical_output_capable
+        self._serial_factory = serial_factory
         self._serial: Any | None = None
         self._lock = threading.RLock()
         self._connected = False
         self._last_error: str | None = None
         self._last_attempt_time = 0.0
         self.active_port: str | None = None
+        self._started = False
         # Open lazily on the first command.  Construction must not spawn an
         # unmanaged thread or touch hardware before the runtime gate starts.
 
@@ -87,8 +105,15 @@ class ArduinoUnoMotorAdapter:
                 return False
 
             try:
-                import serial
-                self._serial = serial.Serial(target_port, self.baudrate, timeout=0.04)
+                factory = self._serial_factory
+                if factory is None:
+                    import serial
+                    factory = (
+                        serial.serial_for_url
+                        if "://" in target_port
+                        else serial.Serial
+                    )
+                self._serial = factory(target_port, self.baudrate, timeout=0.04)
                 time.sleep(0.1)
                 self._connected = True
                 self.active_port = target_port
@@ -124,6 +149,133 @@ class ArduinoUnoMotorAdapter:
                 self._serial = None
                 self._last_error = str(exc)
                 return f"ERR_SERIAL: {exc}"
+
+    def start(self) -> None:
+        """Start the adapter; opening serial is explicit and observable."""
+        with self._lock:
+            self._started = True
+        if not self.dry_run:
+            self.connect()
+
+    def execute(self, command: dict[str, Any]) -> dict[str, Any]:
+        """Translate the backend command contract to the Uno line protocol.
+
+        The field firmware currently exposes motion and STOP only.  FIRE and
+        ARM are deliberately rejected here instead of falling back to the
+        removed COBS/CAN transport.
+        """
+        kind = str(command.get("kind", "Unknown"))
+        command_id = str(command.get("commandId", "ARDUINO-UNSET"))
+        created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        base = {
+            "adapter": "arduino_uno_serial",
+            "commandId": command_id,
+            "kind": kind,
+            "createdAt": created_at,
+            "dryRun": self.dry_run,
+            "physicalOutput": False,
+        }
+        if self.dry_run:
+            return {
+                **base,
+                "accepted": True,
+                "completed": True,
+                "resultCode": "DRY_RUN",
+                "message": "Arduino komutu dry-run kaydı; fiziksel çıkış yok.",
+            }
+        # HIL loopback exercises the exact line protocol without energising
+        # motors.  Real serial ports remain blocked unless an explicitly
+        # reviewed physical HIL/LIVE profile grants output capability.
+        virtual_output = bool(self.port and self.port.startswith("loop://"))
+        if not self.physical_output_capable and not virtual_output:
+            return {
+                **base,
+                "accepted": False,
+                "completed": False,
+                "resultCode": "PHYSICAL_OUTPUT_DISABLED",
+                "message": "Arduino fiziksel çıkışı bu runtime'da kapalı.",
+            }
+
+        payload = command.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        if kind == "AutonomousAimCommand":
+            return {
+                **base,
+                "accepted": False,
+                "completed": False,
+                "resultCode": "ARDUINO_AUTONOMOUS_UNSUPPORTED",
+                "message": "Arduino saha firmware'i geri bildirimsiz otonom harekete kapalı.",
+            }
+        if kind == "ManualAimCommand":
+            try:
+                pan = float(payload.get("panDeltaDeg", 0.0))
+                tilt = float(payload.get("tiltDeltaDeg", 0.0))
+                rate = float(payload.get("rateLimitDegPerSec", 15.0))
+            except (TypeError, ValueError):
+                pan = tilt = rate = float("nan")
+            if not all(isfinite(value) for value in (pan, tilt, rate)):
+                return {
+                    **base,
+                    "accepted": False,
+                    "completed": False,
+                    "resultCode": "INVALID_MOTION_PAYLOAD",
+                    "message": "Arduino hareket payload'ı geçersiz.",
+                }
+            results = []
+            if pan:
+                results.append(self.move_pan(pan, rate))
+            if tilt:
+                results.append(self.move_tilt(tilt, rate))
+            accepted = bool(results) and all(item == "OK_SENT" for item in results)
+            if not results:
+                accepted = True
+            return {
+                **base,
+                "accepted": accepted,
+                "completed": accepted,
+                "physicalOutput": (
+                    accepted and self.physical_output_capable and not virtual_output
+                ),
+                "resultCode": "MOTION_SENT" if accepted else "MOTION_SEND_FAILED",
+                "message": (
+                    "Arduino motor komutu gönderildi."
+                    if accepted
+                    else "Arduino motor komutu gönderilemedi."
+                ),
+                "commands": results,
+            }
+        if kind == "SysCmd" and payload.get("arm") is False:
+            status = self.stop()
+            accepted = status == "OK_SENT"
+            return {
+                **base,
+                "accepted": accepted,
+                "completed": accepted,
+                "physicalOutput": (
+                    accepted and self.physical_output_capable and not virtual_output
+                ),
+                "resultCode": "STOP_SENT" if accepted else "STOP_SEND_FAILED",
+                "message": (
+                    "Arduino STOP komutu gönderildi."
+                    if accepted
+                    else "Arduino STOP komutu gönderilemedi."
+                ),
+            }
+        if kind == "FireIntent":
+            return {
+                **base,
+                "accepted": False,
+                "completed": False,
+                "resultCode": "ARDUINO_FIRE_UNSUPPORTED",
+                "message": "Arduino Uno firmware'inde FIRE komutu yok; ateşleme fail-closed reddedildi.",
+            }
+        return {
+            **base,
+            "accepted": False,
+            "completed": False,
+            "resultCode": "UNSUPPORTED_ARDUINO_COMMAND",
+            "message": f"Arduino komut türü desteklenmiyor: {kind}",
+        }
 
     def step_pan(self, steps: int, delay_us: int = 800, direction: str = "CW") -> str:
         """Command Pan Motor by discrete steps."""
@@ -177,15 +329,38 @@ class ArduinoUnoMotorAdapter:
                     serial_obj.close()
                 except Exception:
                     logger.debug("Arduino serial close failed", exc_info=True)
+            self._started = False
 
     def health(self) -> dict[str, Any]:
         return {
             "adapter": "arduino_uno_serial",
+            "transport": "arduino_serial",
+            "dryRun": self.dry_run,
             "connected": self._connected,
+            "serialConnected": self._connected,
             "arduinoReachable": self._connected,
-            # Compatibility for the legacy readiness shape.  New callers
-            # should consume arduinoReachable instead.
+            "arduinoProtocolReady": False,
+            # Compatibility only for read-only legacy dashboards.
             "picoReachable": False,
             "port": self.active_port or self.port,
+            "serialPort": self.active_port or self.port,
+            "baudrate": self.baudrate,
+            "busConnected": self._connected,
+            "encoderOk": False,
+            "mcuStatus": {
+                "state": "UNKNOWN",
+                "estopActive": True,
+                "encoderOk": False,
+                "fireReady": False,
+                "faultCode": 1,
+            },
+            "physicalOutputEnabled": bool(
+                self.physical_output_capable
+                and self._connected
+                and not (self.port or "").startswith("loop://")
+            ),
             "lastError": self._last_error,
         }
+
+    def health_check(self) -> dict[str, Any]:
+        return self.health()

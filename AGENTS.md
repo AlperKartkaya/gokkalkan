@@ -23,7 +23,7 @@ Treat documentation and accepted ADRs as the architecture source of truth, but i
 
 Directory map:
 - `backend/` — working operator API, Safety Gate, telemetry/replay, CAN codec/adapter, runtime profiles, and TFA50-L protocol primitives.
-- `backend/hardware_mock/` — Pico/CAN simulator for development without physical hardware.
+- `backend/hardware_mock/` — legacy MCU/CAN simulator; active field transport is Arduino Uno serial.
 - `frontend/` — React/Vite operator and competition simulation surfaces with unit/Playwright tests.
 - `perception/` — camera node, frame processing/tracking primitives, and backend bridge; real target validation remains incomplete.
 - `tests/` — Python unit/integration/scenario tests, including runtime safety and hardware adapter coverage.
@@ -63,7 +63,7 @@ Documented stack direction:
 - Python is the primary expected implementation language.
 - GUI: React / Vite (Web technologies wrapped for desktop if needed).
 - Perception: OpenCV first; Picamera2, model files, Hailo, YOLO, or DeepSORT-style approaches only when justified by real target data and latency/accuracy needs.
-- Communication: classical CAN 2.0B at 500 kbit/s through `python-can`/SocketCAN for Pico; UART/`pySerial` for TFA50-L. See ADR-002/003.
+- Communication: Arduino Uno 115200 USB serial line protocol for field motors; legacy CAN/COBS remains only for regression tests. TFA50-L uses UART/`pySerial`. See ADR-003/006.
 - Testing: pytest.
 - Possible native/robotics build artifacts: ROS2/colcon/CMake are reflected in `.gitignore`, but no build setup exists yet.
 

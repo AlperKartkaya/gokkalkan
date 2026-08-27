@@ -11,7 +11,7 @@ from typing import Any, Callable, Mapping
 
 from .runtime_mode import LivePreflight, RuntimeConfigurationError
 from .runtime_config import RuntimeSettings
-from .usb_serial_adapter import UsbSerialMcuAdapter
+from .arduino_motor_adapter import ArduinoUnoMotorAdapter
 
 
 MonitorFactory = Callable[..., Any]
@@ -29,7 +29,7 @@ class HardwareBootstrap:
         settings: RuntimeSettings,
         *,
         evidence_files: Mapping[str, Path],
-        monitor_factory: MonitorFactory = UsbSerialMcuAdapter,
+        monitor_factory: MonitorFactory = ArduinoUnoMotorAdapter,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> LivePreflight:
@@ -108,7 +108,8 @@ class HardwareBootstrap:
     @staticmethod
     def _verify_health(health: Mapping[str, Any]) -> None:
         status = health.get("mcuStatus")
-        if not health.get("serialConnected") or not health.get("picoReachable"):
+        reachable = health.get("arduinoReachable", health.get("picoReachable"))
+        if not health.get("serialConnected") or not reachable:
             raise RuntimeConfigurationError("LIVE Arduino monitor did not receive a fresh status")
         if int(health.get("protocolVersion", 0) or 0) != 1:
             raise RuntimeConfigurationError("LIVE Arduino protocol major mismatch")

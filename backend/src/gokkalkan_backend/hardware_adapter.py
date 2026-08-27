@@ -1,7 +1,8 @@
-"""Gökkalkan Donanım Adaptör Katmanı.
+"""Tarihsel Pico/CAN adaptörü ve ortak donanım adaptör sözleşmesi.
 
-Fiziksel haberleşme mimarisi:
-  RPi5 (bu modül, python-can) ← legacy CAN bus → MCU (DM542 sürücü, enkoder, E-stop)
+Aktif saha taşıması ``arduino_motor_adapter.ArduinoUnoMotorAdapter`` içindedir.
+Bu modüldeki CAN uygulaması yalnız geriye dönük regresyon testleri için korunur:
+  RPi5 (bu modül, python-can) ← legacy CAN bus → Pico
 
 CAN Mesaj Haritası:
   0x100  RPi5 → Pico  Pan/Tilt konum komutu (8 byte)
@@ -10,8 +11,7 @@ CAN Mesaj Haritası:
   0x200  Pico → RPi5  Durum raporu           (8 byte)  mevcut açı, E-stop, sağlık
   0x201  Pico → RPi5  E-Stop acil olayı      (1 byte)  anında iletim
 
-python-can kurulu değilse modül mock modda çalışır ve uyarı loglar.
-RPi.GPIO kurulu değilse GPIO E-Stop monitörü devre dışı kalır; CAN olayları aktif.
+python-can kurulu değilse legacy adaptör mock modda çalışır ve uyarı loglar.
 """
 
 from __future__ import annotations
@@ -232,7 +232,8 @@ class HardwareAdapterBase(ABC):
 
     Alt sınıflar:
       DryRunHardwareAdapter  — fiziksel çıkış yok, geliştirme/test
-      UsbSerialMcuAdapter    — aktif USB CDC Pico taşıması (ayrı modül)
+      ArduinoUnoMotorAdapter — aktif saha satır protokolü (ayrı modül)
+      UsbSerialMcuAdapter    — legacy USB CDC/COBS regresyon taşıması
       CanMcuAdapter          — tarihsel CAN test uyumluluğu
     """
 

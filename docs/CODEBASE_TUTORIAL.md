@@ -99,7 +99,8 @@ class MissionState:
 ### 5. `hardware_adapter.py` — Donanım Sürücü Soyutlaması
 - **[`HardwareAdapterBase`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Donanım adaptörlerinin türediği soyut taban sınıftır.
 - **[`DryRunHardwareAdapter`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Geliştirme modu adaptörü; donanım çağrılarını simüle eder.
-- **[`UsbSerialMcuAdapter`](../backend/src/gokkalkan_backend/usb_serial_adapter.py)**: Pi ile Pico arasında USB CDC Serial kullanır; COBS+CRC16 framing, heartbeat, ACK/NACK ve fail-closed reconnect uygular.
+- **[`ArduinoUnoMotorAdapter`](../backend/src/gokkalkan_backend/arduino_motor_adapter.py)**: Aktif Pi–Arduino saha sınırıdır; STEP/DIR/STOP satır komutlarını taşır.
+- **[`UsbSerialMcuAdapter`](../backend/src/gokkalkan_backend/usb_serial_adapter.py)**: Legacy Pico/COBS regresyon adaptörüdür; Arduino'ya bağlanmaz.
 - **[`CanMcuAdapter`](../backend/src/gokkalkan_backend/hardware_adapter.py)**: Eski CAN testleri ve tarihsel payload uyumu için korunur; aktif LIVE taşıması değildir.
 
 ---
@@ -137,11 +138,11 @@ Kamera (Picamera2 / USB) ──> frame_processor.py (HSV Renk Filtresi)
 
 ---
 
-## ⚡ 5. Bölüm: Firmware & Donanım Simülasyonu (Pico & USB CDC)
+## ⚡ 5. Bölüm: Firmware & Donanım Simülasyonu (Arduino Uno; Pico legacy)
 
 - **[`firmware/pico/`](../firmware/pico/)**: Pico RP2040 C++ emniyet durum makinesi. Motor sürücülere STEP/DIR darbeleri üretir. Host C++ birim testleri `cmake/ctest` ile doğrulanır.
-- **[`mcu_simulator.py`](../backend/hardware_mock/mcu_simulator.py)**: Tarihsel CAN payload regresyonlarını sanal kanalda çalıştıran masaüstü Pico simülatörüdür; aktif runtime taşıması USB loopback'tir.
-- **[`usb_serial_mcu_protocol.md`](./usb_serial_mcu_protocol.md)**: Aktif USB CDC taşıma, framing ve heartbeat sözleşmesi.
+- **[`mcu_simulator.py`](../backend/hardware_mock/mcu_simulator.py)**: Tarihsel CAN payload regresyonlarını sanal kanalda çalıştıran masaüstü Pico simülatörüdür; aktif HIL taşıması Arduino satır protokolü loopback'idir.
+- **[`usb_serial_mcu_protocol.md`](./usb_serial_mcu_protocol.md)**: Legacy Pico USB CDC framing ve heartbeat sözleşmesi.
 - **[`can_icd_v1.md`](./can_icd_v1.md)**: Tarihsel payload kimlikleri ve test sözleşmesi.
   - `0x100`: Pan/Tilt Açı Komutu (RPi $\rightarrow$ Pico)
   - `0x101`: Ateşleme İzni (RPi $\rightarrow$ Pico)

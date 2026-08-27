@@ -18,6 +18,7 @@ import {
   fetchOperatorReadiness,
   fetchOperatorTelemetryExport,
   resetOperatorTelemetry,
+  sendOperatorEStop,
   sendOperatorFireIntent,
   sendOperatorStageRequest,
   type HardwareResult,
@@ -44,7 +45,7 @@ import { type OperatorBackendState } from './hooks/useOperatorBackendState';
 
 
 const DEFAULT_OPERATOR_STAGE: Stage = 1;
-const TYPE_SYMBOL_CONFIDENCE_THRESHOLD = 0.55;
+const TYPE_SYMBOL_CONFIDENCE_THRESHOLD = 0.40;
 
 const targetLabel: Record<TargetType, string> = {
   F16: 'Savaş Uçağı / F16',
@@ -679,7 +680,13 @@ export default function OperatorPanel({
 
   const config: OperatorPanelConfig = useMemo(() => {
     const apiReady = Boolean(apiSnapshot && !apiError);
-    const connectionState = apiReady ? (apiSnapshot?.dryRun ? 'dry-run' : 'live') : 'offline';
+    const connectionState = apiReady
+      ? apiSnapshot?.runtimeMode === 'HIL'
+        ? 'hil'
+        : apiSnapshot?.dryRun
+          ? 'dry-run'
+          : 'live'
+      : 'offline';
     return {
       apiBaseUrl: resolvedApiBaseUrl || 'backend-required',
       connectionState,
@@ -719,10 +726,13 @@ export default function OperatorPanel({
     && missionStatus === 'ACTIVE'
     && authoritativeTrack?.trackId === authoritativeTargetId;
   const isAutonomousFireStage = stageExpectedMode(displayStage) !== 'manual';
-  const fireReady = safetyFireReady && Boolean(apiBaseUrl);
+  const arduinoHilFireUnsupported = apiSnapshot?.runtimeMode === 'HIL';
+  const fireReady = safetyFireReady && Boolean(apiBaseUrl) && !arduinoHilFireUnsupported;
   const fireCaption = fireReady
     ? (isAutonomousFireStage ? 'Backend öncelikli hedef Hazır' : 'Manuel hedef sırası Hazır')
-    : operatorBlockCopy[safety.blockReason];
+    : arduinoHilFireUnsupported
+      ? 'Arduino HIL firmware: FIRE desteklenmiyor'
+      : operatorBlockCopy[safety.blockReason];
   const maintenanceCountdownSeconds = apiSnapshot?.maintenanceRemainingBudgetSec ?? 0;
   const maintenanceReady = Boolean(
     apiBaseUrl
@@ -924,6 +934,23 @@ export default function OperatorPanel({
       .finally(() => setApiBusy(false));
   };
 
+  const handleEStop = () => {
+    if (!apiBaseUrl) {
+      setApiError('Backend API bağlantısı yok. Fiziksel E-Stop birincil güvence olarak kullanılmalıdır.');
+      return;
+    }
+    setApiBusy(true);
+    void sendOperatorEStop(apiBaseUrl, { active: true })
+      .then((response) => {
+        setApiSnapshot(response.state);
+        setApiError('');
+      })
+      .catch((error: unknown) => {
+        setApiError(error instanceof Error ? error.message : 'Yazılım E-Stop doğrulanamadı.');
+      })
+      .finally(() => setApiBusy(false));
+  };
+
   const finishMaintenanceSession = () => {
     if (!apiBaseUrl || !maintenanceSessionActive) return;
     setApiBusy(true);
@@ -1013,7 +1040,7 @@ export default function OperatorPanel({
                 className={`px-3.5 py-1.5 text-xs font-black transition-colors ${viewMode === 'lidar' ? 'bg-[#25d8ff]/30 text-[#cbe9ff]' : 'text-[#8ba7be] hover:bg-white/10'}`}
                 onClick={() => setViewMode('lidar')}
               >
-                1D LİDAR ANALİZ (TFA50-L)
+                1D LİDAR (TFA50-L)
               </button>
             </div>
             {viewMode === 'lidar' ? (
@@ -1030,7 +1057,13 @@ export default function OperatorPanel({
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto">
                   <ManualAimController
                     apiBusy={apiBusy}
-                    manualAimReady={Boolean(apiBaseUrl)}
+                    manualAimReady={Boolean(
+                      apiBaseUrl
+                      && displayStage === 1
+                      && apiSnapshot?.mode === 'manual'
+                      && missionStatus === 'ACTIVE'
+                      && !safety.estop
+                    )}
                     onManualAim={sendManualAim}
                     turretCalibration={apiSnapshot?.turretCalibration}
                     currentPanDeg={apiSnapshot?.turretPosition?.panDeg}
@@ -1062,9 +1095,11 @@ export default function OperatorPanel({
             apiBusy={apiBusy}
             fireReady={fireReady}
             fireCaption={fireCaption}
+            operatorStopActive={operatorStopActive}
             maintenanceReady={maintenanceReady}
             maintenanceStatusCopy={maintenanceStatusCopy}
             onSendFireIntent={sendFireIntent}
+            onTriggerOperatorStop={handleEStop}
             onOpenMaintenance={maintenanceSessionActive ? finishMaintenanceSession : openMaintenance}
             maintenanceSessionActive={maintenanceSessionActive}
             maintenanceRemainingSeconds={maintenanceCountdownSeconds}
@@ -1090,9 +1125,7 @@ export default function OperatorPanel({
       <ConfidencePanel stage={displayStage} tracks={visibleTracks} selectedTrackId={selectedTrackId} />
 
       <section className="operator-utility-grid mt-3 grid gap-3 min-[1100px]:grid-cols-[minmax(0,.75fr)_minmax(0,.75fr)_minmax(0,1fr)]">
-        <SafetyAuthorityPanel
-            safety={safety}
-          />
+        <SafetyAuthorityPanel safety={safety} />
 
         <ReadinessDashboard
           maintenanceOpen={maintenanceOpen}
@@ -1132,7 +1165,7 @@ export default function OperatorPanel({
         <div className="mt-3 grid gap-2 text-sm min-[760px]:grid-cols-2">
           <EvidenceRow label="JSONL kayıt yolu" value={telemetryMetadata?.path ?? 'Henüz backend kanıtı alınmadı'} />
           <EvidenceRow label="Kayıt sayısı" value={String(telemetryMetadata?.recordCount ?? evidenceEntries.length)} />
-          <EvidenceRow label="Replay özeti" value={`${replayEventCount} olay · ${replayCommandCount} komut · ${replayHardwareCount} dry-run hardware sonucu`} />
+          <EvidenceRow label="Replay özeti" value={`${replayEventCount} olay · ${replayCommandCount} komut · ${replayHardwareCount} hardware sonucu`} />
           <EvidenceRow label="Fiziksel çıkış" value={(telemetryExport?.physicalOutputEnabled ?? replayBundle?.physicalOutputEnabled ?? apiSnapshot?.physicalOutputEnabled) ? 'AÇIK' : 'KAPALI / YOK'} />
         </div>
         <div className="mt-3 grid max-h-64 gap-2 overflow-auto pr-1" aria-label="Replay kayıtları">
@@ -1156,6 +1189,16 @@ export default function OperatorPanel({
             <button type="button" data-testid="operator-maintenance-finish-button" onClick={finishMaintenanceSession}>
               Bakımı Bitir
             </button>
+          </section>
+        </div>
+      )}
+
+      {operatorStopActive && (
+        <div className="operator-lock-overlay operator-lock-overlay-emergency" data-testid="operator-stop-overlay" role="dialog" aria-modal="true" aria-label="Acil durdurma">
+          <section className="operator-lock-card">
+            <span>ACİL DURDUR</span>
+            <b>KİLİTLİ</b>
+            <p>Fiziksel sinyal bırakılmalı ve kontrollü backend reset uygulanmalıdır.</p>
           </section>
         </div>
       )}

@@ -215,8 +215,8 @@ def _validate_settings(settings: RuntimeSettings) -> None:
     if not settings.api.host.strip():
         raise RuntimeConfigError("api.host must not be empty")
     _bounded("api.port", settings.api.port, 1, 65535)
-    if settings.mcu.transport != "usb_serial":
-        raise RuntimeConfigError("mcu.transport must be usb_serial")
+    if settings.mcu.transport != "arduino_serial":
+        raise RuntimeConfigError("mcu.transport must be arduino_serial")
     if not settings.mcu.port.strip():
         raise RuntimeConfigError("mcu.port must not be empty")
     _bounded("mcu.baudrate", settings.mcu.baudrate, 9_600, 3_000_000)
