@@ -109,7 +109,10 @@ Gerçek donanım bağlanmadan önce pan/tilt hareketi, Acil Durdur, atış izni,
 
 **Mevcut durum:** `mcu_simulator.py`, ortak firmware güvenlik modelini kullanarak
 E-Stop/FAULT sırasında komutları reddeder. Aktif saha yolu Arduino Uno satır
-protokolüdür; STEP/JOG/STOP komutları `ArduinoUnoMotorAdapter` üzerinden gider.
+protokolüdür; backend fiziksel hareketten önce `PING/PONG` ve sabit R1
+`PROFILE` eşleşmesini denetler, ardından sınırlı `STEP_*`/`STOP` komutlarını
+`ArduinoUnoMotorAdapter` üzerinden gönderir. Bakım `JOG_*` ve `RUN*` komutları
+operator API tarafından kullanılmaz.
 COBS, CRC16, sequence, ACK/NACK, encoder geri bildirimi ve Pico güvenlik çekirdeği
 legacy regresyon varlıklarıdır. Tarihsel CAN payload codec'i regresyon uyumu için
 korunur. Bu, fiziksel Arduino flash/USB/E-Stop/motor hattı kabulünün tamamlandığı anlamına
@@ -195,7 +198,7 @@ KTR’de “arayüz” yalnız kullanıcı ekranı olarak anlatılmamalıdır. A
 | Backend → Operatör Paneli | `MissionState`, `SafetyState`, `TrackState`, `SensorFrame`, `CommandResult`, `TelemetryEvent` | SSE state stream + REST snapshot fallback | UI her blok nedenini Türkçe gösterir |
 | Perception → Backend | `TrackState`, `Classification`, `FrameHealth` | ayrı process, bounded latest-wins queue, REST + heartbeat | Process çökmesi core’u çökertmez; angajman kapanır |
 | Backend → Hardware Adapter | `HardwareCommand`, `FireAuthorization`, `StopMotion` | Python adapter interface | Sadece Safety Gate sonrası çağrılır |
-| Hardware Adapter ↔ MCU | pan/tilt STEP/DIR ve STOP | **Uygulanan:** Arduino Uno USB seri satır protokolü | `ArduinoUnoMotorAdapter`; fiziksel HIL ve güvenlik/ateşleme geri bildirimi bekliyor |
+| Hardware Adapter ↔ MCU | pan/tilt STEP/DIR ve STOP | **Uygulanan:** Arduino Uno USB seri satır protokolü; fizikselde `PING/PONG` + R1 `PROFILE` doğrulaması | `ArduinoUnoMotorAdapter`; fiziksel HIL ve güvenlik/ateşleme geri bildirimi bekliyor |
 | TFA50-L Adapter → Backend/Perception | tek nokta menzil, health, receive timestamp | UART; adapter sınırı | Protokol decoder mevcut, gerçek serial/kalibrasyon bekliyor |
 
 ### 5.3. Elektronik / güç / sinyal arayüzleri
@@ -208,7 +211,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 | Logic güç | **Onaylandı** | 24V→5V DC-DC reg. (×4): RPi5, Arduino, fan. 24V→12V reg. (×2): yardımcı hat |
 | Acil Durdur | **Zorunlu / asgari tek kanal** | Mevcut kilitlemeli Gwest LAY2-KSE542E tek NK → LP1K1210BD 24 VDC kontaktör + anlık 1NA START mühürleme + LA4KE1B. E-Stop bırakılınca START olmadan kontaktör çekmez. `X` noktası izole giriş üzerinden Arduino güvenli duruşuna gelir. Bu mimari çift kanallı/SIL olarak tanımlanmaz |
 | Koruyucu toprak | **Onaylandı / fiziksel ölçüm açık** | Şebeke PE, RSP FG ve erişilebilir metal şasi ayrı ring pabuçlarla M5 yıldız noktasında birleşir; DC 0 V ile PE aynı sinyal değildir |
-| MCU haberleşmesi | **Yazılım uygulandı / fiziksel kabul açık** | Pi 5 ↔ Arduino Uno USB seri; 115200 baud satır tabanlı STEP/JOG/STOP/STATUS komutları ve kararlı `/dev/serial/by-id/...` seçimi. Ayrıntı ADR-006'dadır |
+| MCU haberleşmesi | **Yazılım uygulandı / fiziksel kabul açık** | Pi 5 ↔ Arduino Uno USB seri; 115200 baud, sabit `GKK-UNO-DM542-1600PPR-R1` profilinin `PING/PONG` + `PROFILE` kontrolü, sınırlı STEP/STOP ve kararlı `/dev/serial/by-id/...` seçimi. `loop://` yalnız taşıma simülasyonudur. Ayrıntı ADR-006'dadır |
 | Kamera | **Onaylandı** | Tek Raspberry Pi Camera Module 3 Standard (12MP, AF, HDR, nominal 66° yatay FoV), CSI bağlantı, Picamera2 API; LiDAR merkezi 700 mm olan yaw köprüsünde, weapon pitch'ten bağımsız |
 | LiDAR | **Yazılım hazır / fiziksel kabul açık** | Benewake TFA50-L tek nokta UART LiDAR; decoder, yeniden bağlanabilen serial adapter ve kamera-yaw füzyon kapısı uygulanmıştır. Gerçek 5/10/15 m kabul testi bekliyor |
 | AI hızlandırıcı | **Onaylandı / model açık** | Raspberry Pi AI HAT+ 26 TOPS, Hailo-8, PCIe; `hailo-all` + `hailortcli` health sözleşmesi hazır. HEF model artefaktı ve saha metrikleri bekliyor |
@@ -245,7 +248,7 @@ Kesin gerilim, konnektör ve protokol değerleri elektronik tasarım netleşmede
 - **AI hızlandırıcı:** Raspberry Pi AI HAT+ 26 TOPS / Hailo-8. Donanım yoksa Pi
   perception heartbeat'i fail-closed sağlıksız olur; model ağırlıkları repoya
   eklenmez.
-- **Donanım haberleşmesi:** Aktif Pi–Arduino yolu USB seri satır protokolüdür. Backend `ArduinoUnoMotorAdapter`, STEP/JOG/STOP komutlarını güvenli sınırlar sonrasında gönderir. LIVE yalnız kararlı `/dev/serial/by-id/...`, fiziksel interlock/readiness ve HIL kabulüyle açılır. COBS/CAN/Pico codec'leri legacy regresyon bağlamında tutulur. TFA50-L pySerial/UART kullanmaya devam eder.
+- **Donanım haberleşmesi:** Aktif Pi–Arduino yolu USB seri satır protokolüdür. Backend `ArduinoUnoMotorAdapter`, fiziksel cihazda `PING/PONG` ve `GKK-UNO-DM542-1600PPR-R1` profil eşleşmesi sonrasında sınırlı manuel STEP/STOP gönderir; profile uyuşmazlığı hareketi engeller. `JOG_*`/`RUN*` yalnız bakım firmware'i komutlarıdır. LIVE yalnız kararlı `/dev/serial/by-id/...`, fiziksel interlock/readiness ve HIL kabulüyle açılır. COBS/CAN/Pico codec'leri legacy regresyon bağlamında tutulur. TFA50-L pySerial/UART kullanmaya devam eder.
 - **Test:** pytest + frontend için Vitest/Playwright.
 - **Log formatı:** Tek writer thread/process sınırı, SQLite WAL event index’i,
   segmentli JSONL export, session manifest, ortak monotonic zaman tabanlı medya

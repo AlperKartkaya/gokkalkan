@@ -11,6 +11,7 @@ transport = "arduino_serial"
 # Arduino Uno USB-serial identity; replace with the reviewed by-id path.
 port = "/dev/serial/by-id/REPLACE_WITH_GOKKALKAN_ARDUINO"
 baudrate = 115200
+field_profile = "GKK-UNO-DM542-1600PPR-R1"
 heartbeat_timeout_ms = 1000
 
 [safety]

@@ -10,6 +10,7 @@ allowed_origins = ["http://127.0.0.1:5173", "http://127.0.0.1:4173"]
 transport = "arduino_serial"
 port = "loop://"
 baudrate = 115200
+field_profile = "GKK-UNO-DM542-1600PPR-R1"
 heartbeat_timeout_ms = 2000
 
 [safety]

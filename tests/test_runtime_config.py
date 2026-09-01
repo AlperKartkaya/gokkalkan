@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from gokkalkan_backend.arduino_motor_adapter import FIELD_PROFILE_ID
 from gokkalkan_backend.runtime_config import (
     RuntimeConfigError,
     load_runtime_config,
@@ -24,6 +25,7 @@ class RuntimeConfigTest(unittest.TestCase):
                 settings = load_runtime_config(Path("config/runtime") / filename)
                 self.assertEqual(settings.profile, profile)
                 self.assertEqual(settings.schema_version, 1)
+                self.assertEqual(settings.mcu.field_profile, FIELD_PROFILE_ID)
 
     def test_pi_sim_allows_only_local_operator_origins(self) -> None:
         settings = load_runtime_config("config/runtime/pi-sim.toml")
@@ -52,6 +54,7 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(launch.mode, "HIL")
         self.assertEqual(launch.mcu_baudrate, 115_200)
         self.assertEqual(launch.mcu_transport, "arduino_serial")
+        self.assertEqual(launch.mcu_field_profile, FIELD_PROFILE_ID)
         self.assertEqual(launch.heartbeat_timeout_sec, 2.0)
         self.assertLess(
             settings.safety.pan_min_deg,
@@ -77,6 +80,19 @@ class RuntimeConfigTest(unittest.TestCase):
             path.write_text(text, encoding="utf-8")
 
             with self.assertRaisesRegex(RuntimeConfigError, "interlock_provider"):
+                load_runtime_config(path)
+
+    def test_blank_arduino_field_profile_is_rejected(self) -> None:
+        text = Path("config/runtime/hil.toml").read_text(encoding="utf-8")
+        text = text.replace(
+            f'field_profile = "{FIELD_PROFILE_ID}"',
+            'field_profile = ""',
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hil.toml"
+            path.write_text(text, encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeConfigError, "field_profile"):
                 load_runtime_config(path)
 
     def test_missing_safety_table_is_rejected(self) -> None:

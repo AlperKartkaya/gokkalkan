@@ -15,6 +15,8 @@ import os
 import sys
 import time
 
+FIELD_PROFILE = "GKK-UNO-DM542-1600PPR-R1"
+
 # Windows / Linux UTF-8 terminal encoding fix
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -127,7 +129,10 @@ def monitor_progress(ser: serial.Serial, duration_sec: int, motor_name: str, dir
 
             time.sleep(0.08)
 
-        print(f"\n\n{C_GREEN}{C_BOLD}[✓] {motor_name} testi başarıyla tamamlandı!{C_RESET}")
+        print(
+            f"\n\n{C_GREEN}{C_BOLD}[✓] {motor_name} için komut zaman penceresi tamamlandı.{C_RESET}"
+        )
+        print("    Fiziksel hareket/konum kabulü ayrıca ölçülmelidir.")
 
     except KeyboardInterrupt:
         print(f"\n\n{C_RED}{C_BOLD}[!] KULLANICI TARAFINDAN KESİLDİ! MOTORLAR ACİL DURDURULUYOR...{C_RESET}")
@@ -165,6 +170,21 @@ def main():
     time.sleep(2.0)
     ping_resp = send_cmd(ser, "PING")
     print(f"[<] Arduino Bağlantı Testi (PING): {C_GREEN}{ping_resp}{C_RESET}")
+    if ping_resp != "PONG":
+        print(f"{C_RED}[HATA] PING/PONG doğrulanamadı; motor komutu gönderilmeyecek.{C_RESET}")
+        ser.close()
+        return
+
+    profile_resp = send_cmd(ser, "PROFILE")
+    expected_profile = f"PROFILE {FIELD_PROFILE}"
+    print(f"[<] Firmware Profili: {C_GREEN}{profile_resp}{C_RESET}")
+    if profile_resp != expected_profile:
+        print(
+            f"{C_RED}[HATA] Beklenen saha firmware profili yok; motor komutu gönderilmeyecek. "
+            f"Beklenen: {expected_profile}{C_RESET}"
+        )
+        ser.close()
+        return
 
     try:
         while True:

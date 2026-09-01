@@ -17,6 +17,10 @@ import os
 import sys
 import time
 
+FIELD_PROFILE = "GKK-UNO-DM542-1600PPR-R1"
+MAX_DURATION_SEC = 15
+MAX_SPEED_HZ = 1250
+
 # Cross-platform UTF-8 terminal encoding fix
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -68,6 +72,12 @@ def run_motor_test(
     if not HAS_PYSERIAL:
         print("[HATA] Lütfen 'pyserial' kütüphanesini yükleyin: pip install pyserial")
         return 1
+    if not 1 <= duration <= MAX_DURATION_SEC:
+        print(f"[HATA] Süre 1-{MAX_DURATION_SEC} saniye arasında olmalıdır.")
+        return 2
+    if not 1 <= speed_hz <= MAX_SPEED_HZ:
+        print(f"[HATA] Hız 1-{MAX_SPEED_HZ} Hz arasında olmalıdır.")
+        return 2
 
     print("=" * 60)
     print(" GÖKKALKAN - ARDUINO UNO 15 SANİYE MOTOR DÖNDÜRME TESTİ")
@@ -95,11 +105,27 @@ def run_motor_test(
         ser.reset_input_buffer()
         ser.reset_output_buffer()
 
-        # 1. PING Testi
+        # 1. Firmware kimliği doğrulaması. Eski/başka bir seri cihazın motor
+        # komutu almasını önlemek için PROFILE uyuşmadan RUN gönderilmez.
         ser.write(b"PING\n")
         time.sleep(0.1)
         resp = ser.readline().decode("utf-8", errors="ignore").strip()
         print(f"[<] Arduino Yanıtı : {resp if resp else '(Cevap alınamadı)'}")
+        if resp != "PONG":
+            print("[HATA] PING/PONG doğrulanamadı; motor komutu gönderilmedi.")
+            return 2
+
+        ser.write(b"PROFILE\n")
+        time.sleep(0.1)
+        profile_resp = ser.readline().decode("utf-8", errors="ignore").strip()
+        expected_profile = f"PROFILE {FIELD_PROFILE}"
+        print(f"[<] Firmware Profili: {profile_resp if profile_resp else '(Cevap alınamadı)'}")
+        if profile_resp != expected_profile:
+            print(
+                "[HATA] Uyumlu saha firmware'i doğrulanamadı; motor komutu gönderilmedi. "
+                f"Beklenen: {expected_profile}"
+            )
+            return 2
 
         # 2. Komut Hazırlama
         motor_lower = motor.lower()
@@ -118,8 +144,10 @@ def run_motor_test(
         ack = ser.readline().decode("utf-8", errors="ignore").strip()
         print(f"[<] Başlatma Onayı : {ack}")
 
-        if "OK RUNNING" not in ack and "COMPLETED" not in ack:
-            print("[!] Uyarı: Beklenen 'OK RUNNING' onayı gelmedi, ancak süreç izleniyor...")
+        if "OK RUNNING" not in ack:
+            print("[HATA] Beklenen 'OK RUNNING' onayı gelmedi; güvenli STOP gönderiliyor.")
+            ser.write(b"STOP\n")
+            return 2
 
         print("\n" + "=" * 60)
         print(f"[*] MOTOR DÖNÜYOR ({duration} SANİYE)... (Durdurmak için Ctrl+C)")
@@ -161,7 +189,7 @@ def run_motor_test(
                 print(f"[<] Arduino Sonuç : {final_msg}")
 
         print("=" * 60)
-        print("[+] 15 SANİYELİK MOTOR TESTİ BAŞARIYLA TAMAMLANDI!")
+        print("[+] Komut zaman penceresi tamamlandı; fiziksel hareket/konum kabulü ayrıca ölçülmelidir.")
         print("=" * 60)
         return 0
 

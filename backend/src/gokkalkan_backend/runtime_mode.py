@@ -8,10 +8,11 @@ from typing import Any, Callable, Literal, Mapping
 from .hardware_adapter import HardwareAdapterBase
 from .operator_api import DryRunHardwareAdapter, OperatorService
 from .telemetry_log import JsonlTelemetryStore
-from .arduino_motor_adapter import ArduinoUnoMotorAdapter
+from .arduino_motor_adapter import ArduinoUnoMotorAdapter, FIELD_PROFILE_ID
 
 RuntimeMode = Literal["SIM", "HIL", "LIVE"]
 McuAdapterFactory = Callable[..., HardwareAdapterBase]
+DEFAULT_ARDUINO_FIELD_PROFILE = FIELD_PROFILE_ID
 
 
 class RuntimeConfigurationError(RuntimeError):
@@ -30,6 +31,7 @@ class RuntimeLaunchConfig:
     mcu_transport: str = "arduino_serial"
     mcu_port: str = "loop://"
     mcu_baudrate: int = 115_200
+    mcu_field_profile: str = DEFAULT_ARDUINO_FIELD_PROFILE
     heartbeat_timeout_sec: float = 2.0
     live_output_enabled: bool = False
     hil_physical_mcu_enabled: bool = False
@@ -90,6 +92,7 @@ def build_runtime_service(
         adapter = mcu_adapter_factory(
             port=config.mcu_port,
             baudrate=config.mcu_baudrate,
+            expected_field_profile=config.mcu_field_profile,
             heartbeat_timeout_sec=config.heartbeat_timeout_sec,
             dry_run=False,
             # The reviewed physical HIL profile may drive pan/tilt only.  The
@@ -136,6 +139,7 @@ def build_runtime_service(
     adapter = mcu_adapter_factory(
         port=config.mcu_port,
         baudrate=config.mcu_baudrate,
+        expected_field_profile=config.mcu_field_profile,
         heartbeat_timeout_sec=config.heartbeat_timeout_sec,
         dry_run=False,
         physical_output_capable=True,

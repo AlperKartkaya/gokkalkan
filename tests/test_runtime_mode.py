@@ -4,6 +4,7 @@ import unittest
 from typing import Any
 
 from gokkalkan_backend.runtime_mode import (
+    DEFAULT_ARDUINO_FIELD_PROFILE,
     LivePreflight,
     RuntimeConfigurationError,
     RuntimeLaunchConfig,
@@ -95,6 +96,10 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertTrue(factory.instances[0].started)
         self.assertFalse(factory.instances[0].options["dry_run"])
         self.assertFalse(factory.instances[0].options["physical_output_capable"])
+        self.assertEqual(
+            factory.instances[0].options["expected_field_profile"],
+            DEFAULT_ARDUINO_FIELD_PROFILE,
+        )
 
     def test_reviewed_hil_physical_usb_enables_motor_output_capability(
         self,
@@ -111,6 +116,10 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertEqual(service.runtime_mode, "HIL")
         self.assertTrue(factory.instances[0].started)
         self.assertTrue(factory.instances[0].options["physical_output_capable"])
+        self.assertEqual(
+            factory.instances[0].options["expected_field_profile"],
+            DEFAULT_ARDUINO_FIELD_PROFILE,
+        )
         self.assertTrue(service.snapshot()["physicalOutputEnabled"])
 
     def test_live_mode_requires_explicit_enable_before_adapter_construction(self) -> None:
@@ -176,6 +185,10 @@ class RuntimeModeTest(unittest.TestCase):
         self.assertFalse(service.live_arm_enabled)
         self.assertEqual(len(factory.instances), 1)
         self.assertTrue(factory.instances[0].options["physical_output_capable"])
+        self.assertEqual(
+            factory.instances[0].options["expected_field_profile"],
+            DEFAULT_ARDUINO_FIELD_PROFILE,
+        )
         self.assertTrue(factory.instances[0].started)
 
         blocked = service.handle_fire_intent(

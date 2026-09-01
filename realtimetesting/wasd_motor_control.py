@@ -14,7 +14,7 @@ Klavye Kontrolleri:
   [ SPACE ] veya [ X ] : ACİL DURDUR (STOP)
   [ + ] / [ - ]        : Adım Açısını Artır / Azalt (0.25°, 0.5°, 1°, 2°, 5°, 10°)
   [ 1 ] / [ 2 ] / [ 3 ]: Hız Kademesi Seçimi (Yavaş / Normal / Hızlı)
-  [ C ]                : Mod Geçişi (Adım Modu vs Kesintisiz Jog Modu)
+  [ C ]                : Mod Geçişi (Adım Modu vs en çok 1 sn bakım jog'u)
   [ R ]                : Açı Sayacını Sıfırla (Home)
   [ Q ] veya [ ESC ]   : Güvenli Çıkış
 """
@@ -27,6 +27,8 @@ import os
 import sys
 import time
 from typing import Any
+
+FIELD_PROFILE = "GKK-UNO-DM542-1600PPR-R1"
 
 # Windows / Linux UTF-8 terminal encoding fix
 if hasattr(sys.stdout, "reconfigure"):
@@ -200,8 +202,18 @@ class WASDMotorController:
             self.ser.reset_output_buffer()
             self.connected = True
 
-            # PING at
-            self.send_raw("PING")
+            pong = self.send_raw("PING")
+            if pong != "PONG":
+                self.last_cmd = "PING/PONG doğrulanamadı"
+                self.ser.close()
+                self.connected = False
+                return False
+            profile = self.send_raw("PROFILE")
+            if profile != f"PROFILE {FIELD_PROFILE}":
+                self.last_cmd = "Firmware profili uyuşmuyor"
+                self.ser.close()
+                self.connected = False
+                return False
             return True
         except Exception as exc:
             self.connected = False
@@ -286,7 +298,7 @@ class WASDMotorController:
         """Konsola canlı, zengin durum tablosu basar."""
         step_str = f"{self.current_step_deg:.2f}° ({int(round(self.current_step_deg * self.STEPS_PER_DEG))} Adım)"
         speed_name = self.SPEED_PRESETS[self.speed_level][0]
-        mode_str = f"{C_YELLOW}SÜREKLİ JOG{C_RESET}" if self.continuous_mode else f"{C_GREEN}ADIM (PULSE){C_RESET}"
+        mode_str = f"{C_YELLOW}1 sn BAKIM JOG'U{C_RESET}" if self.continuous_mode else f"{C_GREEN}ADIM (PULSE){C_RESET}"
 
         # Clear screen and draw HUD
         out = []

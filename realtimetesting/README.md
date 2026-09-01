@@ -1,129 +1,109 @@
-# 🚀 Gökkalkan — Arduino Uno Motor & 1D LiDAR Gerçek Zamanlı Test Rehberi
+# Gökkalkan — Arduino Uno + DM542 R1 bakım ve entegrasyon rehberi
 
-Bu dizin, Gökkalkan taret mekanizmasının **Arduino Uno + DM542 step motor sürücüleri** ve **1D LiDAR (TFA50-L / TF-Luna / TFmini)** sensörü ile test edilmesi için geliştirilmiş firmware ve Python teşhis araçlarını içerir.
+Bu dizin, Arduino Uno ile iki DM542 sürücüsünün **kontrollü bakım/HIL öncesi
+entegrasyon** araçlarını taşır. Buradaki Python araçları operatör API'sinin
+yerine geçmez ve fiziksel hareket, E-Stop veya yarışma güvenlik kabulü kanıtı
+sayılmaz.
 
----
+> **Saha profili:** `GKK-UNO-DM542-1600PPR-R1`
+> **Firmware:** [`arduino_uno/arduino_uno.ino`](arduino_uno/arduino_uno.ino)
+> **Kanonik pin/kabul kaydı:**
+> [`docs/hardware/GKK-IO-REV-B_PIN_MAP.md`](../docs/hardware/GKK-IO-REV-B_PIN_MAP.md)
 
-## 📌 1. Fiziksel Pin ve Bağlantı Şemaları
+## 1. R1 pin profili
 
-### A. Arduino Uno -> DM542 Step Sürücü Bağlantıları
+| Sinyal | Uno pini | DM542 R1 bağlantısı |
+|---|---:|---|
+| PAN darbe | D2 | PAN `PUL+` |
+| PAN yön | D3 | PAN `DIR+` |
+| TILT darbe | D4 | TILT `PUL+` |
+| TILT yön | D5 | TILT `DIR+` |
+| Ortak dönüş | GND | Her iki sürücüde `PUL-` ve `DIR-` (ortak katot) |
+| Tanısal LED | D13 | Kart üzeri LED |
+| Enable | — | Lite R1 referansında bağlı değil |
 
-| Sinyal | Arduino Uno Pini | DM542 Klemensi | Açıklama |
-| :--- | :---: | :---: | :--- |
-| **1. Motor (PAN) Pals** | **Pin 2** | **1. Sürücü PUL+** | Pan ekseni adım sinyali |
-| **1. Motor (PAN) Yön** | **Pin 3** | **1. Sürücü DIR+** | Pan ekseni yön sinyali (CW/CCW) |
-| **2. Motor (TILT) Pals** | **Pin 4** | **2. Sürücü PUL+** | Tilt ekseni adım sinyali |
-| **2. Motor (TILT) Yön** | **Pin 5** | **2. Sürücü DIR+** | Tilt ekseni yön sinyali (CW/CCW) |
-| **Ortak Eksi (GND)** | **Arduino GND** | **Tüm PUL- ve DIR-** | Her iki sürücünün eksi uçları (Ortak Katot) |
-| **Boşta (Enable)** | — | **ENA+ ve ENA-** | Kesinlikle boş bırakılmalıdır |
+`ENA+`/`ENA-`nin R1 referansında boş olması evrensel güvenlik kuralı değildir.
+Bir sürücüde bağlanması düşünülürse üretici dokümanı, giriş devresi ve haricî
+E-Stop/kontaktör davranışı enerji verilmeden önce doğrulanmalıdır. Yazılım
+`STOP`u, motor enerjisini Arduino'dan bağımsız kesen fiziksel E-Stop'un yerine
+geçmez.
 
-> [!IMPORTANT]
-> **DM542 DIP Switch Ayarları:**
-> - Mikroadım (SW5-SW8): **`1600 Pulse/Rev`** (1 tur = 1600 adım = ~4.444 adım/derece)
-> - Akım ayarı (SW1-SW3): Motorunuza uygun olarak **`2.5A - 3.5A`** aralığı.
+Lite referansı 1600 pulse/revolution (`≈4,444 pulse/derece`) hedefler. DM542
+DIP mikroadım ve akım ayarları sürücü/motor varyantına göre tekrar doğrulanmalı,
+gerçek ayar saha konfigürasyon kaydına işlenmelidir; burada varsayım olarak
+uygulanmaz.
 
----
+## 2. Firmware yükleme ve profil kontrolü
 
-### B. 1D LiDAR (TFA50-L / TF-Luna / TFmini) USB-UART Bağlantısı
+1. Fiziksel güç kesikken kablo, izolasyon, ortak dönüş ve E-Stop/kontaktör
+   zincirini kanonik pin haritasındaki kabul kapılarına göre inceleyin.
+2. Arduino IDE'de `arduino_uno/arduino_uno.ino` dosyasını açın; kart olarak
+   **Arduino Uno**, ardından doğru portu seçip yükleyin.
+3. Seri monitörde `115200` baud ve `Newline` seçin. Motor komutundan önce:
 
-| LiDAR Kablosu | Renk | USB-UART Dönüştürücü | Açıklama |
-| :--- | :---: | :---: | :--- |
-| **VCC (Besleme)** | Kırmızı | **5V** (veya harici 5V 1A) | Kararlı 5V DC güç |
-| **GND (Toprak)** | Siyah | **GND** | Ortak toprak |
-| **TXD (Verici)** | Beyaz / Yeşil | **RXD** | LiDAR Veri Çıkışı -> USB Girişi |
-| **RXD (Alıcı)** | Yeşil / Beyaz | **TXD** | LiDAR Komut Girişi <- USB Çıkışı |
+   ```text
+   PING
+   # PONG
+   PROFILE
+   # PROFILE GKK-UNO-DM542-1600PPR-R1
+   ```
 
----
+`PONG` veya tam profil yanıtı yoksa motor komutu vermeyin. Backend ve bakım
+araçları da aynı doğrulamayı zorunlu tutar.
 
-## 🛠️ ADIM 1: Firmware'i Arduino Uno'ya Yükleme
+## 3. Sınırlı seri protokol
 
-1. Arduino Uno'yu bilgisayara USB kablosuyla bağlayın.
-2. Arduino IDE ile [`realtimetesting/arduino_uno/arduino_uno.ino`](./arduino_uno/arduino_uno.ino) dosyasını açın.
-3. **Araçlar (Tools) -> Kart -> Arduino Uno** ve ilgili **COM portunu** seçin.
-4. **Yükle (Upload)** butonuna basarak kodu karta yazın.
+| Komut | Sınır |
+|---|---|
+| `STEP_PAN <pulse> <half_period_us> <CW\|CCW>` / `STEP_TILT …` | `1..1600` pulse, `80..1_000_000 µs` |
+| `RUN[_PAN\|_TILT] <sec> <speed_hz> [CW\|CCW]` | Yalnız bakım; `1..15 s`, `1..1250 Hz` |
+| `JOG_PAN [half_period_us] [CW\|CCW]` / `JOG_TILT …` | Yalnız bakım; en çok `1 s` sonra firmware durdurur |
+| `STOP` | Her iki PUL hattını düşük tutan idempotent duruş |
+| `PING`, `PROFILE`, `STATUS` | Tanı/kimlik doğrulama |
 
----
+`FIRE`, `ARM` ve otomatik hedefleme komutu yoktur. Limit dışı veya hatalı
+argümanlar `ERR …` ile reddedilir. `RUN` ve JOG'u yalnız boş, erişimi sınırlandırılmış,
+düşük enerjili çalışma alanında kullanın.
 
-## 💻 ADIM 2: Gerekli Paketlerin Kurulumu
+## 4. Python bakım araçları
 
-```bash
-pip install pyserial
-```
-*(Raspberry Pi / Linux için: `sudo apt install -y python3-serial && sudo usermod -a -G dialout $USER`)*
-
----
-
-## 🎮 ADIM 3: Test Araçlarını Çalıştırma
-
-### 1. 🕹️ Gerçek Zamanlı WASD Klavye Motor Kontrolcüsü (ÖNERİLEN)
-Klavyeden anlık tuşlara basarak motorları adım adım veya kesintisiz sürmek için:
-
-```bash
-python realtimetesting/wasd_motor_control.py
-```
-
-**Klavye Tuş Haritası:**
-* `[ W ]` veya `[ ↑ ]` : **TILT Yukarı** (Saat yönü - CW)
-* `[ S ]` veya `[ ↓ ]` : **TILT Aşağı** (Ters yön - CCW)
-* `[ A ]` veya `[ ← ]` : **PAN Sola** (Ters yön - CCW)
-* `[ D ]` veya `[ → ]` : **PAN Sağa** (Saat yönü - CW)
-* `[ SPACE ]` veya `[ X ]` : **ACİL DURDUR (STOP)**
-* `[ + ]` / `[ - ]` : **Adım Açısını Ayarla** (`0.25°`, `0.5°`, `1.0°`, `2.0°`, `5.0°`, `10.0°`)
-* `[ 1 ]` / `[ 2 ]` / `[ 3 ]` : **Hız Kademesi** (1: Yavaş, 2: Normal, 3: Hızlı)
-* `[ C ]` : **Mod Geçişi** (Adım/Pulse Modu ⟷ Kesintisiz Jog Modu)
-* `[ R ]` : **Konum Sayacını Sıfırla** (Home/Reset)
-* `[ Q ]` veya `[ ESC ]` : **Güvenli Çıkış**
-
----
-
-### 2. 📡 1D LiDAR Canlı Teşhis ve Test Monitörü
-LiDAR sensöründen gelen canlı mesafeyi (m/cm), sinyal gücünü, frekansı (Hz) ve ham hex baytları izlemek için:
+Gerekli bağımlılık:
 
 ```bash
-python realtimetesting/test_lidar.py
+.venv/bin/python -m pip install pyserial
 ```
-*(Baud rate ve port otomatik tespit edilir. İstenirse: `python realtimetesting/test_lidar.py --port COM4 --baud 460800`)*
 
-**Özellikler:**
-* TFA50-L (4-Bayt @ 460800 baud) ve TF-Luna/TFmini (9-Bayt @ 115200 baud) protokollerini otomatik tanır.
-* Canlı renkli mesafe çubuğu ve örnekleme hızı (FPS/Hz) gösterir.
-* Sinyal kopukluğu veya hatalı bağlantıda otomatik teşhis önerileri sunar.
-
----
-
-### 3. 📋 Menülü Motor Test Paneli
-Süreli (15 saniye) testler ve menü üzerinden motor doğrulama için:
+Araçlar önce R1 `PING`/`PROFILE` eşleşmesini denetler; doğrulama başarısızsa
+motor komutu göndermez.
 
 ```bash
-python realtimetesting/interactive_motor_control.py
+# En çok 15 saniyelik, profil denetimli PAN bakım testi
+.venv/bin/python realtimetesting/test_motor_15s.py \
+  --port /dev/serial/by-id/ARDUINO_CIHAZ_YOLU --motor pan --duration 15 --speed 800
+
+# Etkileşimli süreli bakım paneli
+.venv/bin/python realtimetesting/interactive_motor_control.py
+
+# Adım bazlı WASD bakım kontrolü; JOG modu her komutta en çok 1 sn sürer
+.venv/bin/python realtimetesting/wasd_motor_control.py \
+  --port /dev/serial/by-id/ARDUINO_CIHAZ_YOLU
 ```
 
----
+`test_motor_15s.py`nin zaman çubuğu yalnız komut zaman penceresidir. Motorun
+hareket ettiği, doğru yönde döndüğü, konumunu koruduğu veya E-Stop'un enerjiyi
+kestiği anlamına gelmez; bunlar ölçülüp kaydedilecek fiziksel kabul maddeleridir.
 
-### 4. ⚡ Tek Satırlık Parametreli Hızlı Test Scripti
+## 5. Saha kabul sırası
 
-```bash
-# Pan motorunu 15 saniye saat yönünde döndür:
-python realtimetesting/test_motor_15s.py --motor pan --duration 15
+1. D2–D5'i sürücü güç katı bağlı değilken ölçün; reset/`STOP`ta PUL düşük
+   kalmalıdır.
+2. Haricî E-Stop'a basıldığında kontaktörün Arduino/USB'den bağımsız motor
+   enerjisini kestiğini ölçün.
+3. R1 profile yanıtını kaydedin; eski sketch veya başka USB cihazında durun.
+4. Tek eksende küçük `STEP_*`, ardından `STOP`; gerçek yön ve mekanik limitleri
+   ölçün. Sonra ikinci ekseni değerlendirin.
+5. Safety Gate'in hareket yasak bölgesi ve telemetri/HIL kanıtını ayrı olarak
+   doğrulayın. Ateşleme/otonom kontrol bu R1 firmware'in kapsamı dışındadır.
 
-# Tilt motorunu 10 saniye ters yönde döndür:
-python realtimetesting/test_motor_15s.py --motor tilt --duration 10 --direction CCW
-
-# Her iki motoru birlikte test et:
-python realtimetesting/test_motor_15s.py --motor both --duration 15
-```
-
----
-
-## 📁 Dizin Yapısı
-
-```text
-realtimetesting/
-├── README.md                          # Test, pin ve kablolama rehberi
-├── arduino_uno/
-│   └── arduino_uno.ino                # Arduino Uno firmware kaynak kodu (v2.0 - Step/Jog/WASD destekli)
-├── wasd_motor_control.py              # Gerçek zamanlı WASD klavye motor kontrolcüsü
-├── test_lidar.py                      # Canlı 1D LiDAR teşhis ve test monitörü
-├── interactive_motor_control.py       # İnteraktif numaralı menü test paneli
-└── test_motor_15s.py                  # CLI parametreli 15 sn test aracı
-```
+TFA50-L/TF-Luna/TFmini teşhis araçları bu motor profilinden bağımsızdır. LiDAR
+kablolama ve kalibrasyon sonuçları ayrıca kayıt altına alınmalıdır.

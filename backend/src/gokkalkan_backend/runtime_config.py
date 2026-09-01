@@ -8,7 +8,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, TypeVar
 
-from .runtime_mode import RuntimeLaunchConfig, RuntimeMode
+from .runtime_mode import (
+    DEFAULT_ARDUINO_FIELD_PROFILE,
+    RuntimeLaunchConfig,
+    RuntimeMode,
+)
 from .safety_gate import ForbiddenZone
 
 T = TypeVar("T")
@@ -39,6 +43,13 @@ def _required(table: Mapping[str, Any], key: str, expected: type[T]) -> T:
     return value
 
 
+def _optional_string(table: Mapping[str, Any], key: str, default: str) -> str:
+    value = table.get(key, default)
+    if not isinstance(value, str):
+        raise RuntimeConfigError(f"{key} must be str")
+    return value
+
+
 def _bounded(name: str, value: float, minimum: float, maximum: float) -> None:
     if not minimum <= value <= maximum:
         raise RuntimeConfigError(
@@ -59,6 +70,7 @@ class McuSettings:
     port: str
     baudrate: int
     heartbeat_timeout_ms: int
+    field_profile: str = DEFAULT_ARDUINO_FIELD_PROFILE
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +147,7 @@ class RuntimeSettings:
             mcu_transport=self.mcu.transport,
             mcu_port=self.mcu.port,
             mcu_baudrate=self.mcu.baudrate,
+            mcu_field_profile=self.mcu.field_profile,
             heartbeat_timeout_sec=self.mcu.heartbeat_timeout_ms / 1000.0,
             live_output_enabled=self.safety.live_output_enabled,
             hil_physical_mcu_enabled=self.hil.physical_mcu_enabled,
@@ -219,6 +232,8 @@ def _validate_settings(settings: RuntimeSettings) -> None:
         raise RuntimeConfigError("mcu.transport must be arduino_serial")
     if not settings.mcu.port.strip():
         raise RuntimeConfigError("mcu.port must not be empty")
+    if not settings.mcu.field_profile.strip():
+        raise RuntimeConfigError("mcu.field_profile must not be empty")
     _bounded("mcu.baudrate", settings.mcu.baudrate, 9_600, 3_000_000)
     _bounded(
         "mcu.heartbeat_timeout_ms",
@@ -354,6 +369,9 @@ def load_runtime_config(path: str | Path) -> RuntimeSettings:
             port=_required(mcu, "port", str),
             baudrate=_required(mcu, "baudrate", int),
             heartbeat_timeout_ms=_required(mcu, "heartbeat_timeout_ms", int),
+            field_profile=_optional_string(
+                mcu, "field_profile", DEFAULT_ARDUINO_FIELD_PROFILE
+            ),
         ),
         safety=SafetySettings(
             pan_min_deg=_required(safety, "pan_min_deg", float),

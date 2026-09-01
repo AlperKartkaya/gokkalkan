@@ -7,7 +7,7 @@ Gökkalkan, TEKNOFEST 2026 Çelikkubbe Hava Savunma Sistemleri Yarışması içi
 - `frontend/` — React + Vite + TypeScript tabanlı **yarışma eğitim simülatörü ve operatör paneli**. Aşama 1/2/3 senaryolarını görselleştirir; gerçek panel canlı kamera, 1D LiDAR menzili, manuel nişan ve Safety Gate durumunu backend’den alır.
 - `backend/` — **Çalışan Operatör API**. Varsayılan `SIM`, USB seri loopback için `HIL`; `LIVE` fiziksel interlock/readiness bootstrap tamamlanana kadar fail-closed kilitlidir. SQLite WAL oturum kaydı + JSONL export, Safety Gate ve görev endpoint’leri aktiftir.
 - `backend/hardware_mock/` — donanım olmadan contract/fault testleri için kuru çalışma adaptörü.
-- `realtimetesting/arduino_uno/` — imalat ekibinin doğruladığı Arduino Uno + iki DM542 sürücülü saha firmware'i ve Python test araçları.
+- `realtimetesting/arduino_uno/` — sahada motor döndürmede kullanılan Lite entegrasyonundan türetilen Arduino Uno + iki DM542 R1 firmware'i ve profil-denetimli bakım araçları. Kablo, E-Stop ve hareket kabulü ayrı fiziksel kanıt olarak açıktır.
 - `firmware/pico/` — **legacy** host-testli referans; sahadaki aktif mikrodenetleyici yolu değildir ve yeni özellik eklenmez.
 - `perception/` — **Tek Camera Module 3 Standard + HSV takipçi + AI HAT+ sağlık sınırı + perception bridge**. Pi'de Picamera2 ve Hailo-8 zorunlu health kontrolü, geliştirmede açıkça işaretli OpenCV fallback'i; canlı MJPEG akışı sentetik görüntü üretmeden operatör paneline taşınır.
 - Tek sahipli **Mission Core**, sürümlü komut/olay envelope’ları, immutable state
@@ -29,7 +29,7 @@ Backend API → bounded CommandEnvelope kuyruğu
       ↓  tek sahipli Mission Core reducer + immutable snapshot/SSE
 OperatorService + Safety Gate
       ↓  HardwareAdapterBase.execute() (Safety Gate sonrası)
-ArduinoUnoMotorAdapter — pyserial / satır tabanlı STEP/JOG/STOP (saha motor yolu)
+ArduinoUnoMotorAdapter — pyserial / PING+PROFILE doğrulamalı STEP/STOP (saha motor yolu)
       ↓  USB CDC Serial (kısa veri kablosu)
 Arduino Uno (Pin 2/3 PAN, Pin 4/5 TILT)
       ↓  STEP/DIR darbeleri
@@ -81,12 +81,18 @@ Bu komut PAN/TILT hareket çıkışını etkinleştirir. Fiziksel mantar E-Stop 
 imha/ateşleme hattı enerjisiz ve çalışma alanı boş olmadan kullanılmamalıdır.
 Panelde hareket için deadman basılı tutulur; yazılım Acil Durdur komutu Arduino'ya
 koşulsuz `STOP` gönderir. Arduino firmware'inde `FIRE` olmadığı için ateşleme
-backend tarafından reddedilir.
+backend tarafından reddedilir. Fiziksel çıkıştan önce adapter yalnız
+`PING → PONG` ve `PROFILE → GKK-UNO-DM542-1600PPR-R1` eşleşirse hareket
+gönderir; eski firmware veya başka USB cihazı fail-closed engellenir.
 
 HIL loopback ve saha komutları aynı `ArduinoUnoMotorAdapter` satır protokolünü
 kullanır; backend Arduino'ya COBS/ACK çerçevesi göndermez. Legacy COBS/ACK
 adapter'ı yalnız ayrık tarihsel regresyon testlerinde tutulur. Arduino güvenlik
 telemetrisi tamamlanmadan LIVE profili fail-closed kalır.
+`loop://` PING/PROFILE yanıtı üreten bir firmware emülasyonu değildir; yalnız
+seri taşıma çerçevesini doğrular. R1 pin profili ve fiziksel kabul sırası
+[`docs/hardware/GKK-IO-REV-B_PIN_MAP.md`](docs/hardware/GKK-IO-REV-B_PIN_MAP.md)
+dosyasındadır.
 
 ### LIVE hazırlığı (RPi5 + Arduino Uno USB seri)
 
@@ -177,6 +183,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/MALZEME_LISTESI.md` — güncel malzeme, teslimat durumu, ürün bağlantıları ve doğrulama notları.
 - `docs/IMALAT_ELEKTRIK_KABLOLAMA_VE_EK_MALZEME.md` — imalat ekibi için bağlantı, ek BOM, lehimleme ve aşamalı kabul kılavuzu.
 - `docs/IMALAT_KOMPONENT_BAGLANTI_REHBERI.html` — legacy Pico bağlantı arşivi; sahada kullanılmaz.
+- `docs/hardware/GKK-IO-REV-B_PIN_MAP.md` — Arduino Uno + DM542 R1 pin profili, seri sözleşmesi ve fiziksel kabul kapıları.
 - `docs/adr/006-arduino-uno-motor-transport.md` — güncel Arduino Uno saha yolu ve sınırları.
 - `docs/sartname_v4.txt` — şartname metni; gereksinimlerde final otorite.
 - `docs/requirements_source.md` — şartname sürümü, hash ve güncelleme prosedürü.
@@ -185,7 +192,7 @@ ctest --test-dir build/firmware-host --output-on-failure
 - `docs/adr/` — kabul edilmiş çalışma ortamı, Mission Core, USB ve kamera/LiDAR kararları.
 - `docs/message_contracts.md` — Mission Core komut/olay şeması, sıralama ve
   geriye uyumluluk politikası.
-- `docs/usb_serial_mcu_protocol.md` — legacy USB framing sözleşmesi; Arduino satır protokolü için `realtimetesting/README.md` geçerlidir.
+- `docs/usb_serial_mcu_protocol.md` — legacy USB framing sözleşmesi; Arduino R1 seri sözleşmesi için `docs/hardware/GKK-IO-REV-B_PIN_MAP.md` ve `realtimetesting/README.md` geçerlidir.
 - `docs/can_icd_v1.md` — USB zarfı içinde korunan tarihsel 8 baytlık MCU payload kimlikleri.
 - `docs/digital_twin_and_evidence.md` — Faz 6/7 senaryo, session, replay ve kanıt kullanımı.
 - `config/runtime/` — doğrulanan SIM/HIL/LIVE ayar şeması ve profilleri.
